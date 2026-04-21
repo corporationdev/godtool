@@ -1,0 +1,2 @@
+name = "executor-marketing"
+compatibility_flags = ["nodejs_compat"]

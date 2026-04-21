@@ -1,0 +1,26 @@
+{
+  "name": "@executor/config",
+  "version": "1.4.3",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsgo --noEmit",
+    "test": "vitest run",
+    "typecheck:slow": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@effect/platform": "catalog:",
+    "@executor/sdk": "workspace:*",
+    "effect": "catalog:",
+    "jsonc-parser": "^3.3.1"
+  },
+  "devDependencies": {
+    "@effect/platform-node": "catalog:",
+    "@effect/vitest": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

@@ -1,0 +1,297 @@
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import { useAtomValue, useAtomSet, useAtomRefresh, Result } from "@effect-atom/atom-react";
+import {
+  sourceToolsAtom,
+  sourcesAtom,
+  sourceAtom,
+  removeSource,
+  refreshSource,
+} from "../api/atoms";
+import { sourceWriteKeys } from "../api/reactivity-keys";
+import { ToolTree } from "../components/tool-tree";
+import { ToolDetail, ToolDetailEmpty } from "../components/tool-detail";
+import type { ToolSummary } from "../components/tool-tree";
+import { useScope } from "../hooks/use-scope";
+import type { SourcePlugin } from "../plugins/source-plugin";
+import { Button } from "../components/button";
+import { Badge } from "../components/badge";
+import { Skeleton } from "../components/skeleton";
+
+export function SourceDetailPage(props: {
+  namespace: string;
+  sourcePlugins?: readonly SourcePlugin[];
+}) {
+  const { namespace, sourcePlugins } = props;
+  const scopeId = useScope();
+  const source = useAtomValue(sourceAtom(namespace, scopeId));
+  const tools = useAtomValue(sourceToolsAtom(namespace, scopeId));
+  const refreshSources = useAtomRefresh(sourcesAtom(scopeId));
+  const refreshTools = useAtomRefresh(sourceToolsAtom(namespace, scopeId));
+  const doRemove = useAtomSet(removeSource, { mode: "promise" });
+  const doRefresh = useAtomSet(refreshSource, { mode: "promise" });
+  const navigate = useNavigate();
+
+  // HMR: refresh source tools when the backend is hot-reloaded
+  useEffect(() => {
+    if (!import.meta.hot) return;
+    const refresh = () => {
+      refreshTools();
+      refreshSources();
+    };
+    import.meta.hot.on("executor:backend-updated", refresh);
+    return () => {
+      import.meta.hot?.off("executor:backend-updated", refresh);
+    };
+  }, [refreshTools, refreshSources]);
+
+  const [selectedToolId, setSelectedToolId] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [editing, setEditing] = useState(false);
+
+  const sourceData = Result.isSuccess(source) ? source.value : null;
+  const canRefresh = sourceData ? (sourceData.canRefresh ?? true) : false;
+  const canRemove = sourceData ? (sourceData.canRemove ?? true) : false;
+  const canEdit = sourceData ? (sourceData.canEdit ?? false) : false;
+
+  // Find the plugin edit component based on source kind
+  const editPlugin = useMemo(() => {
+    if (!sourceData || !sourcePlugins) return null;
+    return sourcePlugins.find((p) => p.key === sourceData.kind) ?? null;
+  }, [sourceData, sourcePlugins]);
+
+  const sourceTools: ToolSummary[] = useMemo(() => {
+    if (!Result.isSuccess(tools)) return [];
+    return tools.value.map((t) => ({
+      id: t.id,
+      name: t.name,
+      pluginKey: t.pluginId,
+      description: t.description,
+    }));
+  }, [tools]);
+
+  const selectedTool = useMemo(
+    () => sourceTools.find((t) => t.id === selectedToolId) ?? null,
+    [sourceTools, selectedToolId],
+  );
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await doRemove({
+        path: { scopeId, sourceId: namespace },
+        reactivityKeys: sourceWriteKeys,
+      });
+      void navigate({ to: "/" });
+    } catch {
+      setDeleting(false);
+      setConfirmDelete(false);
+    }
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await doRefresh({
+        path: { scopeId, sourceId: namespace },
+        reactivityKeys: sourceWriteKeys,
+      });
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const handleEditSave = () => {
+    setEditing(false);
+  };
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      {/* Header bar */}
+      <div className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-background/95 px-4 backdrop-blur-sm">
+        <div className="flex min-w-0 items-center gap-3">
+          <h2 className="truncate text-sm font-semibold text-foreground">
+            {sourceData?.name ?? namespace}
+          </h2>
+          {sourceData?.runtime && (
+            <Badge className="bg-muted text-muted-foreground">built-in</Badge>
+          )}
+          <Badge variant="secondary">{sourceData?.kind ?? "source"}</Badge>
+          {Result.isSuccess(tools) && !editing && (
+            <span className="hidden text-xs tabular-nums text-muted-foreground sm:block">
+              {sourceTools.length} {sourceTools.length === 1 ? "tool" : "tools"}
+            </span>
+          )}
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2">
+          {editPlugin?.signIn && !editing && (
+            <Suspense fallback={null}>
+              <editPlugin.signIn sourceId={namespace} />
+            </Suspense>
+          )}
+
+          {canEdit && editPlugin && !editing && (
+            <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+              Edit
+            </Button>
+          )}
+
+          {editing && (
+            <Button variant="outline" size="sm" onClick={() => setEditing(false)}>
+              Back to tools
+            </Button>
+          )}
+
+          {canRefresh && !editing && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void handleRefresh()}
+              disabled={refreshing}
+            >
+              {refreshing ? "Refreshing..." : "Refresh"}
+            </Button>
+          )}
+
+          {canRemove &&
+            !editing &&
+            (confirmDelete ? (
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-destructive">Confirm?</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setConfirmDelete(false)}
+                  disabled={deleting}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => void handleDelete()}
+                  disabled={deleting}
+                >
+                  {deleting ? "Deleting..." : "Delete"}
+                </Button>
+              </div>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setConfirmDelete(true)}
+                className="border-destructive/30 text-destructive hover:bg-destructive/10"
+              >
+                Delete
+              </Button>
+            ))}
+        </div>
+      </div>
+
+      {/* Edit view */}
+      {editing && editPlugin ? (
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-2xl px-6 py-8">
+            <Suspense fallback={<EditFormSkeleton />}>
+              <editPlugin.edit sourceId={namespace} onSave={handleEditSave} />
+            </Suspense>
+          </div>
+        </div>
+      ) : (
+        /* Content -- split pane */
+        Result.match(tools, {
+          onInitial: () => <SourceDetailSkeleton />,
+          onFailure: () => <div className="p-6 text-sm text-destructive">Failed to load tools</div>,
+          onSuccess: () => (
+            <div className="flex min-h-0 flex-1 overflow-hidden">
+              {/* Left: tool tree */}
+              <div className="flex w-72 shrink-0 flex-col border-r border-border/60 lg:w-80 xl:w-[22rem]">
+                <ToolTree
+                  tools={sourceTools}
+                  selectedToolId={selectedToolId}
+                  onSelect={setSelectedToolId}
+                />
+              </div>
+
+              {/* Right: tool detail */}
+              <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+                {selectedTool ? (
+                  <ToolDetail
+                    toolId={selectedTool.id}
+                    toolName={selectedTool.name}
+                    toolDescription={selectedTool.description}
+                    scopeId={scopeId}
+                  />
+                ) : (
+                  <ToolDetailEmpty hasTools={sourceTools.length > 0} />
+                )}
+              </div>
+            </div>
+          ),
+        })
+      )}
+    </div>
+  );
+}
+
+function SourceDetailSkeleton() {
+  return (
+    <div className="flex min-h-0 flex-1 overflow-hidden">
+      {/* Left: tool tree skeleton */}
+      <div className="flex w-72 shrink-0 flex-col gap-1 border-r border-border/60 p-3 lg:w-80 xl:w-[22rem]">
+        <Skeleton className="mb-2 h-8 w-full rounded-md" />
+        {Array.from({ length: 8 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-2 rounded-md px-2 py-1.5">
+            <Skeleton className="size-4 shrink-0 rounded" />
+            <Skeleton
+              className="h-3.5"
+              style={{ width: `${55 + ((i * 13) % 35)}%` }}
+            />
+          </div>
+        ))}
+      </div>
+
+      {/* Right: tool detail skeleton */}
+      <div className="flex min-w-0 flex-1 flex-col gap-6 overflow-hidden p-6">
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-5 w-48" />
+          <Skeleton className="h-4 w-80" />
+          <Skeleton className="h-4 w-64" />
+        </div>
+        <div className="flex flex-col gap-3">
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-20 w-full rounded-md" />
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-20 w-full rounded-md" />
+        </div>
+        <Skeleton className="h-9 w-32 rounded-md" />
+      </div>
+    </div>
+  );
+}
+
+function EditFormSkeleton() {
+  return (
+    <div className="flex flex-col gap-5 p-6">
+      <div className="flex flex-col gap-2">
+        <Skeleton className="h-4 w-20" />
+        <Skeleton className="h-9 w-full rounded-md" />
+      </div>
+      <div className="flex flex-col gap-2">
+        <Skeleton className="h-4 w-24" />
+        <Skeleton className="h-9 w-full rounded-md" />
+      </div>
+      <div className="flex flex-col gap-2">
+        <Skeleton className="h-4 w-28" />
+        <Skeleton className="h-24 w-full rounded-md" />
+      </div>
+      <div className="flex justify-end gap-2 pt-2">
+        <Skeleton className="h-9 w-20 rounded-md" />
+        <Skeleton className="h-9 w-24 rounded-md" />
+      </div>
+    </div>
+  );
+}

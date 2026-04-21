@@ -1,0 +1,55 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "executor-cloud",
+  "compatibility_date": "2025-04-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "src/server.ts",
+  "routes": [
+    {
+      "pattern": "executor.sh",
+      "custom_domain": true,
+    },
+  ],
+  "limits": {
+    "cpu_ms": 300000,
+  },
+  "observability": {
+    "enabled": true,
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "MCP_SESSION",
+        "class_name": "McpSessionDO",
+      },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_classes": ["McpSessionDO"],
+    },
+  ],
+  "services": [
+    {
+      "binding": "MARKETING",
+      "service": "executor-marketing",
+    },
+  ],
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "776c27dfec5f47f59343603b35a7b4c2",
+      "localConnectionString": "postgresql://postgres:postgres@127.0.0.1:5433/postgres",
+    },
+  ],
+  "worker_loaders": [
+    {
+      "binding": "LOADER",
+    },
+  ],
+  "vars": {
+    "VITE_PUBLIC_SENTRY_DSN": "https://e20b1bdeea27008092a4dc0ac303e97a@o4511196985556992.ingest.us.sentry.io/4511197010067456",
+    "VITE_PUBLIC_SITE_URL": "https://executor.sh",
+  },
+}

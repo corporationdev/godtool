@@ -1,0 +1,67 @@
+# dependencies (bun install)
+node_modules
+
+# output
+out
+dist
+*.tgz
+
+# code coverage
+coverage
+*.lcov
+
+# logs
+logs
+_.log
+report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
+
+# dotenv environment variable files
+.env
+.env.development.local
+.env.test.local
+.env.production.local
+.env.local
+
+# caches
+.eslintcache
+.cache
+*.tsbuildinfo
+.turbo
+
+# IntelliJ based IDEs
+.idea
+
+# Finder (MacOS) folder config
+.DS_Store
+
+# Cloudflare
+.wrangler/
+personal-notes/
+*.har.executor
+executor.har
+.executor/
+
+# desktop app build artifacts
+apps/desktop/resources/
+
+# cloud local dev database
+.pglite
+apps/cloud/.dev-db/
+.claude/
+.nitro/
+.output/
+.tanstack/
+.env*
+!.env.example
+
+# local user config
+executor.jsonc
+
+# VS Code (per-workspace user settings)
+.vscode/mcp.json
+
+# reference repos (pulled via `bun run pull:references`)
+.reference/
+
+.mcp.json
+.codex/
