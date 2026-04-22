@@ -73,7 +73,7 @@ const readResponseText = async (response: {
 const buildCallbackUrl = (origin: string, sessionId: string): string =>
   new URL(`${INTERNAL_TOOL_CALL_PATH_PREFIX}${encodeURIComponent(sessionId)}`, origin).toString();
 
-const buildExecutorModule = (args: {
+export const buildExecutorModule = (args: {
   readonly callbackToken: string;
   readonly callbackUrl: string;
   readonly code: string;
@@ -83,6 +83,8 @@ const buildExecutorModule = (args: {
   const body = recoverExecutionBody(args.code);
 
   return [
+    'import { $ } from "bun";',
+    "",
     `const __callbackUrl = ${JSON.stringify(args.callbackUrl)};`,
     `const __callbackToken = ${JSON.stringify(args.callbackToken)};`,
     `const __runId = ${JSON.stringify(args.runId)};`,
