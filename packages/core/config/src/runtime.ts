@@ -6,7 +6,8 @@ const defaultBlaxelWorkspace = "godtool";
 const previewSubdomainPrefix = "preview-pr-";
 const productionSubdomain = "app";
 const rootDomain = "godtool.dev";
-const localCloudUrl = "http://executor-cloud.localhost:1355";
+const serverSubdomainPrefix = "server-";
+const localCloudUrl = "http://localhost:3001";
 const sharedAuthkitDomain = "https://reverent-value-48.authkit.app";
 const maxDnsLabelLength = 63;
 const previewStagePrefixRegex = /^(preview-|pr-)/;
@@ -41,6 +42,8 @@ export interface RuntimeContext {
   blaxelRegion: string;
   blaxelTemplateImage: string;
   blaxelWorkspace: string;
+  serverHostname: string;
+  serverUrl: string;
   stage: string;
   stageKind: Exclude<StageKind, "test" | "unknown">;
 }
@@ -85,6 +88,25 @@ export function getStageAppUrl(stage: string): string {
   return `https://${hostname}`;
 }
 
+export function getStageServerHostname(stage: string): string {
+  const stageKind = getStageKind(stage);
+
+  if (stageKind === "dev" || stageKind === "sandbox") {
+    return `${getSingleLabelSubdomain(serverSubdomainPrefix, stage)}.${rootDomain}`;
+  }
+
+  const appHostname = getStageAppHostname(stage);
+  if (appHostname) {
+    return appHostname;
+  }
+
+  throw new Error(`Unsupported stage "${stage}" for server hostname resolution.`);
+}
+
+export function getStageServerUrl(stage: string): string {
+  return `https://${getStageServerHostname(stage)}`;
+}
+
 export function getStageAuthkitDomain(stage: string): string {
   assertSupportedRuntimeStage(stage);
 
@@ -116,6 +138,8 @@ export function resolveRuntimeContext(stage: string): RuntimeContext {
     blaxelRegion: getStageBlaxelRegion(stage),
     blaxelTemplateImage: getStageBlaxelTemplateImage(stage),
     blaxelWorkspace: getStageBlaxelWorkspace(stage),
+    serverHostname: getStageServerHostname(stage),
+    serverUrl: getStageServerUrl(stage),
     stage,
     stageKind,
   };

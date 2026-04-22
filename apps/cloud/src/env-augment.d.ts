@@ -32,6 +32,7 @@ declare global {
 
       // Shared with frontend
       VITE_PUBLIC_SITE_URL?: string;
+      VITE_SERVER_URL?: string;
     }
   }
 }

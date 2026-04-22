@@ -62,8 +62,9 @@ const secrets = {
   ...normalizeEnvValues(parseDotEnv(injectSecretsTemplate(template))),
   ...runtimeOverrides,
   VITE_PUBLIC_SITE_URL: runtime.appUrl,
+  VITE_SERVER_URL: runtime.serverUrl,
   MCP_AUTHKIT_DOMAIN: runtime.authkitDomain,
-  MCP_RESOURCE_ORIGIN: runtime.appUrl,
+  MCP_RESOURCE_ORIGIN: runtime.serverUrl,
 };
 const envExamples = findEnvExamples(repoRoot);
 

@@ -33,6 +33,7 @@
     "dev:desktop": "turbo run dev",
     "dev:local": "turbo run dev --filter='!@executor/desktop' --filter='!@executor/cloud'",
     "dev:cloud": "bun run --cwd apps/cloud dev",
+    "dev:tunnel": "bun run --cwd apps/cloud dev:tunnel",
     "db:migrate": "bun run --cwd apps/cloud db:migrate",
     "deploy:prod": "bun run --cwd apps/cloud deploy",
     "db:migrate:prod:ci": "bun run --cwd apps/cloud db:migrate:prod:ci",

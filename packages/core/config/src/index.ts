@@ -28,6 +28,8 @@ export {
   resolveRuntimeContext,
   getStageAppHostname,
   getStageAppUrl,
+  getStageServerHostname,
+  getStageServerUrl,
   getStageAuthkitDomain,
   getStageBlaxelRegion,
   getStageBlaxelTemplateImage,

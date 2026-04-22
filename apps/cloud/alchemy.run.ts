@@ -43,6 +43,7 @@ const addOptionalSecretBinding = (bindings: Record<string, unknown>, name: strin
 const stage = requireEnv("STAGE");
 const runtime = resolveRuntimeContext(stage);
 const siteUrl = new URL(runtime.appUrl);
+const serverUrl = new URL(runtime.serverUrl);
 
 const app = await alchemy("godtool-cloud", {
   adopt: true,
@@ -74,8 +75,9 @@ const bindings: Bindings = {
   WORKOS_CLIENT_ID: requireEnv("WORKOS_CLIENT_ID"),
   WORKOS_COOKIE_PASSWORD: alchemy.secret(requireEnv("WORKOS_COOKIE_PASSWORD")),
   VITE_PUBLIC_SITE_URL: siteUrl.origin,
+  VITE_SERVER_URL: serverUrl.origin,
   MCP_AUTHKIT_DOMAIN: runtime.authkitDomain,
-  MCP_RESOURCE_ORIGIN: siteUrl.origin,
+  MCP_RESOURCE_ORIGIN: serverUrl.origin,
 };
 
 addOptionalSecretBinding(bindings, "AUTUMN_SECRET_KEY");

@@ -20,6 +20,7 @@ import * as Sentry from "@sentry/cloudflare";
 import { Context, Effect, Layer, Option, Schema } from "effect";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 
+import { WorkOSAuth } from "./auth/workos";
 import { TelemetryLive } from "./services/telemetry";
 
 // ---------------------------------------------------------------------------
@@ -77,6 +78,8 @@ export type VerifiedToken = {
   accountId: string;
   /** The WorkOS organization ID, if the session has org context. */
   organizationId: string | null;
+  /** Where the organization context came from. */
+  organizationSource: "token" | "membership" | "none";
 };
 
 export class McpAuth extends Context.Tag("@executor/cloud/McpAuth")<
@@ -86,25 +89,57 @@ export class McpAuth extends Context.Tag("@executor/cloud/McpAuth")<
   }
 >() {}
 
-export const McpAuthLive = Layer.succeed(McpAuth, {
-  verifyBearer: (request) =>
-    Effect.promise(async () => {
-      const authHeader = request.headers.get("authorization");
-      if (!authHeader?.startsWith(BEARER_PREFIX)) return null;
-      try {
-        const { payload } = await jwtVerify(authHeader.slice(BEARER_PREFIX.length), jwks, {
-          issuer: AUTHKIT_DOMAIN,
-        });
-        if (!payload.sub) return null;
-        return {
-          accountId: payload.sub,
-          organizationId: (payload.org_id as string | undefined) ?? null,
-        };
-      } catch {
-        return null;
-      }
-    }),
-});
+export const McpAuthLive = Layer.effect(
+  McpAuth,
+  Effect.gen(function* () {
+    const workos = yield* WorkOSAuth;
+
+    return {
+      verifyBearer: (request: Request) =>
+        Effect.gen(function* () {
+          const authHeader = request.headers.get("authorization");
+          if (!authHeader?.startsWith(BEARER_PREFIX)) return null;
+
+          const verified = yield* Effect.tryPromise(() =>
+            jwtVerify(authHeader.slice(BEARER_PREFIX.length), jwks, {
+              issuer: AUTHKIT_DOMAIN,
+            }),
+          ).pipe(Effect.option);
+
+          if (Option.isNone(verified)) return null;
+
+          const { payload } = verified.value;
+          if (!payload.sub) return null;
+
+          const organizationIdFromToken = (payload.org_id as string | undefined) ?? null;
+          if (organizationIdFromToken) {
+            return {
+              accountId: payload.sub,
+              organizationId: organizationIdFromToken,
+              organizationSource: "token" as const,
+            };
+          }
+
+          // Remote MCP OAuth tokens can be org-less even when the same user
+          // has active memberships. Mirror the web auth callback behavior and
+          // hydrate a default org from memberships so approval in Claude can
+          // still establish an MCP session.
+          const memberships = yield* workos.listUserMemberships(payload.sub).pipe(
+            Effect.orElseSucceed(() => ({ data: [] })),
+          );
+          const membership =
+            memberships.data.find((candidate) => candidate.status === "active") ??
+            memberships.data[0];
+
+          return {
+            accountId: payload.sub,
+            organizationId: membership?.organizationId ?? null,
+            organizationSource: membership ? "membership" : "none",
+          };
+        }),
+    };
+  }),
+);
 
 // ---------------------------------------------------------------------------
 // Client fingerprint capture
@@ -285,6 +320,7 @@ const annotateMcpRequest = (
       "mcp.auth.has_bearer": (request.headers.get("authorization") ?? "").startsWith(BEARER_PREFIX),
       "mcp.auth.verified": !!opts.token,
       "mcp.auth.organization_id": opts.token?.organizationId ?? "",
+      "mcp.auth.organization_source": opts.token?.organizationSource ?? "none",
       "mcp.auth.account_id": opts.token?.accountId ?? "",
       "cf.country": cf.country ?? "",
       "cf.city": cf.city ?? "",
@@ -619,7 +655,7 @@ export const mcpApp: Effect.Effect<
 );
 
 const rawMcpFetch = HttpApp.toWebHandler(
-  mcpApp.pipe(Effect.provide(Layer.mergeAll(McpAuthLive, TelemetryLive))),
+  mcpApp.pipe(Effect.provide(Layer.mergeAll(WorkOSAuth.Default, McpAuthLive, TelemetryLive))),
 );
 
 /**

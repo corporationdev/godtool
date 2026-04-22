@@ -28,6 +28,7 @@ export function McpInstallCard(props: { className?: string }) {
   const [mode, setMode] = useState<TransportMode>(showStdio ? "stdio" : "http");
   const [origin, setOrigin] = useState<string | null>(null);
   const scopeInfo = useScopeInfo();
+  const serverOrigin = import.meta.env.VITE_SERVER_URL || origin;
 
   useEffect(() => {
     setOrigin(window.location.origin);
@@ -40,8 +41,8 @@ export function McpInstallCard(props: { className?: string }) {
       ? isDev
         ? `npx add-mcp "bun run dev:cli mcp${scopeFlag}" --name "executor"`
         : `npx add-mcp "executor mcp${scopeFlag}" --name "executor"`
-      : origin
-        ? `npx add-mcp "${origin}/mcp" --transport http --name "executor"`
+      : serverOrigin
+        ? `npx add-mcp "${serverOrigin}/mcp" --transport http --name "executor"`
         : 'npx add-mcp "<this-server>/mcp" --transport http --name "executor"';
 
   const subtitle =
