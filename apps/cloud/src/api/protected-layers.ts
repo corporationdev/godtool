@@ -18,6 +18,8 @@ import { GraphqlGroup, GraphqlHandlers } from "@executor/plugin-graphql/api";
 
 import { OrgAuth } from "../auth/middleware";
 import { OrgAuthLive } from "../auth/middleware-live";
+import { FilesApi } from "../files/api";
+import { FilesHandlers } from "../files/handlers";
 import { UserStoreService } from "../auth/context";
 import { WorkOSAuth } from "../auth/workos";
 import { AutumnService } from "../services/autumn";
@@ -27,6 +29,7 @@ import { ErrorCaptureLive } from "../observability";
 export const ProtectedCloudApi = CoreExecutorApi.add(OpenApiGroup)
   .add(McpGroup)
   .add(GraphqlGroup)
+  .add(FilesApi)
   .addError(InternalError)
   .middleware(OrgAuth);
 
@@ -53,6 +56,7 @@ export const ProtectedCloudApiHandlers = Layer.mergeAll(
   OpenApiHandlers,
   McpHandlers,
   GraphqlHandlers,
+  FilesHandlers,
 );
 
 // `ErrorCaptureLive` is provided above the handler + middleware layers

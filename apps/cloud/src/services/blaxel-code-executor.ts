@@ -1,5 +1,6 @@
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
+import * as Runtime from "effect/Runtime";
 
 import {
   recoverExecutionBody,
@@ -22,6 +23,7 @@ export class BlaxelExecutionError extends Data.TaggedError("BlaxelExecutionError
 type ActiveRunRegistry = {
   readonly register: (input: {
     readonly runId: string;
+    readonly runPromise: <A, E>(effect: Effect.Effect<A, E, never>) => Promise<A>;
     readonly token: string;
     readonly toolInvoker: SandboxToolInvoker;
   }) => void;
@@ -30,7 +32,7 @@ type ActiveRunRegistry = {
 
 type BlaxelCodeExecutorOptions = {
   readonly activeRuns: ActiveRunRegistry;
-  readonly callbackOrigin: string;
+  readonly callbackOrigin: string | (() => string);
   readonly db: DrizzleDb;
   readonly organizationId: string;
   readonly sessionId: string;
@@ -111,6 +113,13 @@ const buildExecutorModule = (args: {
     "    }",
     "    return String(value);",
     "  };",
+    "  const __renderCallbackError = (toolPath, responseStatus, errorValue) => {",
+    "    const rendered = __renderMessage(errorValue);",
+    "    if (rendered && rendered !== 'Unknown error') {",
+    "      return `Tool ${toolPath} failed: ${rendered}`;",
+    "    }",
+    "    return `Tool ${toolPath} callback failed with status ${responseStatus}`;",
+    "  };",
     "  const __callTool = async (toolPath, args) => {",
     "    const response = await fetch(__callbackUrl, {",
     "      method: 'POST',",
@@ -130,10 +139,12 @@ const buildExecutorModule = (args: {
     "      }",
     "    }",
     "    if (!response.ok) {",
-    "      throw new Error(data && typeof data === 'object' && data.error && typeof data.error.message === 'string' ? data.error.message : `Tool callback failed with status ${response.status}`);",
+    "      const errorValue = data && typeof data === 'object' ? data.error : undefined;",
+    "      throw new Error(__renderCallbackError(toolPath, response.status, errorValue));",
     "    }",
     "    if (!data || typeof data !== 'object' || data.ok !== true) {",
-    "      throw new Error(data && typeof data === 'object' && data.error && typeof data.error.message === 'string' ? data.error.message : 'Tool callback failed');",
+    "      const errorValue = data && typeof data === 'object' ? data.error : undefined;",
+    "      throw new Error(__renderCallbackError(toolPath, response.status, errorValue));",
     "    }",
     "    return data.result;",
     "  };",
@@ -174,13 +185,18 @@ export const makeBlaxelCodeExecutor = (
   options: BlaxelCodeExecutorOptions,
 ): CodeExecutor<BlaxelExecutionError> => {
   const timeoutMs = Math.max(100, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
-  const callbackUrl = buildCallbackUrl(options.callbackOrigin, options.sessionId);
 
   return {
     execute: (code: string, toolInvoker: SandboxToolInvoker) =>
       Effect.gen(function* () {
         const runId = `run_${crypto.randomUUID()}`;
         const callbackToken = crypto.randomUUID();
+        const runtime = yield* Effect.runtime<never>();
+        const callbackOrigin =
+          typeof options.callbackOrigin === "function"
+            ? options.callbackOrigin()
+            : options.callbackOrigin;
+        const callbackUrl = buildCallbackUrl(callbackOrigin, options.sessionId);
         const moduleSource = buildExecutorModule({
           callbackToken,
           callbackUrl,
@@ -192,6 +208,7 @@ export const makeBlaxelCodeExecutor = (
         yield* Effect.sync(() => {
           options.activeRuns.register({
             runId,
+            runPromise: Runtime.runPromise(runtime),
             token: callbackToken,
             toolInvoker,
           });

@@ -32,6 +32,7 @@ import { AutumnService } from "./services/autumn";
 import { DbService, combinedSchema } from "./services/db";
 import { createScopedExecutor } from "./services/executor";
 import { makeExecutionStack } from "./services/execution-stack";
+import { formatSandboxToolCallErrorValue } from "./services/sandbox-tool-call-errors";
 import { DoTelemetryLive } from "./services/telemetry";
 
 // ---------------------------------------------------------------------------
@@ -120,29 +121,20 @@ type SessionMeta = {
 };
 
 type ActiveSandboxRun = {
+  readonly runPromise: <A, E>(effect: Effect.Effect<A, E, never>) => Promise<A>;
   readonly token: string;
   readonly toolInvoker: SandboxToolInvoker;
 };
 
 const formatSandboxToolCallError = (cause: Cause.Cause<unknown>) => {
   const failure = Array.from(Cause.failures(cause))[0];
-  if (
-    typeof failure === "object" &&
-    failure !== null &&
-    "message" in failure &&
-    typeof failure.message === "string"
-  ) {
-    return { message: failure.message };
+  if (failure !== undefined) {
+    return formatSandboxToolCallErrorValue(failure);
   }
 
   const defect = Array.from(Cause.defects(cause))[0];
-  if (
-    typeof defect === "object" &&
-    defect !== null &&
-    "message" in defect &&
-    typeof defect.message === "string"
-  ) {
-    return { message: defect.message };
+  if (defect !== undefined) {
+    return formatSandboxToolCallErrorValue(defect);
   }
 
   return { message: Cause.isInterrupted(cause) ? "Interrupted" : "Tool invocation failed" };
@@ -237,6 +229,7 @@ export class McpSessionDO extends DurableObject {
   // `Server` instance), so we have to bridge a per-request value through
   // a per-session reference.
   private currentRequestSpan: Tracer.AnySpan | null = null;
+  private currentRequestOrigin: string | null = null;
 
   private makeStorage() {
     return {
@@ -316,14 +309,14 @@ export class McpSessionDO extends DurableObject {
       );
       const codeExecutor = makeBlaxelCodeExecutor({
         activeRuns: {
-          register: ({ runId, token, toolInvoker }) => {
-            self.activeSandboxRuns.set(runId, { token, toolInvoker });
+          register: ({ runId, runPromise, token, toolInvoker }) => {
+            self.activeSandboxRuns.set(runId, { runPromise, token, toolInvoker });
           },
           unregister: (runId) => {
             self.activeSandboxRuns.delete(runId);
           },
         },
-        callbackOrigin: env.MCP_RESOURCE_ORIGIN ?? "https://executor.sh",
+        callbackOrigin: () => self.currentRequestOrigin ?? env.MCP_RESOURCE_ORIGIN ?? "https://executor.sh",
         db: options.dbHandle.db,
         organizationId: sessionMeta.organizationId,
         sessionId: self.ctx.id.toString(),
@@ -523,6 +516,7 @@ export class McpSessionDO extends DurableObject {
       // doesn't accidentally inherit a stale one.
       const span = yield* Effect.currentSpan;
       self.currentRequestSpan = span;
+      self.currentRequestOrigin = new URL(request.url).origin;
 
       return yield* self.dispatchRequest(request).pipe(
         Effect.tap((response) =>
@@ -533,6 +527,7 @@ export class McpSessionDO extends DurableObject {
         Effect.ensuring(
           Effect.sync(() => {
             self.currentRequestSpan = null;
+            self.currentRequestOrigin = null;
           }),
         ),
       );
@@ -546,7 +541,27 @@ export class McpSessionDO extends DurableObject {
       (eff) => withIncomingParent(incoming, eff),
       Effect.provide(DoTelemetryLive),
     );
-    return Effect.runPromise(program);
+    try {
+      return await Effect.runPromise(program);
+    } catch (error) {
+      console.error("[mcp-session] top-level handleRequest rejection:", error);
+      Sentry.captureException(
+        error instanceof Error ? error : new Error(typeof error === "string" ? error : String(error)),
+      );
+      if (new URL(request.url).pathname.startsWith(INTERNAL_TOOL_CALL_PATH_PREFIX)) {
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error: formatSandboxToolCallErrorValue(error),
+          }),
+          {
+            status: 500,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      }
+      return jsonRpcError(500, -32603, "Internal error");
+    }
   }
 
   private dispatchRequest(request: Request): Effect.Effect<Response> {
@@ -694,19 +709,23 @@ export class McpSessionDO extends DurableObject {
         args: body.args,
       }) as Effect.Effect<unknown, unknown, never>;
 
-      const result = yield* invocation.pipe(
-        Effect.map((value) => ({ ok: true as const, result: value })),
-        Effect.catchAllCause((cause) =>
-          Effect.succeed({
-            ok: false as const,
-            error: formatSandboxToolCallError(cause),
-          }),
+      const result = yield* Effect.promise(() =>
+        activeRun.runPromise(
+          invocation.pipe(
+            Effect.map((value) => ({ ok: true as const, result: value })),
+            Effect.catchAllCause((cause) =>
+              Effect.succeed({
+                ok: false as const,
+                error: formatSandboxToolCallError(cause),
+              }),
+            ),
+            Effect.withSpan("McpSessionDO.sandboxToolCall", {
+              attributes: {
+                "mcp.tool.name": body.path,
+              },
+            }),
+          ),
         ),
-        Effect.withSpan("McpSessionDO.sandboxToolCall", {
-          attributes: {
-            "mcp.tool.name": body.path,
-          },
-        }),
       );
 
       return new Response(JSON.stringify(result), {

@@ -22,7 +22,6 @@ import { McpAuth, classifyMcpPath, mcpApp } from "./mcp";
 import { organizations } from "./services/schema";
 import { parseTestBearer } from "./test-bearer";
 import { DoTelemetryLive } from "./services/telemetry";
-
 export { McpSessionDO } from "./mcp-session";
 
 const TestMcpAuthLive = Layer.succeed(McpAuth, {

@@ -3,6 +3,8 @@ import { Effect } from "effect";
 
 import { DbService } from "./db";
 import {
+  CODE_SERVER_CONFIG_PATH_FOR_TESTS,
+  CODE_SERVER_PROCESS_NAME_FOR_TESTS,
   EXECUTE_RUNTIME_PROCESS_NAME_FOR_TESTS,
   EXECUTE_RUNTIME_SERVER_PATH_FOR_TESTS,
   EXECUTE_RUNTIME_VERSION_PATH_FOR_TESTS,
@@ -23,15 +25,26 @@ const program = <A, E>(body: Effect.Effect<A, E, DbService>) =>
 class FakeSandboxHandle implements SandboxHandle {
   readonly files = new Map<string, string>();
   readonly directories = new Set<string>();
-  execCalls = 0;
-  healthChecks = 0;
-  killCalls = 0;
-  logsText = "";
+  codeServerConfigWrites = 0;
+  codeServerExecCalls = 0;
+  codeServerHealthChecks = 0;
+  codeServerKillCalls = 0;
+  codeServerLogsText = "";
+  codeServerStopCalls = 0;
+  executeExecCalls = 0;
+  executeHealthChecks = 0;
+  executeKillCalls = 0;
+  executeLogsText = "";
+  executeStopCalls = 0;
+  previewCreates = 0;
+  previewTokenCreates = 0;
+  previewUrl = "https://preview.example.com";
   serverWrites = 0;
-  stopCalls = 0;
   versionWrites = 0;
-  healthy = false;
-  onExec?: () => Promise<void> | void;
+  codeServerHealthy = false;
+  executeHealthy = false;
+  onCodeServerExec?: () => Promise<void> | void;
+  onExecuteExec?: () => Promise<void> | void;
 
   readonly fs = {
     mkdir: async (path: string) => {
@@ -52,36 +65,99 @@ class FakeSandboxHandle implements SandboxHandle {
       if (path === EXECUTE_RUNTIME_VERSION_PATH_FOR_TESTS) {
         this.versionWrites += 1;
       }
+      if (path === CODE_SERVER_CONFIG_PATH_FOR_TESTS) {
+        this.codeServerConfigWrites += 1;
+      }
+    },
+  };
+
+  readonly previews = {
+    createIfNotExists: async () => {
+      this.previewCreates += 1;
+      return {
+        spec: {
+          url: this.previewUrl,
+        },
+        tokens: {
+          create: async (expiresAt: Date) => {
+            this.previewTokenCreates += 1;
+            return {
+              expiresAt,
+              value: `token-${this.previewTokenCreates}`,
+            };
+          },
+        },
+      };
     },
   };
 
   readonly process = {
     exec: async (options: { readonly name: string }) => {
-      expect(options.name).toBe(EXECUTE_RUNTIME_PROCESS_NAME_FOR_TESTS);
-      this.execCalls += 1;
-      await this.onExec?.();
+      if (options.name === EXECUTE_RUNTIME_PROCESS_NAME_FOR_TESTS) {
+        this.executeExecCalls += 1;
+        await this.onExecuteExec?.();
+        return;
+      }
+
+      if (options.name === CODE_SERVER_PROCESS_NAME_FOR_TESTS) {
+        this.codeServerExecCalls += 1;
+        await this.onCodeServerExec?.();
+        return;
+      }
+
+      throw new Error(`Unexpected process.exec(${options.name})`);
     },
     kill: async (name: string) => {
-      expect(name).toBe(EXECUTE_RUNTIME_PROCESS_NAME_FOR_TESTS);
-      this.killCalls += 1;
+      if (name === EXECUTE_RUNTIME_PROCESS_NAME_FOR_TESTS) {
+        this.executeKillCalls += 1;
+        return;
+      }
+
+      if (name === CODE_SERVER_PROCESS_NAME_FOR_TESTS) {
+        this.codeServerKillCalls += 1;
+        return;
+      }
+
+      throw new Error(`Unexpected process.kill(${name})`);
     },
     logs: async (name: string) => {
-      expect(name).toBe(EXECUTE_RUNTIME_PROCESS_NAME_FOR_TESTS);
-      return this.logsText;
+      if (name === EXECUTE_RUNTIME_PROCESS_NAME_FOR_TESTS) {
+        return this.executeLogsText;
+      }
+
+      if (name === CODE_SERVER_PROCESS_NAME_FOR_TESTS) {
+        return this.codeServerLogsText;
+      }
+
+      throw new Error(`Unexpected process.logs(${name})`);
     },
     stop: async (name: string) => {
-      expect(name).toBe(EXECUTE_RUNTIME_PROCESS_NAME_FOR_TESTS);
-      this.stopCalls += 1;
+      if (name === EXECUTE_RUNTIME_PROCESS_NAME_FOR_TESTS) {
+        this.executeStopCalls += 1;
+        return;
+      }
+
+      if (name === CODE_SERVER_PROCESS_NAME_FOR_TESTS) {
+        this.codeServerStopCalls += 1;
+        return;
+      }
+
+      throw new Error(`Unexpected process.stop(${name})`);
     },
   };
 
   readonly fetch = async (port: number, path: string) => {
-    expect(port).toBe(4789);
-    expect(path).toBe("/health");
-    this.healthChecks += 1;
-    return this.healthy
-      ? { ok: true, status: 200 }
-      : { ok: false, status: 503 };
+    if (port === 4789 && path === "/health") {
+      this.executeHealthChecks += 1;
+      return this.executeHealthy ? { ok: true, status: 200 } : { ok: false, status: 503 };
+    }
+
+    if (port === 8081 && path === "/healthz") {
+      this.codeServerHealthChecks += 1;
+      return this.codeServerHealthy ? { ok: true, status: 200 } : { ok: false, status: 503 };
+    }
+
+    throw new Error(`Unexpected fetch(${port}, ${path})`);
   };
 }
 
@@ -135,8 +211,8 @@ describe("sandboxes service", () => {
     const providerCalls = { create: 0, wake: 0 };
     const handleCalls = { getHandle: 0 };
     const handle = new FakeSandboxHandle();
-    handle.onExec = () => {
-      handle.healthy = true;
+    handle.onExecuteExec = () => {
+      handle.executeHealthy = true;
     };
 
     const ensured = await program(
@@ -161,7 +237,7 @@ describe("sandboxes service", () => {
     expect(ensured.install.cacheHit).toBe(false);
     expect(ensured.runtime.status).toBe("started");
     expect(ensured.health).toEqual({ ok: true, status: 200 });
-    expect(handle.execCalls).toBe(1);
+    expect(handle.executeExecCalls).toBe(1);
     expect(handle.serverWrites).toBe(1);
     expect(handle.versionWrites).toBe(1);
     expect(handle.files.get(EXECUTE_RUNTIME_VERSION_PATH_FOR_TESTS)).toBe(getExecuteRuntimeVersion());
@@ -172,8 +248,8 @@ describe("sandboxes service", () => {
     const providerCalls = { create: 0, wake: 0 };
     const handleCalls = { getHandle: 0 };
     const handle = new FakeSandboxHandle();
-    handle.onExec = () => {
-      handle.healthy = true;
+    handle.onExecuteExec = () => {
+      handle.executeHealthy = true;
     };
 
     const ensured = await program(
@@ -197,7 +273,7 @@ describe("sandboxes service", () => {
     expect(ensured.sandbox.status).toBe("reused");
     expect(ensured.install.cacheHit).toBe(true);
     expect(ensured.runtime.status).toBe("reused");
-    expect(handle.execCalls).toBe(1);
+    expect(handle.executeExecCalls).toBe(1);
     expect(handle.serverWrites).toBe(1);
     expect(handle.versionWrites).toBe(1);
   });
@@ -207,8 +283,8 @@ describe("sandboxes service", () => {
     const providerCalls = { create: 0, wake: 0 };
     const handleCalls = { getHandle: 0 };
     const handle = new FakeSandboxHandle();
-    handle.onExec = () => {
-      handle.healthy = true;
+    handle.onExecuteExec = () => {
+      handle.executeHealthy = true;
     };
 
     const ensured = await program(
@@ -223,7 +299,7 @@ describe("sandboxes service", () => {
           makeHandleProvider(handle, handleCalls),
         );
         yield* Effect.promise(() => service.ensureExecuteRuntimeRunning(orgId));
-        handle.healthy = false;
+        handle.executeHealthy = false;
         handle.files.set(EXECUTE_RUNTIME_VERSION_PATH_FOR_TESTS, "old-runtime-version");
         return yield* Effect.promise(() => service.ensureExecuteRuntimeRunning(orgId));
       }),
@@ -233,7 +309,7 @@ describe("sandboxes service", () => {
     expect(handleCalls).toEqual({ getHandle: 2 });
     expect(ensured.install.cacheHit).toBe(false);
     expect(ensured.runtime.status).toBe("started");
-    expect(handle.execCalls).toBe(2);
+    expect(handle.executeExecCalls).toBe(2);
     expect(handle.serverWrites).toBe(2);
     expect(handle.versionWrites).toBe(2);
   });
@@ -243,8 +319,8 @@ describe("sandboxes service", () => {
     const providerCalls = { create: 0, wake: 0 };
     const handleCalls = { getHandle: 0 };
     const handle = new FakeSandboxHandle();
-    handle.onExec = () => {
-      handle.healthy = true;
+    handle.onExecuteExec = () => {
+      handle.executeHealthy = true;
     };
 
     const ensured = await program(
@@ -268,8 +344,8 @@ describe("sandboxes service", () => {
     expect(handleCalls).toEqual({ getHandle: 2 });
     expect(ensured.install.cacheHit).toBe(false);
     expect(ensured.runtime.status).toBe("started");
-    expect(handle.execCalls).toBe(2);
-    expect(handle.stopCalls).toBe(2);
+    expect(handle.executeExecCalls).toBe(2);
+    expect(handle.executeStopCalls).toBe(2);
     expect(handle.serverWrites).toBe(2);
     expect(handle.versionWrites).toBe(2);
   });
@@ -279,7 +355,7 @@ describe("sandboxes service", () => {
     const providerCalls = { create: 0, wake: 0 };
     const handleCalls = { getHandle: 0 };
     const handle = new FakeSandboxHandle();
-    handle.logsText = "boot failed forever";
+    handle.executeLogsText = "boot failed forever";
 
     const result = await program(
       Effect.gen(function* () {
@@ -316,13 +392,68 @@ describe("sandboxes service", () => {
     expect(result.row?.error).toContain("boot failed forever");
   });
 
+  it("does not poison the sandbox row on retryable execute-runtime failures", async () => {
+    const orgId = `org_${crypto.randomUUID()}`;
+    const providerCalls = { create: 0, wake: 0 };
+    const handleCalls = { getHandle: 0 };
+    const handle = new FakeSandboxHandle();
+
+    let attempts = 0;
+    handle.onExecuteExec = () => {
+      attempts += 1;
+      if (attempts === 1) {
+        throw {
+          code: "WORKLOAD_UNAVAILABLE",
+          message: "runtime is warming up",
+          retryable: true,
+        };
+      }
+      handle.executeHealthy = true;
+    };
+
+    const result = await program(
+      Effect.gen(function* () {
+        const { db } = yield* DbService;
+        yield* Effect.promise(() =>
+          makeUserStore(db).upsertOrganization({ id: orgId, name: "Retryable" }),
+        );
+        const service = makeSandboxesService(
+          db,
+          makeProvider(providerCalls),
+          makeHandleProvider(handle, handleCalls),
+        );
+        const firstError = yield* Effect.promise(async () => {
+          try {
+            await service.ensureExecuteRuntimeRunning(orgId);
+            return null;
+          } catch (error) {
+            return error;
+          }
+        });
+        const rowAfterFirstAttempt = yield* Effect.promise(() => service.getSandbox(orgId));
+        const recovered = yield* Effect.promise(() => service.ensureExecuteRuntimeRunning(orgId));
+        const rowAfterRecovery = yield* Effect.promise(() => service.getSandbox(orgId));
+        return { firstError, recovered, rowAfterFirstAttempt, rowAfterRecovery };
+      }),
+    );
+
+    expect(String(result.firstError)).toContain("runtime is warming up");
+    expect(result.rowAfterFirstAttempt?.status).toBe("ready");
+    expect(result.rowAfterFirstAttempt?.error).toBeNull();
+    expect(result.recovered.runtime.status).toBe("started");
+    expect(result.rowAfterRecovery?.status).toBe("ready");
+    expect(result.rowAfterRecovery?.error).toBeNull();
+    expect(providerCalls).toEqual({ create: 1, wake: 1 });
+    expect(handleCalls).toEqual({ getHandle: 2 });
+  });
+
   it("treats error rows as permanently broken for runtime ensures too", async () => {
     const orgId = `org_${crypto.randomUUID()}`;
     const providerCalls = { create: 0, wake: 0 };
     const handleCalls = { getHandle: 0 };
     const handle = new FakeSandboxHandle();
-    handle.onExec = () => {
-      handle.healthy = true;
+    handle.onExecuteExec = () => {
+      handle.executeHealthy = true;
     };
 
     const result = await program(
@@ -356,6 +487,158 @@ describe("sandboxes service", () => {
     expect(String(result)).toContain("sandbox is broken");
     expect(providerCalls).toEqual({ create: 1, wake: 0 });
     expect(handleCalls).toEqual({ getHandle: 0 });
+  });
+
+  it("recovers previously poisoned retryable error rows", async () => {
+    const orgId = `org_${crypto.randomUUID()}`;
+    const providerCalls = { create: 0, wake: 0 };
+    const handleCalls = { getHandle: 0 };
+    const handle = new FakeSandboxHandle();
+    handle.onExecuteExec = () => {
+      handle.executeHealthy = true;
+    };
+
+    const result = await program(
+      Effect.gen(function* () {
+        const { db } = yield* DbService;
+        yield* Effect.promise(() =>
+          makeUserStore(db).upsertOrganization({ id: orgId, name: "RetryablePoisoned" }),
+        );
+        const service = makeSandboxesService(
+          db,
+          makeProvider(providerCalls),
+          makeHandleProvider(handle, handleCalls),
+        );
+        yield* Effect.promise(() => service.ensureSandbox(orgId));
+        yield* Effect.promise(() =>
+          db.execute(
+            `update sandboxes set status = 'error', error = 'sandbox warming up (WORKLOAD_UNAVAILABLE)' where organization_id = '${orgId}'`,
+          ),
+        );
+        const recovered = yield* Effect.promise(() => service.ensureExecuteRuntimeRunning(orgId));
+        const row = yield* Effect.promise(() => service.getSandbox(orgId));
+        return { recovered, row };
+      }),
+    );
+
+    expect(result.recovered.runtime.status).toBe("started");
+    expect(result.row?.status).toBe("ready");
+    expect(result.row?.error).toBeNull();
+    expect(providerCalls).toEqual({ create: 1, wake: 1 });
+    expect(handleCalls).toEqual({ getHandle: 1 });
+  });
+
+  it("starts code-server on demand and returns a tokenized preview url", async () => {
+    const orgId = `org_${crypto.randomUUID()}`;
+    const providerCalls = { create: 0, wake: 0 };
+    const handleCalls = { getHandle: 0 };
+    const handle = new FakeSandboxHandle();
+    handle.onCodeServerExec = () => {
+      handle.codeServerHealthy = true;
+    };
+
+    const session = await program(
+      Effect.gen(function* () {
+        const { db } = yield* DbService;
+        yield* Effect.promise(() =>
+          makeUserStore(db).upsertOrganization({ id: orgId, name: "Files" }),
+        );
+        return yield* Effect.promise(() =>
+          makeSandboxesService(
+            db,
+            makeProvider(providerCalls),
+            makeHandleProvider(handle, handleCalls),
+          ).ensureCodeServerSession(orgId),
+        );
+      }),
+    );
+
+    expect(providerCalls).toEqual({ create: 1, wake: 0 });
+    expect(handleCalls).toEqual({ getHandle: 1 });
+    expect(handle.codeServerExecCalls).toBe(1);
+    expect(handle.codeServerConfigWrites).toBe(1);
+    expect(handle.previewCreates).toBe(1);
+    expect(handle.previewTokenCreates).toBe(1);
+    expect(session.sandboxStatus).toBe("created");
+    expect(session.sandboxId).toBe(`sbx_${orgId}`);
+    expect(session.url).toContain("https://preview.example.com");
+    expect(session.url).toContain("bl_preview_token=token-1");
+  });
+
+  it("reuses a healthy code-server and only mints a fresh preview token", async () => {
+    const orgId = `org_${crypto.randomUUID()}`;
+    const providerCalls = { create: 0, wake: 0 };
+    const handleCalls = { getHandle: 0 };
+    const handle = new FakeSandboxHandle();
+    handle.onCodeServerExec = () => {
+      handle.codeServerHealthy = true;
+    };
+
+    const secondSession = await program(
+      Effect.gen(function* () {
+        const { db } = yield* DbService;
+        yield* Effect.promise(() =>
+          makeUserStore(db).upsertOrganization({ id: orgId, name: "Files Reuse" }),
+        );
+        const service = makeSandboxesService(
+          db,
+          makeProvider(providerCalls),
+          makeHandleProvider(handle, handleCalls),
+        );
+        yield* Effect.promise(() => service.ensureCodeServerSession(orgId));
+        return yield* Effect.promise(() => service.ensureCodeServerSession(orgId));
+      }),
+    );
+
+    expect(providerCalls).toEqual({ create: 1, wake: 1 });
+    expect(handleCalls).toEqual({ getHandle: 2 });
+    expect(handle.codeServerExecCalls).toBe(1);
+    expect(handle.previewCreates).toBe(2);
+    expect(handle.previewTokenCreates).toBe(2);
+    expect(secondSession.sandboxStatus).toBe("reused");
+    expect(secondSession.url).toContain("bl_preview_token=token-2");
+  });
+
+  it("marks the sandbox broken when code-server never becomes healthy", async () => {
+    const orgId = `org_${crypto.randomUUID()}`;
+    const providerCalls = { create: 0, wake: 0 };
+    const handleCalls = { getHandle: 0 };
+    const handle = new FakeSandboxHandle();
+    handle.codeServerLogsText = "code-server failed forever";
+
+    const result = await program(
+      Effect.gen(function* () {
+        const { db } = yield* DbService;
+        yield* Effect.promise(() =>
+          makeUserStore(db).upsertOrganization({ id: orgId, name: "Broken Files" }),
+        );
+        const service = makeSandboxesService(
+          db,
+          makeProvider(providerCalls),
+          makeHandleProvider(handle, handleCalls),
+          {
+            codeServerStartPollMs: 0,
+            codeServerStartTimeoutMs: 1,
+          },
+        );
+        const sessionError = yield* Effect.promise(async () => {
+          try {
+            await service.ensureCodeServerSession(orgId);
+            return null;
+          } catch (error) {
+            return error;
+          }
+        });
+        const row = yield* Effect.promise(() => service.getSandbox(orgId));
+        return { row, sessionError };
+      }),
+    );
+
+    expect(providerCalls).toEqual({ create: 1, wake: 0 });
+    expect(handleCalls).toEqual({ getHandle: 1 });
+    expect(String(result.sessionError)).toContain("code-server failed forever");
+    expect(result.row?.status).toBe("error");
+    expect(result.row?.error).toContain("code-server failed forever");
   });
 
   it("persists structured provider errors instead of [object Object]", async () => {

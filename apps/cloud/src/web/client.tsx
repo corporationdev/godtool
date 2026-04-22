@@ -3,13 +3,14 @@ import { FetchHttpClient } from "@effect/platform";
 import { addGroup } from "@executor/api";
 import { getBaseUrl } from "@executor/react/api/base-url";
 import { CloudAuthApi } from "../auth/api";
+import { FilesApi } from "../files/api";
 import { OrgApi } from "../org/api";
 
 // ---------------------------------------------------------------------------
 // Cloud API client — core API + cloud auth + org
 // ---------------------------------------------------------------------------
 
-const CloudApi = addGroup(CloudAuthApi).add(OrgApi);
+const CloudApi = addGroup(CloudAuthApi).add(OrgApi).add(FilesApi);
 
 class CloudApiClient extends AtomHttpApi.Tag<CloudApiClient>()("CloudApiClient", {
   api: CloudApi,

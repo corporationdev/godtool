@@ -359,6 +359,7 @@ function UserFooter() {
 
 function SidebarContent(props: { pathname: string; onNavigate?: () => void; showBrand?: boolean }) {
   const isHome = props.pathname === "/";
+  const isFiles = props.pathname === "/files";
   const isSecrets = props.pathname === "/secrets";
   const isConnections = props.pathname === "/connections";
   const isBilling = props.pathname === "/billing" || props.pathname.startsWith("/billing/");
@@ -376,6 +377,7 @@ function SidebarContent(props: { pathname: string; onNavigate?: () => void; show
 
       <nav className="flex flex-1 flex-col overflow-y-auto p-2">
         <NavItem to="/" label="Sources" active={isHome} onNavigate={props.onNavigate} />
+        <NavItem to="/files" label="Files" active={isFiles} onNavigate={props.onNavigate} />
         <NavItem to="/connections" label="Connections" active={isConnections} onNavigate={props.onNavigate} />
         <NavItem to="/secrets" label="Secrets" active={isSecrets} onNavigate={props.onNavigate} />
         <NavItem to="/org" label="Organization" active={isOrg} onNavigate={props.onNavigate} />

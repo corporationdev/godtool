@@ -10,6 +10,8 @@ import { GraphqlGroup, GraphqlHandlers } from "@executor/plugin-graphql/api";
 import { OrgAuth } from "../auth/middleware";
 import { OrgAuthLive, SessionAuthLive } from "../auth/middleware-live";
 import { UserStoreService } from "../auth/context";
+import { FilesApi } from "../files/api";
+import { FilesHandlers } from "../files/handlers";
 import {
   CloudAuthPublicHandlers,
   CloudSessionAuthHandlers,
@@ -28,6 +30,7 @@ export { CoreSharedServices };
 const ProtectedCloudApi = CoreExecutorApi.add(OpenApiGroup)
   .add(McpGroup)
   .add(GraphqlGroup)
+  .add(FilesApi)
   .addError(InternalError)
   .middleware(OrgAuth);
 
@@ -53,6 +56,7 @@ export const ProtectedCloudApiLive = HttpApiBuilder.api(ProtectedCloudApi).pipe(
       OpenApiHandlers,
       McpHandlers,
       GraphqlHandlers,
+      FilesHandlers,
       OrgAuthLive,
       ObservabilityLive,
     ),

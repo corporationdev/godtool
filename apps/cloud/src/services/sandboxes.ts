@@ -17,6 +17,14 @@ const EXECUTE_RUNTIME_VERSION_PATH = `${EXECUTE_RUNTIME_DIRECTORY}/version.txt`;
 const EXECUTE_RUNTIME_PROCESS_NAME = "godtool-execute-runtime";
 const EXECUTE_RUNTIME_START_POLL_MS = 250;
 const EXECUTE_RUNTIME_START_TIMEOUT_MS = 10_000;
+const CODE_SERVER_PORT = 8081;
+const CODE_SERVER_PROCESS_NAME = "code-server";
+const CODE_SERVER_PREVIEW_NAME = "code-server";
+const CODE_SERVER_START_POLL_MS = 250;
+const CODE_SERVER_START_TIMEOUT_MS = 15_000;
+const CODE_SERVER_CONFIG_DIRECTORY = "/root/.config/code-server";
+const CODE_SERVER_CONFIG_PATH = `${CODE_SERVER_CONFIG_DIRECTORY}/config.yaml`;
+const CODE_SERVER_TOKEN_TTL_MS = 1000 * 60 * 30;
 const MAX_PROCESS_LOG_CHARS = 12_000;
 const MAX_SANDBOX_NAME_LENGTH = 49;
 const SANDBOX_NAME_HASH_LENGTH = 8;
@@ -27,6 +35,8 @@ export const EXECUTE_RUNTIME_PORT = 4789;
 export const EXECUTE_RUNTIME_PROCESS_NAME_FOR_TESTS = EXECUTE_RUNTIME_PROCESS_NAME;
 export const EXECUTE_RUNTIME_SERVER_PATH_FOR_TESTS = EXECUTE_RUNTIME_SERVER_PATH;
 export const EXECUTE_RUNTIME_VERSION_PATH_FOR_TESTS = EXECUTE_RUNTIME_VERSION_PATH;
+export const CODE_SERVER_PROCESS_NAME_FOR_TESTS = CODE_SERVER_PROCESS_NAME;
+export const CODE_SERVER_CONFIG_PATH_FOR_TESTS = CODE_SERVER_CONFIG_PATH;
 
 export type SandboxStatus = "creating" | "ready" | "error";
 export type SandboxRecord = typeof sandboxes.$inferSelect;
@@ -55,6 +65,13 @@ export interface EnsuredExecuteRuntime {
   readonly sandbox: EnsuredSandbox;
 }
 
+export interface CodeServerSession {
+  readonly expiresAt: string;
+  readonly sandboxId: string;
+  readonly sandboxStatus: "created" | "reused";
+  readonly url: string;
+}
+
 export interface SandboxProvider {
   readonly createOrGetSandbox: (args: {
     readonly organizationId: string;
@@ -75,6 +92,7 @@ export interface SandboxProvider {
 
 export interface SandboxProcessExecOptions {
   readonly command: string;
+  readonly env?: Record<string, string>;
   readonly maxRestarts?: number;
   readonly name: string;
   readonly restartOnFailure?: boolean;
@@ -98,6 +116,27 @@ export interface SandboxHandle {
       readonly method?: string;
     },
   ) => Promise<SandboxResponse>;
+  readonly previews: {
+    readonly createIfNotExists: (args: {
+      readonly metadata: {
+        readonly name: string;
+      };
+      readonly spec: {
+        readonly port: number;
+        readonly public: boolean;
+      };
+    }) => Promise<{
+      readonly spec: {
+        readonly url?: string;
+      };
+      readonly tokens: {
+        readonly create: (expiresAt: Date) => Promise<{
+          readonly expiresAt: string | Date;
+          readonly value: string;
+        }>;
+      };
+    }>;
+  };
   readonly fs: {
     readonly mkdir: (path: string) => Promise<unknown>;
     readonly read: (path: string) => Promise<string>;
@@ -116,6 +155,8 @@ export interface SandboxHandleProvider {
 }
 
 export interface SandboxesServiceOptions {
+  readonly codeServerStartPollMs?: number;
+  readonly codeServerStartTimeoutMs?: number;
   readonly executeRuntimeStartPollMs?: number;
   readonly executeRuntimeStartTimeoutMs?: number;
 }
@@ -216,6 +257,10 @@ export const makeBlaxelSandboxProvider = (): SandboxProvider => ({
           protocol: "HTTP",
           target: EXECUTE_RUNTIME_PORT,
         },
+        {
+          protocol: "HTTP",
+          target: CODE_SERVER_PORT,
+        },
       ],
       region: config.region,
     });
@@ -311,6 +356,64 @@ const renderUnknownError = (error: unknown): string => {
   }
 
   return String(error);
+};
+
+const hasOwn = <K extends string>(value: unknown, key: K): value is Record<K, unknown> =>
+  typeof value === "object" && value !== null && key in value;
+
+const includesRetryableSandboxMarker = (value: string): boolean =>
+  value.includes("WORKLOAD_UNAVAILABLE") || /retry with exponential backoff/i.test(value);
+
+const isRetryableSandboxError = (error: unknown): boolean => {
+  if (typeof error === "string") {
+    return includesRetryableSandboxMarker(error);
+  }
+
+  if (error instanceof Error) {
+    return (
+      includesRetryableSandboxMarker(error.message) || isRetryableSandboxError(error.cause)
+    );
+  }
+
+  if (hasOwn(error, "retryable") && error.retryable === true) {
+    return true;
+  }
+
+  if (hasOwn(error, "code") && error.code === "WORKLOAD_UNAVAILABLE") {
+    return true;
+  }
+
+  if (hasOwn(error, "message") && typeof error.message === "string") {
+    return includesRetryableSandboxMarker(error.message);
+  }
+
+  if (hasOwn(error, "error")) {
+    return isRetryableSandboxError(error.error);
+  }
+
+  if (hasOwn(error, "cause")) {
+    return isRetryableSandboxError(error.cause);
+  }
+
+  return false;
+};
+
+const throwSandboxFailure = async (
+  store: ReturnType<typeof makeSandboxStore>,
+  organizationId: string,
+  error: unknown,
+): Promise<never> => {
+  const rendered = renderUnknownError(error);
+
+  if (isRetryableSandboxError(error) || isRetryableSandboxError(rendered)) {
+    throw new Error(rendered);
+  }
+
+  const broken = await store.markError({
+    error: rendered,
+    organizationId,
+  });
+  throw new Error(inferBrokenMessage(organizationId, broken.error));
 };
 
 const quoteShellArgument = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
@@ -484,6 +587,149 @@ const waitForExecuteRuntimeHealth = async (
   );
 };
 
+const fetchCodeServerHealth = async (
+  sandbox: SandboxHandle,
+): Promise<{ readonly ok: boolean; readonly status: number }> => {
+  try {
+    const response = await sandbox.fetch(CODE_SERVER_PORT, "/healthz");
+    return {
+      ok: response.ok,
+      status: response.status,
+    };
+  } catch {
+    return {
+      ok: false,
+      status: 0,
+    };
+  }
+};
+
+const stopCodeServerProcess = async (sandbox: SandboxHandle): Promise<void> => {
+  try {
+    await sandbox.process.stop(CODE_SERVER_PROCESS_NAME);
+    return;
+  } catch {
+    // Process may not be running or may require a kill.
+  }
+
+  try {
+    await sandbox.process.kill(CODE_SERVER_PROCESS_NAME);
+  } catch {
+    // Process does not exist.
+  }
+};
+
+const ensureCodeServerConfig = async (sandbox: SandboxHandle): Promise<void> => {
+  await ensureDirectoryExists(sandbox, "/root/.config");
+  await ensureDirectoryExists(sandbox, CODE_SERVER_CONFIG_DIRECTORY);
+  await sandbox.fs.write(
+    CODE_SERVER_CONFIG_PATH,
+    [
+      `bind-addr: 0.0.0.0:${CODE_SERVER_PORT}`,
+      "auth: none",
+      "cert: false",
+      "trusted-origins:",
+      '  - "*"',
+      "",
+    ].join("\n"),
+  );
+};
+
+const waitForCodeServerHealth = async (
+  sandbox: SandboxHandle,
+  options?: SandboxesServiceOptions,
+): Promise<{ readonly ok: true; readonly status: number }> => {
+  const timeoutMs = options?.codeServerStartTimeoutMs ?? CODE_SERVER_START_TIMEOUT_MS;
+  const pollMs = options?.codeServerStartPollMs ?? CODE_SERVER_START_POLL_MS;
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const health = await fetchCodeServerHealth(sandbox);
+    if (health.ok) {
+      return {
+        ok: true,
+        status: health.status,
+      };
+    }
+
+    await sleep(pollMs);
+  }
+
+  const processLogs = await sandbox.process.logs(CODE_SERVER_PROCESS_NAME, "all").catch(() => "");
+  throw new Error(
+    processLogs.trim().length > 0
+      ? `Timed out waiting for code-server to become healthy.\n${truncateOutput(processLogs.trim(), MAX_PROCESS_LOG_CHARS)}`
+      : "Timed out waiting for code-server to become healthy.",
+  );
+};
+
+const ensureCodeServerRunning = async (
+  sandbox: SandboxHandle,
+  options?: SandboxesServiceOptions,
+): Promise<void> => {
+  await ensureCodeServerConfig(sandbox);
+
+  const health = await fetchCodeServerHealth(sandbox);
+  if (health.ok) {
+    return;
+  }
+
+  await stopCodeServerProcess(sandbox);
+
+  await sandbox.process.exec({
+    command: [
+      "code-server",
+      "--disable-telemetry",
+      "--config",
+      quoteShellArgument(CODE_SERVER_CONFIG_PATH),
+      quoteShellArgument("/workspace"),
+    ].join(" "),
+    env: {
+      PORT: String(CODE_SERVER_PORT),
+    },
+    maxRestarts: 5,
+    name: CODE_SERVER_PROCESS_NAME,
+    restartOnFailure: true,
+    waitForCompletion: false,
+    workingDir: "/workspace",
+  });
+
+  await waitForCodeServerHealth(sandbox, options);
+};
+
+const createCodeServerSession = async (
+  sandbox: SandboxHandle,
+  ensuredSandbox: EnsuredSandbox,
+): Promise<CodeServerSession> => {
+  const preview = await sandbox.previews.createIfNotExists({
+    metadata: {
+      name: CODE_SERVER_PREVIEW_NAME,
+    },
+    spec: {
+      port: CODE_SERVER_PORT,
+      public: false,
+    },
+  });
+  const previewUrl = preview.spec.url?.trim();
+
+  if (!previewUrl) {
+    throw new Error("Blaxel preview URL is missing for code-server.");
+  }
+
+  const expiresAt = new Date(Date.now() + CODE_SERVER_TOKEN_TTL_MS);
+  const token = await preview.tokens.create(expiresAt);
+  const url = new URL(previewUrl);
+  url.searchParams.set("bl_preview_token", token.value);
+
+  return {
+    expiresAt:
+      typeof token.expiresAt === "string" ? token.expiresAt : token.expiresAt.toISOString(),
+    sandboxId: ensuredSandbox.externalId,
+    sandboxStatus: ensuredSandbox.status,
+    url: url.toString(),
+  };
+};
+
 const ensureExecuteRuntimeStarted = async (
   sandbox: SandboxHandle,
   forceRestart: boolean,
@@ -533,6 +779,8 @@ export const makeSandboxesService = (
 ) => {
   const store = makeSandboxStore(db);
   const runtimeOptions: SandboxesServiceOptions = {
+    codeServerStartPollMs: options?.codeServerStartPollMs ?? CODE_SERVER_START_POLL_MS,
+    codeServerStartTimeoutMs: options?.codeServerStartTimeoutMs ?? CODE_SERVER_START_TIMEOUT_MS,
     executeRuntimeStartPollMs:
       options?.executeRuntimeStartPollMs ?? EXECUTE_RUNTIME_START_POLL_MS,
     executeRuntimeStartTimeoutMs:
@@ -542,7 +790,10 @@ export const makeSandboxesService = (
   const ensureProvisioned = async (
     record: SandboxRecord,
   ): Promise<EnsuredSandbox> => {
-    if (record.status === "error") {
+    const allowRetryFromError =
+      record.status === "error" && isRetryableSandboxError(record.error);
+
+    if (record.status === "error" && !allowRetryFromError) {
       throw new Error(inferBrokenMessage(record.organizationId, record.error));
     }
 
@@ -571,11 +822,7 @@ export const makeSandboxesService = (
           status: awakened.status,
         };
       } catch (error) {
-        const broken = await store.markError({
-          error: renderUnknownError(error),
-          organizationId: record.organizationId,
-        });
-        throw new Error(inferBrokenMessage(record.organizationId, broken.error));
+        return await throwSandboxFailure(store, record.organizationId, error);
       }
     }
 
@@ -599,11 +846,7 @@ export const makeSandboxesService = (
         status: created.status,
       };
     } catch (error) {
-      const broken = await store.markError({
-        error: renderUnknownError(error),
-        organizationId: record.organizationId,
-      });
-      throw new Error(inferBrokenMessage(record.organizationId, broken.error));
+      return await throwSandboxFailure(store, record.organizationId, error);
     }
   };
 
@@ -617,6 +860,18 @@ export const makeSandboxesService = (
     }
 
     return await ensureProvisioned(row);
+  };
+
+  const ensureCodeServerSession = async (organizationId: string): Promise<CodeServerSession> => {
+    const ensuredSandbox = await ensureSandbox(organizationId);
+
+    try {
+      const sandbox = await sandboxHandleProvider.getSandboxHandle(ensuredSandbox.externalId);
+      await ensureCodeServerRunning(sandbox, runtimeOptions);
+      return await createCodeServerSession(sandbox, ensuredSandbox);
+    } catch (error) {
+      return await throwSandboxFailure(store, organizationId, error);
+    }
   };
 
   const ensureExecuteRuntimeRunning = async (
@@ -644,15 +899,12 @@ export const makeSandboxesService = (
         sandbox: ensuredSandbox,
       };
     } catch (error) {
-      const broken = await store.markError({
-        error: renderUnknownError(error),
-        organizationId,
-      });
-      throw new Error(inferBrokenMessage(organizationId, broken.error));
+      return await throwSandboxFailure(store, organizationId, error);
     }
   };
 
   return {
+    ensureCodeServerSession,
     ensureExecuteRuntimeRunning,
     ensureSandbox,
     getSandbox: (organizationId: string) => store.getByOrganizationId(organizationId),
