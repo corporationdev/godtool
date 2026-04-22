@@ -56,7 +56,7 @@ jobs:
         with:
           project_id: ${{ env.NEON_PROJECT_ID }}
           branch_name: preview/${{ steps.clean-branch-name.outputs.clean_branch_name }}
-          parent_branch: main
+          parent_branch: production
           role: neondb_owner
           api_key: ${{ env.NEON_API_KEY }}
 
