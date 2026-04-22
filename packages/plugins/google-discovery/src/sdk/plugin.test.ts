@@ -509,7 +509,7 @@ describe("Google Discovery plugin", () => {
       const discoveryUrl = "https://example.test/google-drive-discovery.json";
       const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(((
         input: RequestInfo | URL,
-        init?: RequestInit,
+        _init?: RequestInit,
       ) => {
         const url =
           typeof input === "string"

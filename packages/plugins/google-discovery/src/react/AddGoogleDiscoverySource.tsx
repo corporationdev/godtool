@@ -336,19 +336,29 @@ export default function AddGoogleDiscoverySource(props: {
     slugifyNamespace(identity.namespace) ||
     slugifyNamespace(probe?.name ?? activeTemplate?.name ?? "") ||
     "google_discovery";
+  const activeTemplateComposioApp = activeTemplate?.composio?.app ?? null;
+  const activeTemplateComposioAuthConfigId = activeTemplate?.composio?.authConfigId ?? null;
   const composioCallbackBaseUrl = googleDiscoveryComposioCallbackUrl(
     GOOGLE_DISCOVERY_COMPOSIO_CALLBACK_PATH,
   );
-  const derivedComposioAuth =
-    activeTemplate?.composio != null
-      ? ({
-          kind: "composio",
-          app: activeTemplate.composio.app,
-          authConfigId: activeTemplate.composio.authConfigId ?? null,
-          connectionId:
-            composioAuth?.connectionId ?? composioConnectionIdForNamespace(namespaceSlug),
-        } satisfies ComposioAuth)
-      : null;
+  const derivedComposioAuth = useMemo(
+    () =>
+      activeTemplateComposioApp != null
+        ? ({
+            kind: "composio",
+            app: activeTemplateComposioApp,
+            authConfigId: activeTemplateComposioAuthConfigId,
+            connectionId:
+              composioAuth?.connectionId ?? composioConnectionIdForNamespace(namespaceSlug),
+          } satisfies ComposioAuth)
+        : null,
+    [
+      activeTemplateComposioApp,
+      activeTemplateComposioAuthConfigId,
+      composioAuth?.connectionId,
+      namespaceSlug,
+    ],
+  );
   const secretList: readonly SecretPickerSecret[] = Result.match(secrets, {
     onInitial: () => [] as SecretPickerSecret[],
     onFailure: () => [] as SecretPickerSecret[],
