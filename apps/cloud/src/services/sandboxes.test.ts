@@ -458,6 +458,139 @@ describe("sandboxes service", () => {
     expect(handleCalls).toEqual({ getHandle: 2 });
   });
 
+  it("reprovisions a newly created sandbox when its handle is unavailable", async () => {
+    const orgId = `org_${crypto.randomUUID()}`;
+    const unavailableId = `sbx_unavailable_${orgId}`;
+    const recoveredId = `sbx_recovered_${orgId}`;
+    let createCalls = 0;
+    const handleCalls: string[] = [];
+    const recoveredHandle = new FakeSandboxHandle();
+    recoveredHandle.onCodeServerExec = () => {
+      recoveredHandle.codeServerHealthy = true;
+    };
+
+    const result = await program(
+      Effect.gen(function* () {
+        const { db } = yield* DbService;
+        yield* Effect.promise(() =>
+          makeUserStore(db).upsertOrganization({ id: orgId, name: "UnavailableHandle" }),
+        );
+        const service = makeSandboxesService(
+          db,
+          {
+            createOrGetSandbox: async ({ organizationId }) => {
+              createCalls += 1;
+              return {
+                externalId: createCalls === 1 ? unavailableId : recoveredId,
+                sandboxName: getSandboxNameForOrganization(organizationId),
+                status: "created",
+              };
+            },
+            wakeSandbox: async () => {
+              throw new Error("unexpected wake");
+            },
+          },
+          {
+            getSandboxHandle: async (externalId) => {
+              handleCalls.push(externalId);
+              if (externalId === unavailableId) {
+                throw {
+                  code: "WORKLOAD_UNAVAILABLE",
+                  message: `Resource '${externalId}' is currently not available. Please verify it exists and is running.`,
+                  retryable: true,
+                  status: 404,
+                };
+              }
+              return recoveredHandle;
+            },
+          },
+        );
+        const session = yield* Effect.promise(() => service.ensureCodeServerSession(orgId));
+        const row = yield* Effect.promise(() => service.getSandbox(orgId));
+        return { row, session };
+      }),
+    );
+
+    expect(createCalls).toBe(2);
+    expect(handleCalls).toEqual([unavailableId, recoveredId]);
+    expect(result.session.sandboxId).toBe(recoveredId);
+    expect(result.session.sandboxStatus).toBe("created");
+    expect(result.row?.externalId).toBe(recoveredId);
+    expect(result.row?.status).toBe("ready");
+    expect(result.row?.error).toBeNull();
+  });
+
+  it("reprovisions a stored sandbox when waking it returns unavailable", async () => {
+    const orgId = `org_${crypto.randomUUID()}`;
+    const initialId = `sbx_initial_${orgId}`;
+    const recoveredId = `sbx_recovered_${orgId}`;
+    let createCalls = 0;
+    let wakeCalls = 0;
+    const initialHandle = new FakeSandboxHandle();
+    initialHandle.onCodeServerExec = () => {
+      initialHandle.codeServerHealthy = true;
+    };
+    const recoveredHandle = new FakeSandboxHandle();
+    recoveredHandle.onCodeServerExec = () => {
+      recoveredHandle.codeServerHealthy = true;
+    };
+
+    const result = await program(
+      Effect.gen(function* () {
+        const { db } = yield* DbService;
+        yield* Effect.promise(() =>
+          makeUserStore(db).upsertOrganization({ id: orgId, name: "UnavailableWake" }),
+        );
+        const service = makeSandboxesService(
+          db,
+          {
+            createOrGetSandbox: async ({ organizationId }) => {
+              createCalls += 1;
+              return {
+                externalId: createCalls === 1 ? initialId : recoveredId,
+                sandboxName: getSandboxNameForOrganization(organizationId),
+                status: "created",
+              };
+            },
+            wakeSandbox: async ({ externalId }) => {
+              wakeCalls += 1;
+              if (externalId === initialId) {
+                throw {
+                  code: "WORKLOAD_UNAVAILABLE",
+                  message: `Resource '${externalId}' is currently not available. Please verify it exists and is running.`,
+                  retryable: true,
+                  status: 404,
+                };
+              }
+              return {
+                externalId,
+                sandboxName: getSandboxNameForOrganization(orgId),
+                status: "reused" as const,
+              };
+            },
+          },
+          {
+            getSandboxHandle: async (externalId) =>
+              externalId === initialId ? initialHandle : recoveredHandle,
+          },
+        );
+        const firstSession = yield* Effect.promise(() => service.ensureCodeServerSession(orgId));
+        const secondSession = yield* Effect.promise(() => service.ensureCodeServerSession(orgId));
+        const row = yield* Effect.promise(() => service.getSandbox(orgId));
+        return { firstSession, row, secondSession };
+      }),
+    );
+
+    expect(createCalls).toBe(2);
+    expect(wakeCalls).toBe(1);
+    expect(result.firstSession.sandboxId).toBe(initialId);
+    expect(result.secondSession.sandboxId).toBe(recoveredId);
+    expect(result.secondSession.sandboxStatus).toBe("created");
+    expect(result.row?.externalId).toBe(recoveredId);
+    expect(result.row?.status).toBe("ready");
+    expect(result.row?.error).toBeNull();
+  });
+
   it("treats error rows as permanently broken for runtime ensures too", async () => {
     const orgId = `org_${crypto.randomUUID()}`;
     const providerCalls = { create: 0, wake: 0 };
@@ -612,6 +745,45 @@ describe("sandboxes service", () => {
     expect(secondSession.url).toContain("bl_preview_token=token-2");
   });
 
+  it("treats an already-running code-server process as reusable", async () => {
+    const orgId = `org_${crypto.randomUUID()}`;
+    const providerCalls = { create: 0, wake: 0 };
+    const handleCalls = { getHandle: 0 };
+    const handle = new FakeSandboxHandle();
+    handle.onCodeServerExec = () => {
+      handle.codeServerHealthy = true;
+      throw {
+        error: "process with name 'code-server' already exists and is running",
+        status: 400,
+        statusText: "Bad Request",
+      };
+    };
+
+    const result = await program(
+      Effect.gen(function* () {
+        const { db } = yield* DbService;
+        yield* Effect.promise(() =>
+          makeUserStore(db).upsertOrganization({ id: orgId, name: "CodeServerRace" }),
+        );
+        const service = makeSandboxesService(
+          db,
+          makeProvider(providerCalls),
+          makeHandleProvider(handle, handleCalls),
+        );
+        const session = yield* Effect.promise(() => service.ensureCodeServerSession(orgId));
+        const row = yield* Effect.promise(() => service.getSandbox(orgId));
+        return { row, session };
+      }),
+    );
+
+    expect(providerCalls).toEqual({ create: 1, wake: 0 });
+    expect(handleCalls).toEqual({ getHandle: 1 });
+    expect(handle.codeServerExecCalls).toBe(1);
+    expect(result.session.sandboxId).toBe(`sbx_${orgId}`);
+    expect(result.row?.status).toBe("ready");
+    expect(result.row?.error).toBeNull();
+  });
+
   it("marks the sandbox broken when code-server never becomes healthy", async () => {
     const orgId = `org_${crypto.randomUUID()}`;
     const providerCalls = { create: 0, wake: 0 };
@@ -699,5 +871,44 @@ describe("sandboxes service", () => {
     expect(result.row?.error).toContain("provider exploded");
     expect(result.row?.error).toContain("sandbox_create_failed");
     expect(result.row?.error).not.toBe("[object Object]");
+  });
+
+  it("treats an already-running execute runtime as reusable", async () => {
+    const orgId = `org_${crypto.randomUUID()}`;
+    const providerCalls = { create: 0, wake: 0 };
+    const handleCalls = { getHandle: 0 };
+    const handle = new FakeSandboxHandle();
+    handle.onExecuteExec = () => {
+      handle.executeHealthy = true;
+      throw {
+        error: "process with name 'godtool-execute-runtime' already exists and is running",
+        status: 400,
+        statusText: "Bad Request",
+      };
+    };
+
+    const result = await program(
+      Effect.gen(function* () {
+        const { db } = yield* DbService;
+        yield* Effect.promise(() =>
+          makeUserStore(db).upsertOrganization({ id: orgId, name: "ExecuteRace" }),
+        );
+        const service = makeSandboxesService(
+          db,
+          makeProvider(providerCalls),
+          makeHandleProvider(handle, handleCalls),
+        );
+        const ensured = yield* Effect.promise(() => service.ensureExecuteRuntimeRunning(orgId));
+        const row = yield* Effect.promise(() => service.getSandbox(orgId));
+        return { ensured, row };
+      }),
+    );
+
+    expect(providerCalls).toEqual({ create: 1, wake: 0 });
+    expect(handleCalls).toEqual({ getHandle: 1 });
+    expect(handle.executeExecCalls).toBe(1);
+    expect(result.ensured.runtime.status).toBe("started");
+    expect(result.row?.status).toBe("ready");
+    expect(result.row?.error).toBeNull();
   });
 });

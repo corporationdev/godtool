@@ -359,6 +359,36 @@ const renderUnknownError = (error: unknown): string => {
   return String(error);
 };
 
+const includesAlreadyRunningProcessMarker = (value: string, processName: string): boolean =>
+  value.includes(`process with name '${processName}' already exists and is running`);
+
+const isProcessAlreadyRunningError = (error: unknown, processName: string): boolean => {
+  if (typeof error === "string") {
+    return includesAlreadyRunningProcessMarker(error, processName);
+  }
+
+  if (error instanceof Error) {
+    return (
+      includesAlreadyRunningProcessMarker(error.message, processName) ||
+      isProcessAlreadyRunningError(error.cause, processName)
+    );
+  }
+
+  if (hasOwn(error, "message") && typeof error.message === "string") {
+    return includesAlreadyRunningProcessMarker(error.message, processName);
+  }
+
+  if (hasOwn(error, "error")) {
+    return isProcessAlreadyRunningError(error.error, processName);
+  }
+
+  if (hasOwn(error, "cause")) {
+    return isProcessAlreadyRunningError(error.cause, processName);
+  }
+
+  return false;
+};
+
 const hasOwn = <K extends string>(value: unknown, key: K): value is Record<K, unknown> =>
   typeof value === "object" && value !== null && key in value;
 
@@ -394,6 +424,44 @@ const isRetryableSandboxError = (error: unknown): boolean => {
 
   if (hasOwn(error, "cause")) {
     return isRetryableSandboxError(error.cause);
+  }
+
+  return false;
+};
+
+const includesUnavailableSandboxMarker = (value: string): boolean =>
+  /currently not available/i.test(value) || /verify it exists and is running/i.test(value);
+
+const isRetryableSandboxUnavailableError = (error: unknown): boolean => {
+  if (!isRetryableSandboxError(error)) {
+    return false;
+  }
+
+  if (typeof error === "string") {
+    return includesUnavailableSandboxMarker(error);
+  }
+
+  if (error instanceof Error) {
+    return (
+      includesUnavailableSandboxMarker(error.message) ||
+      isRetryableSandboxUnavailableError(error.cause)
+    );
+  }
+
+  if (hasOwn(error, "status") && error.status === 404) {
+    return true;
+  }
+
+  if (hasOwn(error, "message") && typeof error.message === "string") {
+    return includesUnavailableSandboxMarker(error.message);
+  }
+
+  if (hasOwn(error, "error")) {
+    return isRetryableSandboxUnavailableError(error.error);
+  }
+
+  if (hasOwn(error, "cause")) {
+    return isRetryableSandboxUnavailableError(error.cause);
   }
 
   return false;
@@ -501,11 +569,31 @@ export const makeSandboxStore = (db: DrizzleDb) => {
     return updated;
   };
 
+  const resetForReprovision = async (organizationId: string) => {
+    const [updated] = await db
+      .update(sandboxes)
+      .set({
+        error: null,
+        externalId: null,
+        status: "creating",
+        updatedAt: new Date(),
+      })
+      .where(eq(sandboxes.organizationId, organizationId))
+      .returning();
+
+    if (!updated) {
+      throw new Error(`Sandbox row for organization "${organizationId}" disappeared.`);
+    }
+
+    return updated;
+  };
+
   return {
     createPending,
     getByOrganizationId,
     markError,
     markReady,
+    resetForReprovision,
   };
 };
 
@@ -688,23 +776,29 @@ const ensureCodeServerRunning = async (
 
   await stopCodeServerProcess(sandbox);
 
-  await sandbox.process.exec({
-    command: [
-      "code-server",
-      "--disable-telemetry",
-      "--config",
-      quoteShellArgument(CODE_SERVER_CONFIG_PATH),
-      quoteShellArgument(SANDBOX_WORKSPACE_DIRECTORY),
-    ].join(" "),
-    env: {
-      PORT: String(CODE_SERVER_PORT),
-    },
-    maxRestarts: 5,
-    name: CODE_SERVER_PROCESS_NAME,
-    restartOnFailure: true,
-    waitForCompletion: false,
-    workingDir: SANDBOX_WORKSPACE_DIRECTORY,
-  });
+  try {
+    await sandbox.process.exec({
+      command: [
+        "code-server",
+        "--disable-telemetry",
+        "--config",
+        quoteShellArgument(CODE_SERVER_CONFIG_PATH),
+        quoteShellArgument(SANDBOX_WORKSPACE_DIRECTORY),
+      ].join(" "),
+      env: {
+        PORT: String(CODE_SERVER_PORT),
+      },
+      maxRestarts: 5,
+      name: CODE_SERVER_PROCESS_NAME,
+      restartOnFailure: true,
+      waitForCompletion: false,
+      workingDir: SANDBOX_WORKSPACE_DIRECTORY,
+    });
+  } catch (error) {
+    if (!isProcessAlreadyRunningError(error, CODE_SERVER_PROCESS_NAME)) {
+      throw error;
+    }
+  }
 
   await waitForCodeServerHealth(sandbox, options);
 };
@@ -760,21 +854,27 @@ const ensureExecuteRuntimeStarted = async (
 
   await stopExecuteRuntimeProcess(sandbox);
 
-  await sandbox.process.exec({
-    command: [
-      "bun",
-      quoteShellArgument(EXECUTE_RUNTIME_SERVER_PATH),
-      "--host",
-      quoteShellArgument("0.0.0.0"),
-      "--port",
-      String(EXECUTE_RUNTIME_PORT),
-    ].join(" "),
-    maxRestarts: 5,
-    name: EXECUTE_RUNTIME_PROCESS_NAME,
-    restartOnFailure: true,
-    waitForCompletion: false,
-    workingDir: SANDBOX_WORKSPACE_DIRECTORY,
-  });
+  try {
+    await sandbox.process.exec({
+      command: [
+        "bun",
+        quoteShellArgument(EXECUTE_RUNTIME_SERVER_PATH),
+        "--host",
+        quoteShellArgument("0.0.0.0"),
+        "--port",
+        String(EXECUTE_RUNTIME_PORT),
+      ].join(" "),
+      maxRestarts: 5,
+      name: EXECUTE_RUNTIME_PROCESS_NAME,
+      restartOnFailure: true,
+      waitForCompletion: false,
+      workingDir: SANDBOX_WORKSPACE_DIRECTORY,
+    });
+  } catch (error) {
+    if (!isProcessAlreadyRunningError(error, EXECUTE_RUNTIME_PROCESS_NAME)) {
+      throw error;
+    }
+  }
 
   const ready = await waitForExecuteRuntimeHealth(sandbox, options);
   return {
@@ -801,6 +901,7 @@ export const makeSandboxesService = (
 
   const ensureProvisioned = async (
     record: SandboxRecord,
+    allowUnavailableRecovery = true,
   ): Promise<EnsuredSandbox> => {
     const allowRetryFromError =
       record.status === "error" && isRetryableSandboxError(record.error);
@@ -834,6 +935,10 @@ export const makeSandboxesService = (
           status: awakened.status,
         };
       } catch (error) {
+        if (allowUnavailableRecovery && isRetryableSandboxUnavailableError(error)) {
+          const reset = await store.resetForReprovision(record.organizationId);
+          return await ensureProvisioned(reset, false);
+        }
         return await throwSandboxFailure(store, record.organizationId, error);
       }
     }
@@ -858,7 +963,42 @@ export const makeSandboxesService = (
         status: created.status,
       };
     } catch (error) {
+      if (
+        allowUnavailableRecovery &&
+        record.externalId &&
+        isRetryableSandboxUnavailableError(error)
+      ) {
+        const reset = await store.resetForReprovision(record.organizationId);
+        return await ensureProvisioned(reset, false);
+      }
       return await throwSandboxFailure(store, record.organizationId, error);
+    }
+  };
+
+  const recoverUnavailableSandbox = async (organizationId: string) => {
+    const reset = await store.resetForReprovision(organizationId);
+    return await ensureProvisioned(reset, false);
+  };
+
+  const withUnavailableSandboxRecovery = async <A>(
+    organizationId: string,
+    ensuredSandbox: EnsuredSandbox,
+    operation: (sandbox: EnsuredSandbox) => Promise<A>,
+  ): Promise<A> => {
+    try {
+      return await operation(ensuredSandbox);
+    } catch (error) {
+      if (!isRetryableSandboxUnavailableError(error)) {
+        return await throwSandboxFailure(store, organizationId, error);
+      }
+
+      const reprovisionedSandbox = await recoverUnavailableSandbox(organizationId);
+
+      try {
+        return await operation(reprovisionedSandbox);
+      } catch (recoveryError) {
+        return await throwSandboxFailure(store, organizationId, recoveryError);
+      }
     }
   };
 
@@ -877,13 +1017,11 @@ export const makeSandboxesService = (
   const ensureCodeServerSession = async (organizationId: string): Promise<CodeServerSession> => {
     const ensuredSandbox = await ensureSandbox(organizationId);
 
-    try {
-      const sandbox = await sandboxHandleProvider.getSandboxHandle(ensuredSandbox.externalId);
+    return await withUnavailableSandboxRecovery(organizationId, ensuredSandbox, async (sandboxRef) => {
+      const sandbox = await sandboxHandleProvider.getSandboxHandle(sandboxRef.externalId);
       await ensureCodeServerRunning(sandbox, runtimeOptions);
-      return await createCodeServerSession(sandbox, ensuredSandbox);
-    } catch (error) {
-      return await throwSandboxFailure(store, organizationId, error);
-    }
+      return await createCodeServerSession(sandbox, sandboxRef);
+    });
   };
 
   const ensureExecuteRuntimeRunning = async (
@@ -891,8 +1029,8 @@ export const makeSandboxesService = (
   ): Promise<EnsuredExecuteRuntime> => {
     const ensuredSandbox = await ensureSandbox(organizationId);
 
-    try {
-      const sandbox = await sandboxHandleProvider.getSandboxHandle(ensuredSandbox.externalId);
+    return await withUnavailableSandboxRecovery(organizationId, ensuredSandbox, async (sandboxRef) => {
+      const sandbox = await sandboxHandleProvider.getSandboxHandle(sandboxRef.externalId);
       const install = await ensureExecuteRuntimeInstalled(sandbox);
       const runtimeState = await ensureExecuteRuntimeStarted(
         sandbox,
@@ -908,11 +1046,9 @@ export const makeSandboxesService = (
         runtime: {
           status: runtimeState.runtimeStatus,
         },
-        sandbox: ensuredSandbox,
+        sandbox: sandboxRef,
       };
-    } catch (error) {
-      return await throwSandboxFailure(store, organizationId, error);
-    }
+    });
   };
 
   return {
