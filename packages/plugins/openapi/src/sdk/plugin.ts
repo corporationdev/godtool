@@ -42,6 +42,7 @@ import {
   ensureComposioManagedAuthConfig,
   createComposioConnectLink,
   deleteComposioConnectedAccount,
+  executeComposioProxy,
   getComposioConnectedAccount,
   ComposioClientError,
 } from "../composio/client";
@@ -57,6 +58,8 @@ import { extract } from "./extract";
 import { compileToolDefinitions, type ToolDefinition } from "./definitions";
 import {
   annotationsForOperation,
+  buildInvocationEndpoint,
+  prepareInvocationRequest,
   invokeWithLayer,
   resolveHeaders,
 } from "./invoke";
@@ -74,6 +77,7 @@ import {
   ComposioSourceConfig,
   HeaderValue as HeaderValueSchema,
   InvocationConfig,
+  InvocationResult,
   OAuth2Auth,
   type OpenApiInvocationAuth,
   OpenApiComposioSession,
@@ -1196,11 +1200,118 @@ export const openApiPlugin = definePlugin(
                 );
               resolvedHeaders["Authorization"] = `Bearer ${accessToken}`;
             } else {
-              return yield* Effect.fail(
-                new Error(
-                  `Composio-backed auth is configured for source "${source.namespace}", but request proxying is not implemented yet.`,
+              if (!composioApiKey) {
+                return yield* Effect.fail(
+                  new Error(
+                    `Composio-backed auth is configured for source "${source.namespace}", but COMPOSIO_API_KEY is not configured.`,
+                  ),
+                );
+              }
+
+              const connection = yield* ctx.connections.get(auth.connectionId).pipe(
+                Effect.mapError(
+                  (err) =>
+                    new Error(
+                      `Composio connection resolution failed: ${
+                        "message" in err ? (err as { message: string }).message : String(err)
+                      }`,
+                    ),
                 ),
               );
+              if (!connection) {
+                return yield* Effect.fail(
+                  new Error(
+                    `Composio connection "${auth.connectionId}" was not found for source "${source.namespace}".`,
+                  ),
+                );
+              }
+              if (connection.provider !== COMPOSIO_PROVIDER_KEY) {
+                return yield* Effect.fail(
+                  new Error(
+                    `Connection "${auth.connectionId}" is provider "${connection.provider}", expected "${COMPOSIO_PROVIDER_KEY}".`,
+                  ),
+                );
+              }
+
+              const connectedAccountId = connection.providerState?.connectedAccountId;
+              if (typeof connectedAccountId !== "string" || connectedAccountId.length === 0) {
+                return yield* Effect.fail(
+                  new Error(
+                    `Composio connection "${auth.connectionId}" is missing connectedAccountId.`,
+                  ),
+                );
+              }
+
+              const providerApp = connection.providerState?.app;
+              if (typeof providerApp === "string" && providerApp !== auth.app) {
+                return yield* Effect.fail(
+                  new Error(
+                    `Composio connection app mismatch: source expects "${auth.app}" but connection is "${providerApp}".`,
+                  ),
+                );
+              }
+
+              const prepared = yield* prepareInvocationRequest(
+                op.binding,
+                (args ?? {}) as Record<string, unknown>,
+                resolvedHeaders,
+              );
+              if (prepared.bodyKind === "multipart") {
+                return yield* Effect.fail(
+                  new Error(
+                    `Multipart form-data requests are not implemented for Composio-backed source "${source.namespace}" yet.`,
+                  ),
+                );
+              }
+
+              const endpoint = buildInvocationEndpoint(config.baseUrl, prepared);
+              const proxyHeaders = { ...prepared.headers };
+              if (
+                prepared.bodyKind !== "none" &&
+                prepared.bodyContentType &&
+                !Object.keys(proxyHeaders).some(
+                  (name) => name.toLowerCase() === "content-type",
+                )
+              ) {
+                proxyHeaders["content-type"] = prepared.bodyContentType;
+              }
+
+              const proxyResponse = yield* Effect.tryPromise({
+                try: () =>
+                  executeComposioProxy({
+                    apiKey: composioApiKey,
+                    connectedAccountId,
+                    endpoint,
+                    method: prepared.method,
+                    body:
+                      prepared.bodyKind === "none"
+                        ? undefined
+                        : prepared.bodyValue,
+                    parameters: Object.entries(proxyHeaders).map(([name, value]) => ({
+                      name,
+                      value,
+                      in: "header" as const,
+                    })),
+                  }),
+                catch: (err) =>
+                  new Error(
+                    err instanceof ComposioClientError
+                      ? `Composio proxy request failed: ${err.message}`
+                      : "Composio proxy request failed",
+                  ),
+              });
+
+              const ok = proxyResponse.status >= 200 && proxyResponse.status < 300;
+              return new InvocationResult({
+                status: proxyResponse.status,
+                headers: proxyResponse.headers,
+                data: ok
+                  ? (proxyResponse.data ?? proxyResponse.binaryData)
+                  : null,
+                error: ok
+                  ? null
+                  : (proxyResponse.error ?? proxyResponse.data ?? proxyResponse.binaryData),
+              });
             }
           }
 

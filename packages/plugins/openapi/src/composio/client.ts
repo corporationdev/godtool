@@ -1,4 +1,5 @@
 const COMPOSIO_BASE_URL = "https://backend.composio.dev/api/v3.1";
+const COMPOSIO_PROXY_BASE_URL = "https://backend.composio.dev/api/v3";
 
 export interface ComposioConnectLinkInput {
   readonly apiKey: string;
@@ -63,7 +64,15 @@ async function composioFetch<T>(
   path: string,
   options?: RequestInit,
 ): Promise<T> {
-  const res = await fetch(`${COMPOSIO_BASE_URL}${path}`, {
+  return composioFetchWithBase<T>(`${COMPOSIO_BASE_URL}${path}`, apiKey, options);
+}
+
+async function composioFetchWithBase<T>(
+  url: string,
+  apiKey: string,
+  options?: RequestInit,
+): Promise<T> {
+  const res = await fetch(url, {
     ...options,
     headers: {
       "x-api-key": apiKey,
@@ -84,6 +93,29 @@ async function composioFetch<T>(
   }
 
   return res.json() as Promise<T>;
+}
+
+export interface ComposioProxyParameter {
+  readonly name: string;
+  readonly value: string;
+  readonly in: "header" | "query";
+}
+
+export interface ComposioProxyExecuteInput {
+  readonly apiKey: string;
+  readonly connectedAccountId: string;
+  readonly endpoint: string;
+  readonly method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD";
+  readonly body?: unknown;
+  readonly parameters?: ReadonlyArray<ComposioProxyParameter>;
+}
+
+export interface ComposioProxyExecuteResult {
+  readonly status: number;
+  readonly headers: Record<string, string>;
+  readonly data: unknown | null;
+  readonly error: unknown | null;
+  readonly binaryData: unknown | null;
 }
 
 export async function createComposioConnectLink(
@@ -229,4 +261,33 @@ export async function deleteComposioConnectedAccount(
   await composioFetch(apiKey, `/connected_accounts/${connectedAccountId}`, {
     method: "DELETE",
   });
+}
+
+export async function executeComposioProxy(
+  input: ComposioProxyExecuteInput,
+): Promise<ComposioProxyExecuteResult> {
+  const response = await composioFetchWithBase<{
+    status?: number;
+    headers?: Record<string, string>;
+    data?: unknown;
+    error?: unknown;
+    binary_data?: unknown;
+  }>(`${COMPOSIO_PROXY_BASE_URL}/tools/execute/proxy`, input.apiKey, {
+    method: "POST",
+    body: JSON.stringify({
+      connected_account_id: input.connectedAccountId,
+      endpoint: input.endpoint,
+      method: input.method,
+      body: input.body,
+      parameters: input.parameters,
+    }),
+  });
+
+  return {
+    status: response.status ?? 200,
+    headers: response.headers ?? {},
+    data: response.data ?? null,
+    error: response.error ?? null,
+    binaryData: response.binary_data ?? null,
+  };
 }
