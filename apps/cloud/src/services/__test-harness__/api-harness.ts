@@ -245,6 +245,14 @@ const TestApiLive = HttpApiBuilder.api(ProtectedCloudApi).pipe(
   Layer.provide(Layer.merge(ProtectedCloudApiHandlers, FakeOrgAuthLive)),
 );
 
+const assumeTestOrgAuthProvided = <E, R>(
+  app: HttpApp.Default<E, R | AuthContext>,
+): HttpApp.Default<E, R> =>
+  // FakeOrgAuthLive is merged into TestApiLive, so the returned app is fully
+  // request-scoped even if the builder's inferred environment still includes
+  // the middleware-provided auth tag.
+  app as HttpApp.Default<E, R>;
+
 const buildAppForScope = (userId: string, orgId: string, orgName: string) =>
   Effect.gen(function* () {
     const executor = yield* createTestScopedExecutor(userId, orgId, orgName);
@@ -256,7 +264,8 @@ const buildAppForScope = (userId: string, orgId: string, orgName: string) =>
       Layer.succeed(McpExtensionService, executor.mcp),
       Layer.succeed(GraphqlExtensionService, executor.graphql),
     );
-    return yield* HttpApiBuilder.httpApp.pipe(
+    return assumeTestOrgAuthProvided(
+      yield* HttpApiBuilder.httpApp.pipe(
       Effect.provide(
         HttpApiSwagger.layer({ path: "/docs" }).pipe(
           Layer.provideMerge(HttpApiBuilder.middlewareOpenApi()),
@@ -267,6 +276,7 @@ const buildAppForScope = (userId: string, orgId: string, orgName: string) =>
           Layer.provideMerge(HttpApiBuilder.Router.Live),
           Layer.provideMerge(HttpApiBuilder.Middleware.layer),
         ),
+      ),
       ),
     );
   });
@@ -286,10 +296,10 @@ const RouterApp = Effect.gen(function* () {
 });
 
 const handler = HttpApp.toWebHandler(
-  RouterApp.pipe(
+  (RouterApp.pipe(
     Effect.provide(DbService.Live),
     Effect.provide(HttpServer.layerContext),
-  ),
+  ) as Parameters<typeof HttpApp.toWebHandler>[0]),
 );
 
 export const fetchForOrg = (orgId: string): typeof globalThis.fetch =>

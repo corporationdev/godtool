@@ -37,7 +37,7 @@ function getUserSlug(): string {
   return slugify(user) || "user";
 }
 
-export function resolveStage(mode: StageMode): string {
+export function resolveStage(_mode: StageMode): string {
   const userSlug = getUserSlug();
   const suffix = shortHash(`${userSlug}:${hostname()}`);
   return trimStage(`dev-${userSlug}-${suffix}`);

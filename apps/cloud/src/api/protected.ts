@@ -1,6 +1,7 @@
-import { HttpApiBuilder, HttpApiSwagger, HttpServerRequest } from "@effect/platform";
+import { HttpApiBuilder, HttpApiSwagger, HttpApp, HttpServerRequest } from "@effect/platform";
 import { Effect, Layer } from "effect";
 
+import { AuthContext } from "../auth/middleware";
 import { ExecutorService, ExecutionEngineService } from "@executor/api/server";
 import { OpenApiExtensionService } from "@executor/plugin-openapi/api";
 import { McpExtensionService } from "@executor/plugin-mcp/api";
@@ -11,6 +12,13 @@ import { WorkOSAuth } from "../auth/workos";
 import { makeExecutionStack } from "../services/execution-stack";
 import { HttpResponseError, isServerError, toErrorServerResponse } from "./error-response";
 import { ProtectedCloudApiLive, RouterConfig, SharedServices } from "./layers";
+
+const assumeOrgAuthProvided = <E, R>(
+  app: HttpApp.Default<E, R | AuthContext>,
+): HttpApp.Default<E, R> =>
+  // OrgAuthLive is already part of ProtectedCloudApiLive; this narrows an
+  // inference leak so the outer router sees the finished request app shape.
+  app as HttpApp.Default<E, R>;
 
 const lookupOrgForRequest = (request: HttpServerRequest.HttpServerRequest) =>
   Effect.gen(function* () {
@@ -48,7 +56,8 @@ const createProtectedApp = (userId: string, organizationId: string, organization
       Layer.succeed(GraphqlExtensionService, executor.graphql),
     );
 
-    return yield* HttpApiBuilder.httpApp.pipe(
+    return assumeOrgAuthProvided(
+      yield* HttpApiBuilder.httpApp.pipe(
       Effect.provide(
         HttpApiSwagger.layer({ path: "/docs" }).pipe(
           Layer.provideMerge(HttpApiBuilder.middlewareOpenApi()),
@@ -59,10 +68,11 @@ const createProtectedApp = (userId: string, organizationId: string, organization
           Layer.provideMerge(HttpApiBuilder.Middleware.layer),
         ),
       ),
+      ),
     );
   });
 
-export const ProtectedApiApp = Effect.gen(function* () {
+export const ProtectedApiApp: HttpApp.Default = Effect.gen(function* () {
   const request = yield* HttpServerRequest.HttpServerRequest;
   const session = yield* lookupOrgForRequest(request);
   if (!session) {
@@ -85,4 +95,4 @@ export const ProtectedApiApp = Effect.gen(function* () {
     }
     return Effect.succeed(toErrorServerResponse(err));
   }),
-);
+) as HttpApp.Default;

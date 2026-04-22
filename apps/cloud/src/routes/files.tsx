@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAtomSet } from "@effect-atom/atom-react";
 import { createFileRoute } from "@tanstack/react-router";
+import { filesWriteKeys } from "@executor/react/api/reactivity-keys";
 import { Spinner } from "@executor/react/components/spinner";
 
 import { createFilesSession } from "../web/files";
@@ -30,7 +31,9 @@ function FilesPage() {
       setError(null);
 
       try {
-        const session = (await requestSession({})) as FilesSession;
+        const session = (await requestSession({
+          reactivityKeys: filesWriteKeys,
+        })) as FilesSession;
         if (cancelled) {
           return;
         }

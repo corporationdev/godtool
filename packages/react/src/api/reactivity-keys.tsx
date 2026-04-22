@@ -23,6 +23,7 @@ export const ReactivityKey = {
   secrets: "secrets",
   connections: "connections",
   scope: "scope",
+  files: "files",
   // cloud-only resources
   orgMembers: "org:members",
   orgDomains: "org:domains",
@@ -47,6 +48,9 @@ export const connectionWriteKeys = [
 
 /** Mutations that change scope membership/info. */
 export const scopeWriteKeys = [ReactivityKey.scope] as const;
+
+/** Sandbox file session mutations. */
+export const filesWriteKeys = [ReactivityKey.files] as const;
 
 /** Cloud-only: org membership mutations. */
 export const orgMemberWriteKeys = [ReactivityKey.orgMembers] as const;
