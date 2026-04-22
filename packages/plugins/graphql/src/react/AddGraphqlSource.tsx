@@ -34,7 +34,7 @@ const initialHeader = (): HeaderState => ({
 });
 
 export default function AddGraphqlSource(props: {
-  onComplete: () => void;
+  onComplete: (sourceId?: string) => void;
   onCancel: () => void;
   initialUrl?: string;
 }) {
@@ -92,7 +92,7 @@ export default function AddGraphqlSource(props: {
         },
         reactivityKeys: sourceWriteKeys,
       });
-      props.onComplete();
+      props.onComplete(namespace);
     } catch (e) {
       setAddError(e instanceof Error ? e.message : "Failed to add source");
       setAdding(false);

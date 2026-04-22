@@ -153,10 +153,8 @@ const makeDbHandle = (options: {
   readonly idleTimeout: number;
   readonly maxLifetime: number;
 }): DbHandle => {
-  // Prefer DATABASE_URL so local dev connects directly to PGlite and
-  // bypasses Miniflare's Hyperdrive proxy, which resolves to
-  // `*.hyperdrive.local:5432` and times out — the resulting ECONNRESET
-  // surfaces as an unhandled socket error that kills the vite dev server.
+  // Prefer the configured remote DATABASE_URL. When the worker is
+  // deployed with Hyperdrive and no direct URL, fall back to the binding.
   // Matches the priority in `services/db.ts`.
   const connectionString = env.DATABASE_URL || env.HYPERDRIVE?.connectionString || "";
   const sql = postgres(connectionString, {

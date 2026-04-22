@@ -116,10 +116,9 @@ type SecretRow = {
 };
 
 const main = async () => {
-  const connectionString =
-    process.env.DATABASE_URL || process.env.HYPERDRIVE_CONNECTION_STRING || "";
+  const connectionString = process.env.DATABASE_URL || "";
   if (!connectionString) {
-    console.error("DATABASE_URL not set. Run `bun setup --stage prod` first.");
+    console.error("DATABASE_URL not set. Populate apps/cloud/.env first.");
     process.exit(1);
   }
 

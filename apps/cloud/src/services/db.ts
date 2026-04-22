@@ -34,9 +34,9 @@ export type DbServiceShape = {
 };
 
 const resolveConnectionString = () => {
-  // In local dev prefer an explicit DATABASE_URL (direct connection to
-  // the PGlite socket server) so we bypass Miniflare's Hyperdrive proxy.
-  // In production fall back to the Hyperdrive binding.
+  // Use the configured remote DATABASE_URL when present. Production can
+  // still fall back to the Hyperdrive binding when that's how the worker
+  // is deployed.
   return env.DATABASE_URL || env.HYPERDRIVE?.connectionString || "";
 };
 

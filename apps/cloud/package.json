@@ -4,10 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "concurrently -n db,vite,tunnel -c blue,green,magenta \"bun run dev:db\" \"bun run dev:vite\" \"bun run dev:tunnel\"",
+    "dev": "concurrently -n vite,tunnel -c green,magenta \"bun run dev:vite\" \"bun run dev:tunnel\"",
     "dev:prepare": "bun ../../scripts/secrets-inject.ts --dev",
-    "dev:db": "bun run scripts/dev-db.ts",
-    "dev:vite": "CLOUDFLARE_INCLUDE_PROCESS_ENV=true bun --env-file=.env vite dev --host 127.0.0.1 --port 3001",
+    "dev:vite": "bun --env-file=.env -e 'const { spawn } = require(\"node:child_process\"); const env = { ...process.env, CLOUDFLARE_INCLUDE_PROCESS_ENV: \"true\" }; if (process.env.DATABASE_URL) env.CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE = process.env.DATABASE_URL; const child = spawn(\"bun\", [\"vite\", \"dev\", \"--host\", \"127.0.0.1\", \"--port\", \"3001\"], { stdio: \"inherit\", env }); child.on(\"exit\", (code, signal) => { if (signal) process.kill(process.pid, signal); else process.exit(code ?? 0); });'",
     "dev:tunnel": "bun --env-file=.env run scripts/dev-tunnel.ts",
     "db:schema": "node --import jiti/register ../../packages/core/cli/src/index.ts generate --config ./executor.config.ts --output ./src/services/executor-schema.ts",
     "db:generate": "drizzle-kit generate",

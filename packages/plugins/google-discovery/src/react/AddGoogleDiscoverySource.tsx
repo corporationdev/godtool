@@ -380,7 +380,7 @@ const OAUTH_RESULT_CHANNEL = "executor:google-discovery-oauth-result";
 const OAUTH_POPUP_NAME = "google-discovery-oauth";
 
 export default function AddGoogleDiscoverySource(props: {
-  readonly onComplete: () => void;
+  readonly onComplete: (sourceId?: string) => void;
   readonly onCancel: () => void;
   readonly initialUrl?: string;
 }) {
@@ -577,7 +577,7 @@ export default function AddGoogleDiscoverySource(props: {
         },
         reactivityKeys: [...sourceWriteKeys],
       });
-      props.onComplete();
+      props.onComplete(namespace);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to add source");
       setAdding(false);

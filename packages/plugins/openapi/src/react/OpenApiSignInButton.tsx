@@ -9,6 +9,7 @@ import { Button } from "@executor/react/components/button";
 
 import {
   openApiSourceAtom,
+  startComposioConnect,
   startOpenApiOAuth,
   updateOpenApiSource,
 } from "./atoms";
@@ -18,6 +19,10 @@ import {
   OPENAPI_OAUTH_POPUP_NAME,
 } from "./AddOpenApiSource";
 import { OAuth2Auth } from "../sdk/types";
+
+const OPENAPI_COMPOSIO_CHANNEL = "executor:openapi-composio-result";
+const OPENAPI_COMPOSIO_CALLBACK_PATH = "/api/openapi/composio/callback";
+const OPENAPI_COMPOSIO_POPUP_NAME = "openapi-composio";
 
 // ---------------------------------------------------------------------------
 // OpenApiSignInButton — top-bar action on the source detail page
@@ -34,6 +39,7 @@ export default function OpenApiSignInButton(props: { sourceId: string }) {
   const sourceResult = useAtomValue(openApiSourceAtom(scopeId, props.sourceId));
   const connectionsResult = useAtomValue(connectionsAtom(scopeId));
   const doStartOAuth = useAtomSet(startOpenApiOAuth, { mode: "promise" });
+  const doStartComposioConnect = useAtomSet(startComposioConnect, { mode: "promise" });
   const doUpdate = useAtomSet(updateOpenApiSource, { mode: "promise" });
 
   const [busy, setBusy] = useState(false);
@@ -47,18 +53,109 @@ export default function OpenApiSignInButton(props: { sourceId: string }) {
       ? sourceResult.value
       : null;
   const oauth2 = source?.config.oauth2 ?? null;
+  const composio = source?.config.composio ?? null;
   const connections = Result.isSuccess(connectionsResult)
     ? connectionsResult.value
     : null;
-  const isConnected =
+  const isOAuthConnected =
     oauth2 !== null &&
     connections !== null &&
     connections.some((c) => c.id === oauth2.connectionId);
+  const isComposioConnected =
+    composio !== null &&
+    connections !== null &&
+    connections.some((c) => c.id === composio.connectionId);
 
   const redirectUrl =
     typeof window !== "undefined"
       ? `${window.location.origin}${OPENAPI_OAUTH_CALLBACK_PATH}`
       : OPENAPI_OAUTH_CALLBACK_PATH;
+
+  const composioCallbackBaseUrl =
+    typeof window !== "undefined"
+      ? `${window.location.origin}${OPENAPI_COMPOSIO_CALLBACK_PATH}`
+      : OPENAPI_COMPOSIO_CALLBACK_PATH;
+
+  const handleComposioConnect = useCallback(async () => {
+    cleanupRef.current?.();
+    cleanupRef.current = null;
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await doStartComposioConnect({
+        path: { scopeId },
+        payload: {
+          sourceId: props.sourceId,
+          callbackBaseUrl: composioCallbackBaseUrl,
+        },
+      });
+
+      const popup = window.open(
+        response.redirectUrl,
+        OPENAPI_COMPOSIO_POPUP_NAME,
+        "width=600,height=700,scrollbars=yes",
+      );
+      if (!popup) {
+        setBusy(false);
+        setError("Sign-in popup was blocked by the browser");
+        return;
+      }
+
+      const channel = new BroadcastChannel(OPENAPI_COMPOSIO_CHANNEL);
+      const onMessage = (ev: MessageEvent) => {
+        cleanup();
+        const data = ev.data as { ok: boolean; connectionId?: string; error?: string };
+        if (data.ok) {
+          if (!composio) {
+            setBusy(false);
+            return;
+          }
+          void doUpdate({
+            path: { scopeId, namespace: props.sourceId },
+            payload: { auth: composio },
+            reactivityKeys: sourceWriteKeys,
+          })
+            .then(() => {
+              setBusy(false);
+            })
+            .catch((e) => {
+              setBusy(false);
+              setError(e instanceof Error ? e.message : "Failed to activate managed auth");
+            });
+        } else {
+          setBusy(false);
+          setError(data.error ?? "Managed OAuth failed");
+        }
+      };
+      channel.addEventListener("message", onMessage);
+
+      const popupTimer = setInterval(() => {
+        if (popup.closed) {
+          cleanup();
+          setBusy(false);
+          setError("Connect cancelled — popup was closed before completing the flow.");
+        }
+      }, 500);
+
+      const cleanup = () => {
+        clearInterval(popupTimer);
+        channel.removeEventListener("message", onMessage);
+        channel.close();
+        cleanupRef.current = null;
+      };
+      cleanupRef.current = cleanup;
+    } catch (e) {
+      setBusy(false);
+      setError(e instanceof Error ? e.message : "Failed to start managed auth");
+    }
+  }, [
+    composio,
+    composioCallbackBaseUrl,
+    doStartComposioConnect,
+    doUpdate,
+    props.sourceId,
+    scopeId,
+  ]);
 
   const handleSignIn = useCallback(async () => {
     if (!oauth2) return;
@@ -94,7 +191,7 @@ export default function OpenApiSignInButton(props: { sourceId: string }) {
         }
         await doUpdate({
           path: { scopeId, namespace: props.sourceId },
-          payload: { oauth2: response.auth },
+          payload: { oauth2: response.auth, auth: response.auth },
           reactivityKeys: sourceWriteKeys,
         });
         setBusy(false);
@@ -153,7 +250,7 @@ export default function OpenApiSignInButton(props: { sourceId: string }) {
             });
             await doUpdate({
               path: { scopeId, namespace: props.sourceId },
-              payload: { oauth2: nextAuth },
+              payload: { oauth2: nextAuth, auth: nextAuth },
               reactivityKeys: sourceWriteKeys,
             });
             setBusy(false);
@@ -189,25 +286,43 @@ export default function OpenApiSignInButton(props: { sourceId: string }) {
     doUpdate,
   ]);
 
-  if (!oauth2) return null;
+  if (!oauth2 && !composio) return null;
 
   return (
     <div className="flex items-center gap-2">
       {error && <span className="text-xs text-destructive">{error}</span>}
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => void handleSignIn()}
-        disabled={busy}
-      >
-        {busy
-          ? isConnected
-            ? "Reconnecting…"
-            : "Signing in…"
-          : isConnected
-            ? "Reconnect"
-            : "Sign in"}
-      </Button>
+      {composio && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => void handleComposioConnect()}
+          disabled={busy}
+        >
+          {busy
+            ? isComposioConnected
+              ? "Reconnecting…"
+              : "Connecting…"
+            : isComposioConnected
+              ? "Reconnect"
+              : "Connect"}
+        </Button>
+      )}
+      {oauth2 && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => void handleSignIn()}
+          disabled={busy}
+        >
+          {busy
+            ? isOAuthConnected
+              ? "Reconnecting…"
+              : "Signing in…"
+            : isOAuthConnected
+              ? "Reconnect"
+              : "Sign in"}
+        </Button>
+      )}
     </div>
   );
 }

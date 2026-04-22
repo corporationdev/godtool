@@ -12,8 +12,11 @@ declare global {
       AXIOM_TRACES_SAMPLE_RATIO?: string;
       SENTRY_DSN?: string;
 
-      // Datastore (dev only — prod uses HYPERDRIVE binding)
+      // Datastore
       DATABASE_URL?: string;
+
+      // Composio managed auth
+      COMPOSIO_API_KEY?: string;
 
       // Billing
       AUTUMN_SECRET_KEY?: string;

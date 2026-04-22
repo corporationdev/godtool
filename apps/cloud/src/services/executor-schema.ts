@@ -1,4 +1,4 @@
-import { pgTable, text, boolean, timestamp, bigint, jsonb, index, primaryKey } from "drizzle-orm/pg-core";
+import { pgTable, text, boolean, timestamp, integer, bigint, jsonb, index, primaryKey } from "drizzle-orm/pg-core";
 
 export const source = pgTable("source", {
   id: text('id').notNull(),
@@ -71,9 +71,9 @@ export const connection = pgTable("connection", {
   provider: text('provider').notNull(),
   kind: text('kind').notNull(),
   identity_label: text('identity_label'),
-  access_token_secret_id: text('access_token_secret_id').notNull(),
+  access_token_secret_id: text('access_token_secret_id'),
   refresh_token_secret_id: text('refresh_token_secret_id'),
-  expires_at: bigint('expires_at', { mode: 'number' }),
+  expires_at: integer('expires_at'),
   scope: text('scope'),
   provider_state: jsonb('provider_state'),
   created_at: timestamp('created_at').notNull(),
@@ -93,6 +93,8 @@ export const openapi_source = pgTable("openapi_source", {
   base_url: text('base_url'),
   headers: jsonb('headers'),
   oauth2: jsonb('oauth2'),
+  composio: jsonb('composio'),
+  annotation_policy: jsonb('annotation_policy'),
   invocation_config: jsonb('invocation_config').notNull()
 }, (table) => [
   primaryKey({ columns: [table.scope_id, table.id] }),
@@ -118,6 +120,16 @@ export const openapi_oauth_session = pgTable("openapi_oauth_session", {
 }, (table) => [
   primaryKey({ columns: [table.scope_id, table.id] }),
   index("openapi_oauth_session_scope_id_idx").on(table.scope_id),
+]);
+
+export const openapi_composio_session = pgTable("openapi_composio_session", {
+  id: text('id').notNull(),
+  scope_id: text('scope_id').notNull(),
+  session: jsonb('session').notNull(),
+  created_at: timestamp('created_at').notNull()
+}, (table) => [
+  primaryKey({ columns: [table.scope_id, table.id] }),
+  index("openapi_composio_session_scope_id_idx").on(table.scope_id),
 ]);
 
 export const mcp_source = pgTable("mcp_source", {
@@ -186,16 +198,4 @@ export const workos_vault_metadata = pgTable("workos_vault_metadata", {
   primaryKey({ columns: [table.scope_id, table.id] }),
   index("workos_vault_metadata_scope_id_idx").on(table.scope_id),
 ]);
-
-// Blob store table — hand-appended. BlobStore is a separate storage
-// abstraction from DBSchema, so the CLI doesn't generate it. Keep in
-// sync with @executor/storage-postgres's BlobStore implementation.
-export const blob = pgTable("blob", {
-  namespace: text('namespace').notNull(),
-  key: text('key').notNull(),
-  value: text('value').notNull(),
-}, (table) => [
-  primaryKey({ columns: [table.namespace, table.key] }),
-]);
-
 

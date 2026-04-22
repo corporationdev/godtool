@@ -40,7 +40,7 @@ import { DbService } from "./db";
 
 const createOrgPlugins = () =>
   [
-    openApiPlugin(),
+    openApiPlugin({ composioApiKey: env.COMPOSIO_API_KEY || undefined }),
     mcpPlugin({ dangerouslyAllowStdioMCP: false }),
     graphqlPlugin(),
     workosVaultPlugin({

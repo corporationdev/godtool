@@ -16,11 +16,30 @@ CREATE TABLE "organizations" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "blob" (
-	"namespace" text NOT NULL,
-	"key" text NOT NULL,
-	"value" text NOT NULL,
-	CONSTRAINT "blob_namespace_key_pk" PRIMARY KEY("namespace","key")
+CREATE TABLE "sandboxes" (
+	"organization_id" text PRIMARY KEY NOT NULL,
+	"provider" text NOT NULL,
+	"external_id" text,
+	"status" text NOT NULL,
+	"error" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "connection" (
+	"id" text NOT NULL,
+	"scope_id" text NOT NULL,
+	"provider" text NOT NULL,
+	"kind" text NOT NULL,
+	"identity_label" text,
+	"access_token_secret_id" text,
+	"refresh_token_secret_id" text,
+	"expires_at" integer,
+	"scope" text,
+	"provider_state" jsonb,
+	"created_at" timestamp NOT NULL,
+	"updated_at" timestamp NOT NULL,
+	CONSTRAINT "connection_scope_id_id_pk" PRIMARY KEY("scope_id","id")
 );
 --> statement-breakpoint
 CREATE TABLE "definition" (
@@ -64,7 +83,7 @@ CREATE TABLE "mcp_oauth_session" (
 	"id" text NOT NULL,
 	"scope_id" text NOT NULL,
 	"session" jsonb NOT NULL,
-	"expires_at" integer NOT NULL,
+	"expires_at" bigint NOT NULL,
 	"created_at" timestamp NOT NULL,
 	CONSTRAINT "mcp_oauth_session_scope_id_id_pk" PRIMARY KEY("scope_id","id")
 );
@@ -76,6 +95,14 @@ CREATE TABLE "mcp_source" (
 	"config" jsonb NOT NULL,
 	"created_at" timestamp NOT NULL,
 	CONSTRAINT "mcp_source_scope_id_id_pk" PRIMARY KEY("scope_id","id")
+);
+--> statement-breakpoint
+CREATE TABLE "openapi_composio_session" (
+	"id" text NOT NULL,
+	"scope_id" text NOT NULL,
+	"session" jsonb NOT NULL,
+	"created_at" timestamp NOT NULL,
+	CONSTRAINT "openapi_composio_session_scope_id_id_pk" PRIMARY KEY("scope_id","id")
 );
 --> statement-breakpoint
 CREATE TABLE "openapi_oauth_session" (
@@ -99,9 +126,12 @@ CREATE TABLE "openapi_source" (
 	"scope_id" text NOT NULL,
 	"name" text NOT NULL,
 	"spec" text NOT NULL,
+	"source_url" text,
 	"base_url" text,
 	"headers" jsonb,
 	"oauth2" jsonb,
+	"composio" jsonb,
+	"annotation_policy" jsonb,
 	"invocation_config" jsonb NOT NULL,
 	CONSTRAINT "openapi_source_scope_id_id_pk" PRIMARY KEY("scope_id","id")
 );
@@ -111,6 +141,7 @@ CREATE TABLE "secret" (
 	"scope_id" text NOT NULL,
 	"name" text NOT NULL,
 	"provider" text NOT NULL,
+	"owned_by_connection_id" text,
 	"created_at" timestamp NOT NULL,
 	CONSTRAINT "secret_scope_id_id_pk" PRIMARY KEY("scope_id","id")
 );
@@ -153,8 +184,18 @@ CREATE TABLE "workos_vault_metadata" (
 	CONSTRAINT "workos_vault_metadata_scope_id_id_pk" PRIMARY KEY("scope_id","id")
 );
 --> statement-breakpoint
+CREATE TABLE "blob" (
+	"namespace" text NOT NULL,
+	"key" text NOT NULL,
+	"value" text NOT NULL,
+	CONSTRAINT "blob_namespace_key_pk" PRIMARY KEY("namespace","key")
+);
+--> statement-breakpoint
 ALTER TABLE "memberships" ADD CONSTRAINT "memberships_account_id_accounts_id_fk" FOREIGN KEY ("account_id") REFERENCES "public"."accounts"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "memberships" ADD CONSTRAINT "memberships_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "sandboxes" ADD CONSTRAINT "sandboxes_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "connection_scope_id_idx" ON "connection" USING btree ("scope_id");--> statement-breakpoint
+CREATE INDEX "connection_provider_idx" ON "connection" USING btree ("provider");--> statement-breakpoint
 CREATE INDEX "definition_scope_id_idx" ON "definition" USING btree ("scope_id");--> statement-breakpoint
 CREATE INDEX "definition_source_id_idx" ON "definition" USING btree ("source_id");--> statement-breakpoint
 CREATE INDEX "definition_plugin_id_idx" ON "definition" USING btree ("plugin_id");--> statement-breakpoint
@@ -165,12 +206,14 @@ CREATE INDEX "mcp_binding_scope_id_idx" ON "mcp_binding" USING btree ("scope_id"
 CREATE INDEX "mcp_binding_source_id_idx" ON "mcp_binding" USING btree ("source_id");--> statement-breakpoint
 CREATE INDEX "mcp_oauth_session_scope_id_idx" ON "mcp_oauth_session" USING btree ("scope_id");--> statement-breakpoint
 CREATE INDEX "mcp_source_scope_id_idx" ON "mcp_source" USING btree ("scope_id");--> statement-breakpoint
+CREATE INDEX "openapi_composio_session_scope_id_idx" ON "openapi_composio_session" USING btree ("scope_id");--> statement-breakpoint
 CREATE INDEX "openapi_oauth_session_scope_id_idx" ON "openapi_oauth_session" USING btree ("scope_id");--> statement-breakpoint
 CREATE INDEX "openapi_operation_scope_id_idx" ON "openapi_operation" USING btree ("scope_id");--> statement-breakpoint
 CREATE INDEX "openapi_operation_source_id_idx" ON "openapi_operation" USING btree ("source_id");--> statement-breakpoint
 CREATE INDEX "openapi_source_scope_id_idx" ON "openapi_source" USING btree ("scope_id");--> statement-breakpoint
 CREATE INDEX "secret_scope_id_idx" ON "secret" USING btree ("scope_id");--> statement-breakpoint
 CREATE INDEX "secret_provider_idx" ON "secret" USING btree ("provider");--> statement-breakpoint
+CREATE INDEX "secret_owned_by_connection_id_idx" ON "secret" USING btree ("owned_by_connection_id");--> statement-breakpoint
 CREATE INDEX "source_scope_id_idx" ON "source" USING btree ("scope_id");--> statement-breakpoint
 CREATE INDEX "source_plugin_id_idx" ON "source" USING btree ("plugin_id");--> statement-breakpoint
 CREATE INDEX "tool_scope_id_idx" ON "tool" USING btree ("scope_id");--> statement-breakpoint

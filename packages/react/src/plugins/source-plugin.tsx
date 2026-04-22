@@ -50,7 +50,7 @@ export interface SourcePlugin {
    * `initialPreset` is provided when the user clicked a preset card.
    */
   readonly add: ComponentType<{
-    readonly onComplete: () => void;
+    readonly onComplete: (sourceId?: string) => void;
     readonly onCancel: () => void;
     readonly initialUrl?: string;
     readonly initialPreset?: string;

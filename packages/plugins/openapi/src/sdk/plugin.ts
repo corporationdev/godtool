@@ -39,6 +39,15 @@ import {
 } from "@executor/config";
 
 import {
+  ensureComposioManagedAuthConfig,
+  createComposioConnectLink,
+  deleteComposioConnectedAccount,
+  getComposioConnectedAccount,
+  ComposioClientError,
+} from "../composio/client";
+
+import {
+  OpenApiComposioError,
   OpenApiExtractionError,
   OpenApiOAuthError,
   OpenApiParseError,
@@ -62,9 +71,12 @@ import {
   type StoredSource,
 } from "./store";
 import {
+  ComposioSourceConfig,
   HeaderValue as HeaderValueSchema,
   InvocationConfig,
   OAuth2Auth,
+  type OpenApiInvocationAuth,
+  OpenApiComposioSession,
   OpenApiOAuthSession,
   OperationBinding,
   type HeaderValue as HeaderValueValue,
@@ -90,6 +102,8 @@ export interface OpenApiSpecConfig {
   readonly namespace?: string;
   readonly headers?: Record<string, HeaderValue>;
   readonly oauth2?: OAuth2Auth;
+  readonly composio?: ComposioSourceConfig;
+  readonly auth?: OpenApiInvocationAuth;
 }
 
 export interface OpenApiUpdateSourceInput {
@@ -99,6 +113,7 @@ export interface OpenApiUpdateSourceInput {
   /** Rewrite the source's OAuth2Auth — typically after a successful
    *  re-authenticate, to point at a freshly minted connection. */
   readonly oauth2?: OAuth2Auth;
+  readonly auth?: OpenApiInvocationAuth | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -167,6 +182,34 @@ export interface OpenApiCompleteOAuthInput {
   readonly error?: string;
 }
 
+export type StartComposioConnectInput =
+  | {
+      readonly scopeId: string;
+      readonly sourceId: string;
+      readonly callbackUrl: string;
+    }
+  | {
+      readonly scopeId: string;
+      readonly callbackUrl: string;
+      readonly app: string;
+      readonly authConfigId?: string | null;
+      readonly connectionId: string;
+      readonly displayName?: string;
+    };
+
+export interface StartComposioConnectResponse {
+  readonly redirectUrl: string;
+}
+
+export interface CompleteComposioConnectInput {
+  readonly state: string;
+  readonly connectedAccountId: string;
+}
+
+export interface CompleteComposioConnectResponse {
+  readonly connectionId: string;
+}
+
 /**
  * Errors any OpenAPI extension method may surface. The first three are
  * plugin-domain tagged errors that flow directly to clients (4xx, each
@@ -181,6 +224,7 @@ export type OpenApiExtensionFailure =
   | OpenApiParseError
   | OpenApiExtractionError
   | OpenApiOAuthError
+  | OpenApiComposioError
   | StorageFailure;
 
 export interface OpenApiPluginExtension {
@@ -212,6 +256,12 @@ export interface OpenApiPluginExtension {
   readonly completeOAuth: (
     input: OpenApiCompleteOAuthInput,
   ) => Effect.Effect<OAuth2Auth, OpenApiOAuthError>;
+  readonly startComposioConnect: (
+    input: StartComposioConnectInput,
+  ) => Effect.Effect<StartComposioConnectResponse, OpenApiComposioError>;
+  readonly completeComposioConnect: (
+    input: CompleteComposioConnectInput,
+  ) => Effect.Effect<CompleteComposioConnectResponse, OpenApiComposioError>;
 }
 
 // ---------------------------------------------------------------------------
@@ -321,6 +371,8 @@ export interface OpenApiPluginOptions {
   /** If provided, source add/remove is mirrored to executor.jsonc
    *  (best-effort — file errors are logged, not raised). */
   readonly configFile?: ConfigFileSink;
+  /** Composio API key. Required for sources with Composio managed auth. */
+  readonly composioApiKey?: string;
 }
 
 const toOpenApiSourceConfig = (
@@ -337,9 +389,17 @@ const toOpenApiSourceConfig = (
 const isHttpUrl = (s: string): boolean =>
   s.startsWith("http://") || s.startsWith("https://");
 
+const withQueryParam = (url: string, key: string, value: string): string => {
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
+};
+
 export const openApiPlugin = definePlugin(
   (options?: OpenApiPluginOptions) => {
     const httpClientLayer = options?.httpClientLayer ?? FetchHttpClient.layer;
+    const composioApiKey = options?.composioApiKey;
+
+    const COMPOSIO_PROVIDER_KEY = "composio" as const;
 
     type RebuildInput = {
       readonly specText: string;
@@ -350,6 +410,8 @@ export const openApiPlugin = definePlugin(
       readonly namespace?: string;
       readonly headers?: Record<string, HeaderValue>;
       readonly oauth2?: OAuth2Auth;
+      readonly composio?: ComposioSourceConfig;
+      readonly auth?: OpenApiInvocationAuth;
     };
 
     // ctx comes from the plugin runtime — the same instance is passed to
@@ -378,10 +440,11 @@ export const openApiPlugin = definePlugin(
 
         const baseUrl = input.baseUrl ?? resolveBaseUrl(result.servers);
         const oauth2 = input.oauth2 ?? undefined;
+        const auth = input.auth ?? oauth2;
         const invocationConfig = new InvocationConfig({
           baseUrl,
           headers: input.headers ?? {},
-          oauth2: oauth2 ? Option.some(oauth2) : Option.none(),
+          auth: auth ? Option.some(auth) : Option.none(),
         });
 
         const definitions = compileToolDefinitions(result.operations);
@@ -395,6 +458,7 @@ export const openApiPlugin = definePlugin(
           namespace: input.namespace,
           headers: input.headers,
           oauth2,
+          composio: input.composio,
         };
 
         const storedSource: StoredSource = {
@@ -479,6 +543,8 @@ export const openApiPlugin = definePlugin(
           namespace: existing.namespace,
           headers: existing.config.headers,
           oauth2: existing.config.oauth2,
+          composio: existing.config.composio,
+          auth: Option.getOrUndefined(existing.invocationConfig.auth),
         });
       });
 
@@ -505,6 +571,8 @@ export const openApiPlugin = definePlugin(
               namespace: config.namespace,
               headers: config.headers,
               oauth2: config.oauth2,
+              composio: config.composio,
+              auth: config.auth,
             });
           });
 
@@ -546,6 +614,7 @@ export const openApiPlugin = definePlugin(
               baseUrl: input.baseUrl,
               headers: input.headers,
               oauth2: input.oauth2,
+              auth: input.auth,
             }),
 
           startOAuth: (input) =>
@@ -825,6 +894,204 @@ export const openApiPlugin = definePlugin(
                   : new OpenApiOAuthError({ message: err.message }),
               ),
             ),
+
+          startComposioConnect: (input) =>
+            Effect.gen(function* () {
+              if (!composioApiKey) {
+                return yield* new OpenApiComposioError({
+                  message: "Composio API key is not configured",
+                });
+              }
+
+              const tokenScope = input.scopeId;
+              const connectConfig =
+                "sourceId" in input
+                  ? yield* Effect.gen(function* () {
+                      const source = yield* ctx.storage
+                        .getSource(input.sourceId, tokenScope)
+                        .pipe(
+                          Effect.mapError(
+                            (err) => new OpenApiComposioError({ message: err.message }),
+                          ),
+                        );
+                      if (!source) {
+                        return yield* new OpenApiComposioError({
+                          message: `Source "${input.sourceId}" not found`,
+                        });
+                      }
+                      if (!source.config.composio) {
+                        return yield* new OpenApiComposioError({
+                          message:
+                            `Source "${input.sourceId}" does not have Composio auth configured`,
+                        });
+                      }
+                      return {
+                        sourceId: input.sourceId,
+                        app: source.config.composio.app,
+                        authConfigId: source.config.composio.authConfigId,
+                        connectionId: source.config.composio.connectionId,
+                        displayName: source.name,
+                      } as const;
+                    })
+                  : {
+                      sourceId: null,
+                      app: input.app,
+                      authConfigId: input.authConfigId ?? null,
+                      connectionId: input.connectionId,
+                      displayName: input.displayName ?? input.app,
+                    };
+
+              const authConfigId =
+                connectConfig.authConfigId ??
+                (yield* Effect.tryPromise({
+                  try: () =>
+                    ensureComposioManagedAuthConfig(composioApiKey, connectConfig.app),
+                  catch: (err) =>
+                    new OpenApiComposioError({
+                      message:
+                        err instanceof ComposioClientError
+                          ? err.message
+                          : "Failed to resolve Composio auth config",
+                    }),
+                }));
+
+              const sessionId = randomUUID();
+
+              const session = new OpenApiComposioSession({
+                tokenScope,
+                sourceId: connectConfig.sourceId,
+                connectionId: connectConfig.connectionId,
+                app: connectConfig.app,
+                authConfigId,
+              });
+
+              yield* ctx.storage
+                .putComposioSession(sessionId, session)
+                .pipe(
+                  Effect.mapError((err) => new OpenApiComposioError({ message: err.message })),
+                );
+
+              const link = yield* Effect.tryPromise({
+                try: () =>
+                  createComposioConnectLink({
+                    apiKey: composioApiKey,
+                    app: connectConfig.app,
+                    authConfigId,
+                    userId: tokenScope,
+                    callbackUrl: withQueryParam(input.callbackUrl, "state", sessionId),
+                    alias: connectConfig.displayName,
+                  }),
+                catch: (err) =>
+                  new OpenApiComposioError({
+                    message:
+                      err instanceof ComposioClientError
+                        ? err.message
+                        : "Failed to create Composio connect link",
+                  }),
+              });
+
+              return { redirectUrl: link.redirectUrl };
+            }),
+
+          completeComposioConnect: (input) =>
+            ctx.transaction(
+              Effect.gen(function* () {
+                const session = yield* ctx.storage
+                  .getComposioSession(input.state)
+                  .pipe(
+                    Effect.mapError((err) => new OpenApiComposioError({ message: err.message })),
+                  );
+                if (!session) {
+                  return yield* new OpenApiComposioError({
+                    message: "Composio session not found or has expired",
+                  });
+                }
+
+                yield* ctx.storage
+                  .deleteComposioSession(input.state)
+                  .pipe(
+                    Effect.mapError((err) => new OpenApiComposioError({ message: err.message })),
+                  );
+
+                if (!composioApiKey) {
+                  return yield* new OpenApiComposioError({
+                    message: "Composio API key is not configured",
+                  });
+                }
+
+                const account = yield* Effect.tryPromise({
+                  try: () =>
+                    getComposioConnectedAccount(composioApiKey, input.connectedAccountId),
+                  catch: (err) =>
+                    new OpenApiComposioError({
+                      message:
+                        err instanceof ComposioClientError
+                          ? err.message
+                          : "Failed to verify Composio connected account",
+                    }),
+                });
+
+                if (account.status !== "ACTIVE") {
+                  return yield* new OpenApiComposioError({
+                    message: `Composio connected account is not active yet (status: ${account.status})`,
+                  });
+                }
+                if (account.appName && account.appName !== session.app) {
+                  return yield* new OpenApiComposioError({
+                    message: `Connected account app mismatch: expected ${session.app}, got ${account.appName}`,
+                  });
+                }
+                if (
+                  session.authConfigId !== null &&
+                  account.authConfigId !== null &&
+                  account.authConfigId !== session.authConfigId
+                ) {
+                  return yield* new OpenApiComposioError({
+                    message:
+                      `Connected account auth config mismatch: expected ${session.authConfigId}, got ${account.authConfigId}`,
+                  });
+                }
+
+                yield* ctx.connections
+                  .create(
+                    new CreateConnectionInput({
+                      id: ConnectionId.make(session.connectionId),
+                      scope: ScopeId.make(session.tokenScope),
+                      provider: COMPOSIO_PROVIDER_KEY,
+                      kind: "user",
+                      identityLabel: account.displayName ?? account.appName,
+                      accessToken: null,
+                      refreshToken: null,
+                      expiresAt: null,
+                      oauthScope: null,
+                      providerState: {
+                        connectedAccountId: input.connectedAccountId,
+                        app: session.app,
+                        authConfigId: session.authConfigId,
+                      },
+                    }),
+                  )
+                  .pipe(
+                    Effect.mapError(
+                      (err) =>
+                        new OpenApiComposioError({
+                          message:
+                            "message" in err
+                              ? (err as { message: string }).message
+                              : String(err),
+                        }),
+                    ),
+                  );
+
+                return { connectionId: session.connectionId };
+              }),
+            ).pipe(
+              Effect.mapError((err) =>
+                err instanceof OpenApiComposioError
+                  ? err
+                  : new OpenApiComposioError({ message: err.message }),
+              ),
+            ),
         } satisfies OpenApiPluginExtension;
       },
 
@@ -910,27 +1177,31 @@ export const openApiPlugin = definePlugin(
             { get: ctx.secrets.get },
           );
 
-          // If the source has OAuth2 auth, resolve a guaranteed-fresh
-          // access token from the backing Connection and inject the
-          // Authorization header (wins over a manually-set one). All the
-          // refresh complexity lives in the SDK — the plugin just asks.
-          if (Option.isSome(config.oauth2)) {
-            const auth = config.oauth2.value;
-            const accessToken = yield* ctx.connections
-              .accessToken(auth.connectionId)
-              .pipe(
-                Effect.mapError(
-                  (err) =>
-                    new Error(
-                      `OAuth connection resolution failed: ${
-                        "message" in err
-                          ? (err as { message: string }).message
-                          : String(err)
-                      }`,
-                    ),
+          if (Option.isSome(config.auth)) {
+            const auth = config.auth.value;
+            if (auth.kind === "oauth2") {
+              const accessToken = yield* ctx.connections
+                .accessToken(auth.connectionId)
+                .pipe(
+                  Effect.mapError(
+                    (err) =>
+                      new Error(
+                        `OAuth connection resolution failed: ${
+                          "message" in err
+                            ? (err as { message: string }).message
+                            : String(err)
+                        }`,
+                      ),
+                  ),
+                );
+              resolvedHeaders["Authorization"] = `Bearer ${accessToken}`;
+            } else {
+              return yield* Effect.fail(
+                new Error(
+                  `Composio-backed auth is configured for source "${source.namespace}", but request proxying is not implemented yet.`,
                 ),
               );
-            resolvedHeaders["Authorization"] = `Bearer ${accessToken}`;
+            }
           }
 
           const result = yield* invokeWithLayer(
@@ -1025,6 +1296,44 @@ export const openApiPlugin = definePlugin(
       // concrete refresh strategy is selected from `providerState.flow`
       // because the caller already persisted all the knobs we need.
       connectionProviders: (ctx): readonly ConnectionProvider[] => [
+        {
+          // Composio-managed connections never refresh locally — Composio
+          // handles token refresh server-side. The connection row exists
+          // only so the Connections tab can show it and the UI can check
+          // connect state. Removal mirrors the remote disconnect.
+          key: COMPOSIO_PROVIDER_KEY,
+          remove: (input) =>
+            Effect.gen(function* () {
+              if (!composioApiKey) return;
+              const connectedAccountId = input.providerState?.connectedAccountId;
+              if (typeof connectedAccountId !== "string" || connectedAccountId.length === 0) {
+                return;
+              }
+              yield* Effect.tryPromise({
+                try: () =>
+                  deleteComposioConnectedAccount(
+                    composioApiKey,
+                    connectedAccountId,
+                  ),
+                catch: (cause) => cause,
+              }).pipe(
+                Effect.catchAll((cause) =>
+                  cause instanceof ComposioClientError && cause.status === 404
+                    ? Effect.void
+                    : Effect.fail(
+                        new ConnectionRefreshError({
+                          connectionId: input.connectionId,
+                          message:
+                            cause instanceof Error
+                              ? cause.message
+                              : "Failed to delete Composio connected account",
+                          cause,
+                        }),
+                      ),
+                ),
+              );
+            }),
+        },
         {
           key: OPENAPI_OAUTH2_PROVIDER_KEY,
           refresh: (input: ConnectionRefreshInput) =>

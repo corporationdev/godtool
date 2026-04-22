@@ -4,13 +4,18 @@ import { ScopeId } from "@executor/sdk";
 import { InternalError } from "@executor/api";
 
 import {
+  OpenApiComposioError,
   OpenApiParseError,
   OpenApiExtractionError,
   OpenApiOAuthError,
 } from "../sdk/errors";
 import { SpecPreview } from "../sdk/preview";
 import { StoredSourceSchema } from "../sdk/store";
-import { OAuth2Auth } from "../sdk/types";
+import {
+  ComposioSourceConfig,
+  OAuth2Auth,
+  OpenApiInvocationAuth,
+} from "../sdk/types";
 
 // ---------------------------------------------------------------------------
 // Params
@@ -30,6 +35,8 @@ const AddSpecPayload = Schema.Struct({
   namespace: Schema.optional(Schema.String),
   headers: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
   oauth2: Schema.optional(OAuth2Auth),
+  composio: Schema.optional(ComposioSourceConfig),
+  auth: Schema.optional(OpenApiInvocationAuth),
 });
 
 const PreviewSpecPayload = Schema.Struct({
@@ -43,6 +50,7 @@ const UpdateSourcePayload = Schema.Struct({
   // Set after a successful re-authenticate to rewrite the source's
   // OAuth2Auth pointer to the freshly minted connection.
   oauth2: Schema.optional(OAuth2Auth),
+  auth: Schema.optional(Schema.NullOr(OpenApiInvocationAuth)),
 });
 
 const UpdateSourceResponse = Schema.Struct({
@@ -122,6 +130,35 @@ const OAuthCallbackUrlParams = Schema.Struct({
 });
 
 // ---------------------------------------------------------------------------
+// Composio payloads / responses
+// ---------------------------------------------------------------------------
+
+const StartComposioConnectPayload = Schema.Union(
+  Schema.Struct({
+    sourceId: Schema.String,
+    callbackBaseUrl: Schema.String,
+  }),
+  Schema.Struct({
+    callbackBaseUrl: Schema.String,
+    app: Schema.String,
+    authConfigId: Schema.optional(Schema.NullOr(Schema.String)),
+    connectionId: Schema.String,
+    displayName: Schema.optional(Schema.String),
+  }),
+);
+
+const StartComposioConnectResponse = Schema.Struct({
+  redirectUrl: Schema.String,
+});
+
+const ComposioCallbackUrlParams = Schema.Struct({
+  state: Schema.String,
+  connected_account_id: Schema.optional(Schema.String),
+  status: Schema.optional(Schema.String),
+  error: Schema.optional(Schema.String),
+});
+
+// ---------------------------------------------------------------------------
 // Errors with HTTP status
 // ---------------------------------------------------------------------------
 
@@ -130,6 +167,9 @@ const ExtractionError = OpenApiExtractionError.annotations(
   HttpApiSchema.annotations({ status: 400 }),
 );
 const OAuthError = OpenApiOAuthError.annotations(HttpApiSchema.annotations({ status: 400 }));
+const ComposioError = OpenApiComposioError.annotations(
+  HttpApiSchema.annotations({ status: 400 }),
+);
 
 // ---------------------------------------------------------------------------
 // Group
@@ -187,6 +227,20 @@ export class OpenApiGroup extends HttpApiGroup.make("openapi")
         ),
       ),
   )
+  .add(
+    HttpApiEndpoint.post("startComposioConnect")`/scopes/${scopeIdParam}/openapi/composio/start`
+      .setPayload(StartComposioConnectPayload)
+      .addSuccess(StartComposioConnectResponse),
+  )
+  .add(
+    HttpApiEndpoint.get("composioCallback", "/openapi/composio/callback")
+      .setUrlParams(ComposioCallbackUrlParams)
+      .addSuccess(
+        Schema.Unknown.annotations(
+          HttpApiSchema.annotations({ contentType: "text/html" }),
+        ),
+      ),
+  )
   // Errors declared once at the group level — every endpoint inherits.
   // Plugin domain errors carry their own HttpApiSchema status (4xx);
   // `InternalError` is the shared opaque 500 translated at the HTTP
@@ -194,4 +248,5 @@ export class OpenApiGroup extends HttpApiGroup.make("openapi")
   .addError(InternalError)
   .addError(ParseError)
   .addError(ExtractionError)
-  .addError(OAuthError) {}
+  .addError(OAuthError)
+  .addError(ComposioError) {}

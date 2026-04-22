@@ -71,7 +71,7 @@ export const connection = sqliteTable("connection", {
   provider: text('provider').notNull(),
   kind: text('kind').notNull(),
   identity_label: text('identity_label'),
-  access_token_secret_id: text('access_token_secret_id').notNull(),
+  access_token_secret_id: text('access_token_secret_id'),
   refresh_token_secret_id: text('refresh_token_secret_id'),
   expires_at: integer('expires_at'),
   scope: text('scope'),
@@ -217,4 +217,3 @@ export const blob = sqliteTable("blob", {
 }, (table) => [
   primaryKey({ columns: [table.namespace, table.key] }),
 ]);
-

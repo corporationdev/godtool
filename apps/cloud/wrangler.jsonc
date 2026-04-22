@@ -34,7 +34,6 @@
     {
       "binding": "HYPERDRIVE",
       "id": "f4e930a3e86d46b6b5a3400e8494570a",
-      "localConnectionString": "postgresql://postgres:postgres@127.0.0.1:5433/postgres",
     },
   ],
   "worker_loaders": [

@@ -26,3 +26,5 @@ export const updateOpenApiSource = OpenApiClient.mutation("openapi", "updateSour
 export const startOpenApiOAuth = OpenApiClient.mutation("openapi", "startOAuth");
 
 export const completeOpenApiOAuth = OpenApiClient.mutation("openapi", "completeOAuth");
+
+export const startComposioConnect = OpenApiClient.mutation("openapi", "startComposioConnect");
