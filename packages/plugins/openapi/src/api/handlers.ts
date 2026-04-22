@@ -35,7 +35,7 @@ const composioPopupHtml = (payload: unknown, channelName: string): string => {
   if(window.opener){window.opener.postMessage({channel:${JSON.stringify(channelName)},payload:${json}},"*");}
   window.close();
 })();
-<\/script></body></html>`;
+</script></body></html>`;
 };
 
 const OPENAPI_OAUTH_CHANNEL = "executor:openapi-oauth-result";

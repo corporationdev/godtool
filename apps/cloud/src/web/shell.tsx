@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useAtomValue, useAtomSet, Result } from "@effect-atom/atom-react";
 import {
   Building2,
