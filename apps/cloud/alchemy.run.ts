@@ -1,3 +1,4 @@
+import { resolveRuntimeContext } from "@executor/config/runtime";
 import alchemy from "alchemy";
 import {
   Assets,
@@ -8,6 +9,9 @@ import {
   WorkerLoader,
 } from "alchemy/cloudflare";
 import { CloudflareStateStore } from "alchemy/state";
+import { config } from "dotenv";
+
+config({ path: "./.env", override: false });
 
 const requireEnv = (name: string): string => {
   const value = process.env[name]?.trim();
@@ -22,33 +26,30 @@ const optionalEnv = (name: string): string | undefined => {
   return value ? value : undefined;
 };
 
-const addOptionalStringBinding = (
-  bindings: Record<string, unknown>,
-  name: string,
-) => {
+const addOptionalStringBinding = (bindings: Record<string, unknown>, name: string) => {
   const value = optionalEnv(name);
   if (value) {
     bindings[name] = value;
   }
 };
 
-const addOptionalSecretBinding = (
-  bindings: Record<string, unknown>,
-  name: string,
-) => {
+const addOptionalSecretBinding = (bindings: Record<string, unknown>, name: string) => {
   const value = optionalEnv(name);
   if (value) {
     bindings[name] = alchemy.secret(value);
   }
 };
 
-const siteUrl = new URL(requireEnv("VITE_PUBLIC_SITE_URL"));
+const stage = requireEnv("STAGE");
+const runtime = resolveRuntimeContext(stage);
+const siteUrl = new URL(runtime.appUrl);
 
 const app = await alchemy("godtool-cloud", {
   adopt: true,
   stateStore: process.env.CI
     ? (scope) => new CloudflareStateStore(scope, { forceUpdate: true })
     : undefined,
+  stage,
 });
 
 const hyperdrive = await Hyperdrive("cloud-db", {
@@ -73,8 +74,8 @@ const bindings: Bindings = {
   WORKOS_CLIENT_ID: requireEnv("WORKOS_CLIENT_ID"),
   WORKOS_COOKIE_PASSWORD: alchemy.secret(requireEnv("WORKOS_COOKIE_PASSWORD")),
   VITE_PUBLIC_SITE_URL: siteUrl.origin,
-  MCP_AUTHKIT_DOMAIN: requireEnv("MCP_AUTHKIT_DOMAIN"),
-  MCP_RESOURCE_ORIGIN: requireEnv("MCP_RESOURCE_ORIGIN"),
+  MCP_AUTHKIT_DOMAIN: runtime.authkitDomain,
+  MCP_RESOURCE_ORIGIN: siteUrl.origin,
 };
 
 addOptionalSecretBinding(bindings, "AUTUMN_SECRET_KEY");
@@ -100,7 +101,7 @@ export const cloud = await Worker("cloud", {
   limits: {
     cpu_ms: 300000,
   },
-  domains: [siteUrl.hostname],
+  domains: runtime.appHostname ? [runtime.appHostname] : undefined,
   bindings,
 });
 

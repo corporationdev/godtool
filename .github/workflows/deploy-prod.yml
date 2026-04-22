@@ -6,7 +6,7 @@ on:
       - main
 
 env:
-  ENV_TIER: prod
+  STAGE: prod
 
 concurrency:
   group: production
@@ -30,7 +30,7 @@ jobs:
       - name: Inject secrets
         uses: ./.github/actions/inject-secrets
         with:
-          env-tier: ${{ env.ENV_TIER }}
+          stage: ${{ env.STAGE }}
           op-service-account-token: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
 
       - name: Run production migrations
@@ -55,8 +55,8 @@ jobs:
       - name: Inject secrets
         uses: ./.github/actions/inject-secrets
         with:
-          env-tier: ${{ env.ENV_TIER }}
+          stage: ${{ env.STAGE }}
           op-service-account-token: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
 
       - name: Deploy production
-        run: bun run deploy:prod
+        run: bun run deploy:prod:ci

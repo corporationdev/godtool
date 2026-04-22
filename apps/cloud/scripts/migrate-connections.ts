@@ -13,20 +13,18 @@
 // script is the last place it's needed, and it ships with the migration.
 //
 // Run (dry-run):
-//   op run --env-file=.env.production -- bun run scripts/migrate-connections.ts
+//   bun setup --stage prod
+//   bun --env-file=.env bun run scripts/migrate-connections.ts
 // Run (apply):
-//   op run --env-file=.env.production -- bun run scripts/migrate-connections.ts --apply
+//   bun setup --stage prod
+//   bun --env-file=.env bun run scripts/migrate-connections.ts --apply
 
 import { randomUUID } from "node:crypto";
 import { Effect, Option, Schema } from "effect";
 import { FetchHttpClient } from "@effect/platform";
 import postgres from "postgres";
 
-import {
-  parse as parseOpenApi,
-  resolveSpecText,
-  OAuth2Auth,
-} from "@executor/plugin-openapi";
+import { parse as parseOpenApi, resolveSpecText, OAuth2Auth } from "@executor/plugin-openapi";
 
 const APPLY = process.argv.includes("--apply");
 
@@ -88,9 +86,7 @@ const extractAuthorizationUrl = async (
   if (!isRecord(spec)) return { url: null, note: "spec is not an object" };
   const components = isRecord(spec.components) ? spec.components : null;
   if (!components) return { url: null, note: "spec.components missing" };
-  const schemes = isRecord(components.securitySchemes)
-    ? components.securitySchemes
-    : null;
+  const schemes = isRecord(components.securitySchemes) ? components.securitySchemes : null;
   if (!schemes) return { url: null, note: "spec.components.securitySchemes missing" };
   const scheme = schemes[securitySchemeName];
   if (!isRecord(scheme)) {
@@ -164,9 +160,7 @@ const classifyRow = async (row: Row): Promise<Bucket> => {
     };
   }
 
-  const shape = isRecord(primary)
-    ? `{${Object.keys(primary).sort().join(",")}}`
-    : typeof primary;
+  const shape = isRecord(primary) ? `{${Object.keys(primary).sort().join(",")}}` : typeof primary;
   return { kind: "unknown", row, rawOAuth2: primary, shape };
 };
 
@@ -184,9 +178,7 @@ const main = async () => {
   const connectionString =
     process.env.DATABASE_URL || process.env.HYPERDRIVE_CONNECTION_STRING || "";
   if (!connectionString) {
-    console.error(
-      "DATABASE_URL not set (try: op run --env-file=.env.production -- ...)",
-    );
+    console.error("DATABASE_URL not set. Run `bun setup --stage prod` first.");
     process.exit(1);
   }
 
@@ -230,12 +222,9 @@ const main = async () => {
     console.log(`  unrecognized shape:        ${counts.unknown}\n`);
 
     const migratable = buckets.filter(
-      (b): b is Extract<Bucket, { kind: "legacy-migratable" }> =>
-        b.kind === "legacy-migratable",
+      (b): b is Extract<Bucket, { kind: "legacy-migratable" }> => b.kind === "legacy-migratable",
     );
-    const blocked = buckets.filter(
-      (b) => b.kind === "legacy-blocked" || b.kind === "unknown",
-    );
+    const blocked = buckets.filter((b) => b.kind === "legacy-blocked" || b.kind === "unknown");
 
     for (const b of blocked) {
       const ref = `${b.row.scope_id}/${b.row.id}`;
@@ -336,9 +325,7 @@ const main = async () => {
             where scope_id = ${b.row.scope_id} and id = any(${secretIds})
           `) as SecretRow[];
           const alreadyOwned = existing.filter(
-            (r) =>
-              r.owned_by_connection_id !== null &&
-              r.owned_by_connection_id !== connectionId,
+            (r) => r.owned_by_connection_id !== null && r.owned_by_connection_id !== connectionId,
           );
           if (alreadyOwned.length > 0) {
             throw new Error(
@@ -350,9 +337,7 @@ const main = async () => {
           // them via provider enumeration. Backfill the missing rows
           // pointing at `workos-vault` (the only writable provider on
           // cloud) so the new SDK's id-indexed fast path finds them.
-          const missing = secretIds.filter(
-            (id) => !existing.some((r) => r.id === id),
-          );
+          const missing = secretIds.filter((id) => !existing.some((r) => r.id === id));
           for (const id of missing) {
             const name =
               id === l.accessTokenSecretId
@@ -393,9 +378,7 @@ const main = async () => {
         console.log(`  [OK]   ${ref} -> ${connectionId}`);
       } catch (err) {
         failed++;
-        console.log(
-          `  [FAIL] ${ref}: ${err instanceof Error ? err.message : String(err)}`,
-        );
+        console.log(`  [FAIL] ${ref}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
 
