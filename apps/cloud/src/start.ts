@@ -55,7 +55,11 @@ const parseCookie = (cookieHeader: string | null, name: string): string | null =
 
 const mcpRequestMiddleware = createMiddleware({ type: "request" }).server(
   async ({ pathname, request, next }) => {
-    if (pathname === "/mcp" || pathname.startsWith("/.well-known/")) {
+    if (
+      pathname === "/mcp" ||
+      pathname.startsWith("/mcp/internal/") ||
+      pathname.startsWith("/.well-known/")
+    ) {
       const response = await mcpFetch(request);
       if (response) return response;
     }

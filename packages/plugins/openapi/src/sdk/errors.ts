@@ -27,3 +27,10 @@ export class OpenApiOAuthError extends Schema.TaggedError<OpenApiOAuthError>()(
     message: Schema.String,
   },
 ) {}
+
+export class OpenApiComposioError extends Schema.TaggedError<OpenApiComposioError>()(
+  "OpenApiComposioError",
+  {
+    message: Schema.String,
+  },
+) {}

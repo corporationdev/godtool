@@ -12,11 +12,20 @@ declare global {
       AXIOM_TRACES_SAMPLE_RATIO?: string;
       SENTRY_DSN?: string;
 
-      // Datastore (dev only — prod uses HYPERDRIVE binding)
+      // Datastore
       DATABASE_URL?: string;
+
+      // Composio managed auth
+      COMPOSIO_API_KEY?: string;
 
       // Billing
       AUTUMN_SECRET_KEY?: string;
+
+      // Blaxel sandboxes
+      BLAXEL_API_KEY?: string;
+      BLAXEL_WORKSPACE?: string;
+      BLAXEL_REGION?: string;
+      BLAXEL_TEMPLATE_IMAGE?: string;
 
       // MCP
       MCP_SESSION_REQUEST_SCOPED_RUNTIME?: string;
@@ -26,6 +35,7 @@ declare global {
 
       // Shared with frontend
       VITE_PUBLIC_SITE_URL?: string;
+      VITE_SERVER_URL?: string;
     }
   }
 }

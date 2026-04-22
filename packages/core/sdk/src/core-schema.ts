@@ -107,12 +107,16 @@ export const coreSchema = {
     },
   },
   // Connections — sign-in state for one identity against one remote
-  // provider. A Connection owns one or more `secret` rows (access +
-  // refresh tokens, etc.) via `secret.owned_by_connection_id`, and the
-  // SDK exposes `ctx.connections.accessToken(id)` which transparently
-  // refreshes the backing secrets when they're near expiry. Plugins
-  // contribute refresh behavior via `plugin.connectionProviders[].refresh`
-  // keyed by `provider`, same pattern as `secretProviders`.
+  // provider. Token-backed connections own one or more `secret` rows
+  // (access + refresh tokens, etc.) via `secret.owned_by_connection_id`,
+  // and the SDK exposes `ctx.connections.accessToken(id)` which
+  // transparently refreshes the backing secrets when they're near
+  // expiry. External connections (for example Composio-managed auth)
+  // have no local token secrets; they still appear in the Connections
+  // UI but `accessToken(id)` is unavailable for them. Plugins
+  // contribute refresh / removal behavior via
+  // `plugin.connectionProviders[]` keyed by `provider`, same pattern as
+  // `secretProviders`.
   //
   // `provider_state` is plugin-owned opaque JSON — token endpoint URL,
   // scopes, issuer, auth-server metadata — whatever the provider's
@@ -135,8 +139,9 @@ export const coreSchema = {
       /** Display label shown in the Connections UI. Usually the account
        *  email / handle / org name the user signed in as. */
       identity_label: { type: "string", required: false },
-      /** Stable id of the access-token secret. Always present. */
-      access_token_secret_id: { type: "string", required: true },
+      /** Stable id of the access-token secret. Null for external
+       *  connections that don't store local token material. */
+      access_token_secret_id: { type: "string", required: false },
       /** Stable id of the refresh-token secret. Null for flows that
        *  don't mint a refresh token (client_credentials, etc.). */
       refresh_token_secret_id: { type: "string", required: false },

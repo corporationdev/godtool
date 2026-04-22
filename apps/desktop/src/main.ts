@@ -325,7 +325,7 @@ const createWindow = (): BrowserWindow => {
     ...bounds,
     minWidth: 800,
     minHeight: 600,
-    title: "Executor",
+    title: "GOD TOOL",
     titleBarStyle: "hidden",
     trafficLightPosition: { x: 12, y: 12 },
     webPreferences: {
@@ -391,7 +391,7 @@ const createWindow = (): BrowserWindow => {
 const loadScope = async (scopePath: string): Promise<void> => {
   if (!mainWindow) return;
 
-  mainWindow.setTitle(`Executor — ${basename(scopePath)}`);
+  mainWindow.setTitle(`GOD TOOL — ${basename(scopePath)}`);
 
   if (isDev) {
     // In dev mode, the Vite dev server (via portless) handles both UI and API.
@@ -423,7 +423,7 @@ const selectFolder = async (): Promise<void> => {
   const result = await dialog.showOpenDialog(mainWindow, {
     properties: ["openDirectory"],
     title: "Select Scope Directory",
-    message: "Choose a folder to use as the executor scope",
+    message: "Choose a folder to use as the GOD TOOL scope",
   });
 
   if (result.canceled || result.filePaths.length === 0) return;
@@ -634,7 +634,7 @@ const loadingHTML = (scopePath: string): string => {
 </head>
 <body>
   <div class="container">
-    <div class="wordmark">executor</div>
+    <div class="wordmark">GOD TOOL</div>
     <div class="bar-wrap"><div class="bar"></div></div>
     <div class="scope">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3">
@@ -747,7 +747,7 @@ const welcomeHTML = (): string => {
 </head>
 <body>
   <div class="container">
-    <h1>Executor</h1>
+    <h1>GOD TOOL</h1>
     <p class="subtitle">Select a folder to set as your scope</p>
     <button class="open-btn" onclick="window.electronAPI.selectScope()">
       Open Folder

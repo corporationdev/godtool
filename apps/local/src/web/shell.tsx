@@ -1,11 +1,9 @@
 import { Link, Outlet, useLocation } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useAtomRefresh, Result } from "@effect-atom/atom-react";
+import { useAtomRefresh } from "@effect-atom/atom-react";
 import { sourcesAtom, toolsAtom } from "@executor/react/api/atoms";
-import { useSourcesWithPending } from "@executor/react/api/optimistic";
 import { useScope, useScopeInfo } from "@executor/react/api/scope-context";
 import { Button } from "@executor/react/components/button";
-import { SourceFavicon } from "@executor/react/components/source-favicon";
 import { CommandPalette } from "@executor/react/components/command-palette";
 import { openApiSourcePlugin } from "@executor/plugin-openapi/react";
 import { createMcpSourcePlugin } from "@executor/plugin-mcp/react";
@@ -221,56 +219,6 @@ function NavItem(props: { to: string; label: string; active: boolean; onNavigate
   );
 }
 
-// ── SourceList ───────────────────────────────────────────────────────────
-
-function SourceList(props: { pathname: string; onNavigate?: () => void }) {
-  const scopeId = useScope();
-  const sources = useSourcesWithPending(scopeId);
-
-  return Result.match(sources, {
-    onInitial: () => (
-      <div className="px-2.5 py-2 text-xs text-muted-foreground">Loading…</div>
-    ),
-    onFailure: () => (
-      <div className="px-2.5 py-2 text-xs text-muted-foreground">No sources yet</div>
-    ),
-    onSuccess: ({ value }) =>
-      value.length === 0 ? (
-        <div className="px-2.5 py-2 text-sm leading-relaxed text-muted-foreground">
-          No sources yet
-        </div>
-      ) : (
-        <div className="flex flex-col gap-px">
-          {value.map((s) => {
-            const detailPath = `/sources/${s.id}`;
-            const active =
-              props.pathname === detailPath || props.pathname.startsWith(`${detailPath}/`);
-            return (
-              <Link
-                key={s.id}
-                to="/sources/$namespace"
-                params={{ namespace: s.id }}
-                onClick={props.onNavigate}
-                className={[
-                  "group flex items-center gap-2 rounded-md px-2.5 py-1.5 text-xs transition-colors",
-                  active
-                    ? "bg-sidebar-active text-foreground font-medium"
-                    : "text-sidebar-foreground hover:bg-sidebar-active/60 hover:text-foreground",
-                ].join(" ")}
-              >
-                <SourceFavicon url={s.url} />
-                <span className="flex-1 truncate">{s.name}</span>
-                <span className="rounded bg-secondary/50 px-1 py-px text-xs font-medium text-muted-foreground">
-                  {s.kind}
-                </span>
-              </Link>
-            );
-          })}
-        </div>
-      ),
-  });
-}
-
 // ── ScopeLabel ───────────────────────────────────────────────────────────
 
 function ScopeLabel() {
@@ -312,7 +260,7 @@ function SidebarContent(props: {
       {props.showBrand !== false && (
         <div className="flex h-12 shrink-0 items-center border-b border-sidebar-border px-4">
           <Link to="/" className="flex items-center gap-1.5">
-            <span className="font-display text-base tracking-tight text-foreground">executor</span>
+            <span className="font-display text-base tracking-tight text-foreground">GOD TOOL</span>
           </Link>
         </div>
       )}
@@ -322,13 +270,6 @@ function SidebarContent(props: {
         <NavItem to="/" label="Sources" active={isHome} onNavigate={props.onNavigate} />
         <NavItem to="/connections" label="Connections" active={isConnections} onNavigate={props.onNavigate} />
         <NavItem to="/secrets" label="Secrets" active={isSecrets} onNavigate={props.onNavigate} />
-
-        {/* Sources list */}
-        <div className="mt-5 mb-1 px-2.5 text-xs font-medium uppercase tracking-widest text-muted-foreground">
-          <span>Sources</span>
-        </div>
-
-        <SourceList pathname={props.pathname} onNavigate={props.onNavigate} />
       </nav>
 
       {props.updateAvailable && props.latestVersion && (
@@ -433,7 +374,7 @@ export function Shell() {
             <div className="flex h-12 shrink-0 items-center justify-between border-b border-sidebar-border px-4">
               <Link to="/" className="flex items-center gap-1.5">
                 <span className="font-display text-base tracking-tight text-foreground">
-                  executor
+                  GOD TOOL
                 </span>
               </Link>
               <Button
@@ -486,7 +427,7 @@ export function Shell() {
             </svg>
           </Button>
           <Link to="/" className="flex items-center gap-1.5">
-            <span className="font-display text-base tracking-tight text-foreground">executor</span>
+            <span className="font-display text-base tracking-tight text-foreground">GOD TOOL</span>
           </Link>
           <div className="w-8 shrink-0" />
         </div>

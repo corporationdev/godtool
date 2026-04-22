@@ -10,9 +10,12 @@ import {
   OpenApi,
 } from "@effect/platform";
 import { NodeHttpServer } from "@effect/platform-node";
+import { vi } from "vitest";
 
 import {
+  ConnectionId,
   createExecutor,
+  CreateConnectionInput,
   definePlugin,
   makeTestConfig,
   Scope,
@@ -25,6 +28,7 @@ import {
 
 const TEST_SCOPE = "test-scope";
 import { openApiPlugin } from "./plugin";
+import { ComposioSourceConfig } from "./types";
 
 const autoApprove: InvokeOptions = { onElicitation: "accept-all" };
 
@@ -330,6 +334,107 @@ layer(TestLayer)("OpenAPI Plugin", (it) => {
 
       expect((error as { _tag: string })._tag).toBe("ToolInvocationError");
       expect((error as { message: string }).message).toContain("missing-token");
+    }),
+  );
+
+  it.effect("proxies Composio-backed invocations with the stored connected account", () =>
+    Effect.gen(function* () {
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            status: 200,
+            headers: { "content-type": "application/json" },
+            data: { ok: true, via: "composio" },
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        ),
+      );
+
+      try {
+        const httpClient = yield* HttpClient.HttpClient;
+        const clientLayer = Layer.succeed(HttpClient.HttpClient, httpClient);
+
+        const executor = yield* createExecutor(
+          makeTestConfig({
+            plugins: [
+              openApiPlugin({
+                httpClientLayer: clientLayer,
+                composioApiKey: "composio-test-key",
+              }),
+              memorySecretsPlugin(),
+            ] as const,
+          }),
+        );
+
+        yield* executor.connections.create(
+          new CreateConnectionInput({
+            id: ConnectionId.make("github-composio-conn"),
+            scope: ScopeId.make(TEST_SCOPE),
+            provider: "openapi-composio",
+            kind: "user",
+            identityLabel: "GitHub",
+            accessToken: null,
+            refreshToken: null,
+            expiresAt: null,
+            oauthScope: null,
+            providerState: {
+              connectedAccountId: "ca_test_123",
+              app: "github",
+              authConfigId: null,
+            },
+          }),
+        );
+
+        yield* executor.openapi.addSpec({
+          spec: specJson,
+          scope: TEST_SCOPE,
+          namespace: "composio",
+          baseUrl: "https://api.github.com",
+          composio: new ComposioSourceConfig({
+            kind: "composio",
+            app: "github",
+            authConfigId: null,
+            connectionId: "github-composio-conn",
+          }),
+          auth: new ComposioSourceConfig({
+            kind: "composio",
+            app: "github",
+            authConfigId: null,
+            connectionId: "github-composio-conn",
+          }),
+        });
+
+        const result = (yield* executor.tools.invoke(
+          "composio.items.getItem",
+          { itemId: "2" },
+          autoApprove,
+        )) as { status: number; data: unknown; error: unknown };
+
+        expect(result.status).toBe(200);
+        expect(result.error).toBeNull();
+        expect(result.data).toEqual({ ok: true, via: "composio" });
+
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+        const [url, init] = fetchSpy.mock.calls[0] ?? [];
+        expect(url).toBe("https://backend.composio.dev/api/v3/tools/execute/proxy");
+
+        const payload = JSON.parse(String(init?.body)) as {
+          connected_account_id: string;
+          endpoint: string;
+          method: string;
+          parameters?: Array<{ name: string; value: string; in: string }>;
+        };
+
+        expect(payload.connected_account_id).toBe("ca_test_123");
+        expect(payload.endpoint).toBe("https://api.github.com/items/2");
+        expect(payload.method).toBe("GET");
+        expect(payload.parameters ?? []).toEqual([]);
+      } finally {
+        fetchSpy.mockRestore();
+      }
     }),
   );
 

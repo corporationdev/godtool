@@ -19,6 +19,7 @@ import { HttpApp, HttpServerRequest, HttpServerResponse } from "@effect/platform
 import * as Sentry from "@sentry/cloudflare";
 import { Context, Effect, Layer, Option, Schema } from "effect";
 import { createRemoteJWKSet, jwtVerify } from "jose";
+import { WorkOS } from "@workos-inc/node/worker";
 
 import { TelemetryLive } from "./services/telemetry";
 
@@ -44,6 +45,7 @@ const CORS_PREFLIGHT_HEADERS = {
 } as const;
 
 const WWW_AUTHENTICATE = `Bearer resource_metadata="${RESOURCE_ORIGIN}/.well-known/oauth-protected-resource"`;
+const INTERNAL_TOOL_CALL_PATH_PREFIX = "/mcp/internal/tool-call/";
 
 // ---------------------------------------------------------------------------
 // Response helpers
@@ -77,6 +79,8 @@ export type VerifiedToken = {
   accountId: string;
   /** The WorkOS organization ID, if the session has org context. */
   organizationId: string | null;
+  /** Where the organization context came from. */
+  organizationSource: "token" | "membership" | "none";
 };
 
 export class McpAuth extends Context.Tag("@executor/cloud/McpAuth")<
@@ -86,25 +90,68 @@ export class McpAuth extends Context.Tag("@executor/cloud/McpAuth")<
   }
 >() {}
 
-export const McpAuthLive = Layer.succeed(McpAuth, {
-  verifyBearer: (request) =>
-    Effect.promise(async () => {
-      const authHeader = request.headers.get("authorization");
-      if (!authHeader?.startsWith(BEARER_PREFIX)) return null;
-      try {
-        const { payload } = await jwtVerify(authHeader.slice(BEARER_PREFIX.length), jwks, {
-          issuer: AUTHKIT_DOMAIN,
-        });
+export const McpAuthLive = Layer.effect(
+  McpAuth,
+  Effect.succeed({
+    verifyBearer: (request: Request) =>
+      Effect.gen(function* () {
+        const authHeader = request.headers.get("authorization");
+        if (!authHeader?.startsWith(BEARER_PREFIX)) return null;
+
+        const verified = yield* Effect.tryPromise(() =>
+          jwtVerify(authHeader.slice(BEARER_PREFIX.length), jwks, {
+            issuer: AUTHKIT_DOMAIN,
+          }),
+        ).pipe(Effect.option);
+
+        if (Option.isNone(verified)) return null;
+
+        const { payload } = verified.value;
         if (!payload.sub) return null;
+
+        const organizationIdFromToken = (payload.org_id as string | undefined) ?? null;
+        if (organizationIdFromToken) {
+          return {
+            accountId: payload.sub,
+            organizationId: organizationIdFromToken,
+            organizationSource: "token" as const,
+          };
+        }
+
+        // Remote MCP OAuth tokens can be org-less even when the same user
+        // has active memberships. Mirror the web auth callback behavior and
+        // hydrate a default org from memberships so approval in Claude can
+        // still establish an MCP session.
+        const memberships = yield* listUserMemberships(payload.sub).pipe(
+          Effect.orElseSucceed(() => ({ data: [] })),
+        );
+        const membership =
+          memberships.data.find((candidate) => candidate.status === "active") ??
+          memberships.data[0];
+
         return {
           accountId: payload.sub,
-          organizationId: (payload.org_id as string | undefined) ?? null,
+          organizationId: membership?.organizationId ?? null,
+          organizationSource: membership ? "membership" : "none",
         };
-      } catch {
-        return null;
-      }
-    }),
-});
+      }),
+  }),
+);
+
+const listUserMemberships = (userId: string) =>
+  Effect.tryPromise(async () => {
+    const apiKey = env.WORKOS_API_KEY;
+    const clientId = env.WORKOS_CLIENT_ID;
+    if (!apiKey || !clientId) {
+      throw new Error("WORKOS_API_KEY and WORKOS_CLIENT_ID are required for MCP auth");
+    }
+
+    const workos = new WorkOS({ apiKey, clientId });
+    return workos.userManagement.listOrganizationMemberships({
+      userId,
+      statuses: ["active", "pending"],
+    });
+  });
 
 // ---------------------------------------------------------------------------
 // Client fingerprint capture
@@ -285,6 +332,7 @@ const annotateMcpRequest = (
       "mcp.auth.has_bearer": (request.headers.get("authorization") ?? "").startsWith(BEARER_PREFIX),
       "mcp.auth.verified": !!opts.token,
       "mcp.auth.organization_id": opts.token?.organizationId ?? "",
+      "mcp.auth.organization_source": opts.token?.organizationSource ?? "none",
       "mcp.auth.account_id": opts.token?.accountId ?? "",
       "cf.country": cf.country ?? "",
       "cf.city": cf.city ?? "",
@@ -552,7 +600,12 @@ const dispatchDelete = (request: Request) => {
 // App
 // ---------------------------------------------------------------------------
 
-type McpRoute = "mcp" | "oauth-protected-resource" | "oauth-authorization-server" | null;
+type McpRoute =
+  | "mcp"
+  | "internal-tool-call"
+  | "oauth-protected-resource"
+  | "oauth-authorization-server"
+  | null;
 
 /**
  * Returns the MCP route type for a pathname, or `null` if the path isn't owned
@@ -564,9 +617,19 @@ type McpRoute = "mcp" | "oauth-protected-resource" | "oauth-authorization-server
  */
 export const classifyMcpPath = (pathname: string): McpRoute => {
   if (pathname === "/mcp") return "mcp";
+  if (pathname.startsWith(INTERNAL_TOOL_CALL_PATH_PREFIX)) return "internal-tool-call";
   if (pathname === "/.well-known/oauth-protected-resource") return "oauth-protected-resource";
   if (pathname === "/.well-known/oauth-authorization-server") return "oauth-authorization-server";
   return null;
+};
+
+const readInternalToolCallSessionId = (pathname: string): string | null => {
+  if (!pathname.startsWith(INTERNAL_TOOL_CALL_PATH_PREFIX)) {
+    return null;
+  }
+
+  const encoded = pathname.slice(INTERNAL_TOOL_CALL_PATH_PREFIX.length);
+  return encoded.length > 0 ? decodeURIComponent(encoded) : null;
 };
 
 /**
@@ -582,11 +645,22 @@ export const mcpApp: Effect.Effect<
 > = Effect.gen(function* () {
   const httpRequest = yield* HttpServerRequest.HttpServerRequest;
   const request = httpRequest.source as Request;
-  const route = classifyMcpPath(new URL(request.url).pathname);
+  const pathname = new URL(request.url).pathname;
+  const route = classifyMcpPath(pathname);
 
   if (request.method === "OPTIONS") return corsPreflight;
   if (route === "oauth-protected-resource") return yield* protectedResourceMetadata;
   if (route === "oauth-authorization-server") return yield* authorizationServerMetadata;
+  if (route === "internal-tool-call") {
+    const sessionId = readInternalToolCallSessionId(pathname);
+    if (!sessionId) {
+      return jsonResponse({ ok: false, error: { message: "Missing MCP session id" } }, 400);
+    }
+    if (request.method !== "POST") {
+      return jsonResponse({ ok: false, error: { message: "Method not allowed" } }, 405);
+    }
+    return yield* forwardToExistingSession(request, sessionId, false);
+  }
 
   const auth = yield* McpAuth;
   const token = yield* auth.verifyBearer(request);

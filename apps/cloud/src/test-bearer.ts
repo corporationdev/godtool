@@ -18,5 +18,6 @@ export const parseTestBearer = (token: string): VerifiedToken | null => {
   return {
     accountId,
     organizationId: organizationId === NO_ORG_SENTINEL ? null : organizationId,
+    organizationSource: organizationId === NO_ORG_SENTINEL ? "none" : "token",
   };
 };

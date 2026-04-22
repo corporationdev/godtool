@@ -111,6 +111,14 @@ export class ConnectionRefreshNotSupportedError extends Schema.TaggedError<Conne
   },
 ) {}
 
+export class ConnectionAccessTokenNotAvailableError extends Schema.TaggedError<ConnectionAccessTokenNotAvailableError>()(
+  "ConnectionAccessTokenNotAvailableError",
+  {
+    connectionId: ConnectionId,
+    provider: Schema.String,
+  },
+) {}
+
 // ---------------------------------------------------------------------------
 // Union type for convenience in signatures.
 // ---------------------------------------------------------------------------
@@ -127,4 +135,5 @@ export type ExecutorError =
   | SecretOwnedByConnectionError
   | ConnectionNotFoundError
   | ConnectionProviderNotRegisteredError
-  | ConnectionRefreshNotSupportedError;
+  | ConnectionRefreshNotSupportedError
+  | ConnectionAccessTokenNotAvailableError;

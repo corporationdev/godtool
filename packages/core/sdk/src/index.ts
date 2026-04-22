@@ -42,6 +42,7 @@ export {
   ConnectionNotFoundError,
   ConnectionProviderNotRegisteredError,
   ConnectionRefreshNotSupportedError,
+  ConnectionAccessTokenNotAvailableError,
   type ExecutorError,
 } from "./errors";
 
@@ -87,6 +88,7 @@ export {
   ConnectionRefreshError,
   type ConnectionProvider,
   type ConnectionRefreshInput,
+  type ConnectionRemovalInput,
   type ConnectionRefreshResult,
 } from "./connections";
 

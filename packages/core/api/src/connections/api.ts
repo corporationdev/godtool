@@ -27,7 +27,7 @@ const ConnectionRefResponse = Schema.Struct({
   provider: Schema.String,
   kind: ConnectionKind,
   identityLabel: Schema.NullOr(Schema.String),
-  accessTokenSecretId: SecretId,
+  accessTokenSecretId: Schema.NullOr(SecretId),
   refreshTokenSecretId: Schema.NullOr(SecretId),
   expiresAt: Schema.NullOr(Schema.Number),
   oauthScope: Schema.NullOr(Schema.String),

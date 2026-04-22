@@ -303,7 +303,7 @@ function openOAuthPopup(
 // ---------------------------------------------------------------------------
 
 export default function AddMcpSource(props: {
-  onComplete: () => void;
+  onComplete: (sourceId?: string) => void;
   onCancel: () => void;
   initialUrl?: string;
   initialPreset?: string;
@@ -534,7 +534,7 @@ export default function AddMcpSource(props: {
         },
         reactivityKeys: sourceWriteKeys,
       });
-      props.onComplete();
+      props.onComplete(slugNamespace || undefined);
     } catch (e) {
       dispatch({
         type: "add-fail",
@@ -608,7 +608,7 @@ export default function AddMcpSource(props: {
         },
         reactivityKeys: sourceWriteKeys,
       });
-      props.onComplete();
+      props.onComplete(slugNamespace || undefined);
     } catch (e) {
       setStdioError(e instanceof Error ? e.message : "Failed to add source");
       setStdioAdding(false);

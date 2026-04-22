@@ -18,14 +18,18 @@ export {
 } from "./store";
 
 export {
+  GraphqlComposioError,
   GraphqlIntrospectionError,
   GraphqlExtractionError,
   GraphqlInvocationError,
 } from "./errors";
 
 export {
+  ComposioSourceConfig,
   ExtractedField,
   ExtractionResult,
+  GraphqlComposioSession,
+  GraphqlInvocationAuth,
   GraphqlArgument,
   GraphqlOperationKind,
   InvocationConfig,

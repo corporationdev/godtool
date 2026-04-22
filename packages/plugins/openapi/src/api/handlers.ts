@@ -4,7 +4,7 @@ import { Context, Effect } from "effect";
 import { runOAuthCallback } from "@executor/plugin-oauth2/http";
 
 import { addGroup, capture, InternalError } from "@executor/api";
-import { OpenApiOAuthError } from "../sdk/errors";
+import { OpenApiComposioError, OpenApiOAuthError } from "../sdk/errors";
 import type {
   OpenApiPluginExtension,
   HeaderValue,
@@ -12,6 +12,31 @@ import type {
 } from "../sdk/plugin";
 import { OAuth2Auth } from "../sdk/types";
 import { OpenApiGroup } from "./group";
+
+const OPENAPI_COMPOSIO_CHANNEL = "executor:openapi-composio-result";
+
+const toComposioPopupErrorMessage = (error: unknown): string => {
+  if (error instanceof OpenApiComposioError) return error.message;
+  return "Composio authentication failed";
+};
+
+/** Render a minimal HTML popup that posts `payload` back to the opener
+ *  via BroadcastChannel and then closes itself. */
+const composioPopupHtml = (payload: unknown, channelName: string): string => {
+  const json = JSON.stringify(payload)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026");
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Connecting…</title></head><body><script>
+(function(){
+  var ch=new BroadcastChannel(${JSON.stringify(channelName)});
+  ch.postMessage(${json});
+  ch.close();
+  if(window.opener){window.opener.postMessage({channel:${JSON.stringify(channelName)},payload:${json}},"*");}
+  window.close();
+})();
+</script></body></html>`;
+};
 
 const OPENAPI_OAUTH_CHANNEL = "executor:openapi-oauth-result";
 
@@ -71,6 +96,8 @@ export const OpenApiHandlers = HttpApiBuilder.group(ExecutorApiWithOpenApi, "ope
           namespace: payload.namespace,
           headers: payload.headers as Record<string, HeaderValue> | undefined,
           oauth2: payload.oauth2,
+          composio: payload.composio,
+          auth: payload.auth,
         });
         return {
           toolCount: result.toolCount,
@@ -92,6 +119,7 @@ export const OpenApiHandlers = HttpApiBuilder.group(ExecutorApiWithOpenApi, "ope
           baseUrl: payload.baseUrl,
           headers: payload.headers as Record<string, HeaderValue> | undefined,
           oauth2: payload.oauth2,
+          auth: payload.auth === undefined ? undefined : payload.auth,
         } as OpenApiUpdateSourceInput);
         return { updated: true };
       })),
@@ -157,6 +185,57 @@ export const OpenApiHandlers = HttpApiBuilder.group(ExecutorApiWithOpenApi, "ope
           channelName: OPENAPI_OAUTH_CHANNEL,
         });
         return yield* HttpServerResponse.html(html);
+      })),
+    )
+    .handle("startComposioConnect", ({ path, payload }) =>
+      capture(Effect.gen(function* () {
+        const ext = yield* OpenApiExtensionService;
+        if ("sourceId" in payload) {
+          return yield* ext.startComposioConnect({
+            scopeId: path.scopeId,
+            sourceId: payload.sourceId,
+            callbackUrl: payload.callbackBaseUrl,
+          });
+        }
+        return yield* ext.startComposioConnect({
+          scopeId: path.scopeId,
+          callbackUrl: payload.callbackBaseUrl,
+          app: payload.app,
+          authConfigId: payload.authConfigId ?? null,
+          connectionId: payload.connectionId,
+          displayName: payload.displayName,
+        });
+      })),
+    )
+    .handle("composioCallback", ({ urlParams }) =>
+      // Composio popup: always returns 200 HTML, posts result via BroadcastChannel.
+      capture(Effect.gen(function* () {
+        const ext = yield* OpenApiExtensionService;
+
+        if (urlParams.error || !urlParams.connected_account_id) {
+          const msg = urlParams.error ?? "Composio auth was cancelled or failed";
+          const html = composioPopupHtml({ ok: false, error: msg }, OPENAPI_COMPOSIO_CHANNEL);
+          return yield* HttpServerResponse.html(html);
+        }
+
+        const result = yield* ext
+          .completeComposioConnect({
+            state: urlParams.state,
+            connectedAccountId: urlParams.connected_account_id,
+          })
+          .pipe(
+            Effect.match({
+              onSuccess: (r) => ({ ok: true as const, connectionId: r.connectionId }),
+              onFailure: (err) => ({
+                ok: false as const,
+                error: toComposioPopupErrorMessage(err),
+              }),
+            }),
+          );
+
+        return yield* HttpServerResponse.html(
+          composioPopupHtml(result, OPENAPI_COMPOSIO_CHANNEL),
+        );
       })),
     ),
 );

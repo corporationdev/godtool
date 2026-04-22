@@ -3,12 +3,8 @@ import CursorIcon from "@lobehub/icons/es/Cursor/components/Mono";
 import ClaudeIcon from "@lobehub/icons/es/Claude/components/Color";
 import OpenCodeIcon from "@lobehub/icons/es/OpenCode/components/Mono";
 import { CodeBlock } from "./code-block";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "./tabs";
 import { CardStack, CardStackHeader, CardStackContent } from "./card-stack";
 import { cn } from "../lib/utils";
-import { useScopeInfo } from "../api/scope-context";
-
-type TransportMode = "stdio" | "http";
 
 const SUPPORTED_AGENTS = [
   { key: "cursor", label: "Cursor", Icon: CursorIcon },
@@ -16,40 +12,19 @@ const SUPPORTED_AGENTS = [
   { key: "opencode", label: "OpenCode", Icon: OpenCodeIcon },
 ] as const;
 
-const isDev = import.meta.env.DEV;
-const isLocal =
-  typeof window !== "undefined" &&
-  (window.location.hostname === "localhost" ||
-    window.location.hostname === "127.0.0.1" ||
-    window.location.hostname.endsWith(".localhost"));
-
 export function McpInstallCard(props: { className?: string }) {
-  const showStdio = isLocal;
-  const [mode, setMode] = useState<TransportMode>(showStdio ? "stdio" : "http");
   const [origin, setOrigin] = useState<string | null>(null);
-  const scopeInfo = useScopeInfo();
+  const serverOrigin = import.meta.env.VITE_SERVER_URL || origin;
 
   useEffect(() => {
     setOrigin(window.location.origin);
   }, []);
 
-  const scopeFlag = scopeInfo.dir ? ` --scope ${JSON.stringify(scopeInfo.dir)}` : "";
+  const command = serverOrigin
+    ? `npx add-mcp "${serverOrigin}/mcp" --transport http --name "executor"`
+    : 'npx add-mcp "<this-server>/mcp" --transport http --name "executor"';
 
-  const command =
-    mode === "stdio"
-      ? isDev
-        ? `npx add-mcp "bun run dev:cli mcp${scopeFlag}" --name "executor"`
-        : `npx add-mcp "executor mcp${scopeFlag}" --name "executor"`
-      : origin
-        ? `npx add-mcp "${origin}/mcp" --transport http --name "executor"`
-        : 'npx add-mcp "<this-server>/mcp" --transport http --name "executor"';
-
-  const subtitle =
-    mode === "stdio"
-      ? isDev
-        ? "Uses the repo-local dev CLI. Run from the repository root."
-        : "Requires the executor CLI on your PATH."
-      : "Connect to executor as a remote MCP server over streamable HTTP.";
+  const subtitle = "Connect to GOD TOOL as a remote MCP server over streamable HTTP.";
 
   const agentLogos = (
     <div className="flex shrink-0 items-center gap-2 text-muted-foreground">
@@ -75,17 +50,7 @@ export function McpInstallCard(props: { className?: string }) {
   );
 
   const header = (
-    <CardStackHeader
-      className="items-start pt-3 pb-1"
-      rightSlot={
-        showStdio ? (
-          <TabsList>
-            <TabsTrigger value="http">Remote HTTP</TabsTrigger>
-            <TabsTrigger value="stdio">Standard I/O</TabsTrigger>
-          </TabsList>
-        ) : undefined
-      }
-    >
+    <CardStackHeader className="items-start pt-3 pb-1">
       <div className="flex min-w-0 flex-col gap-0.5">
         <span className="text-sm font-semibold text-foreground">Connect an agent</span>
         <span className="text-xs font-normal text-muted-foreground">{subtitle}</span>
@@ -104,18 +69,8 @@ export function McpInstallCard(props: { className?: string }) {
 
   return (
     <CardStack className={props.className}>
-      {showStdio ? (
-        <Tabs value={mode} onValueChange={(v) => setMode(v as TransportMode)}>
-          {header}
-          <TabsContent value="http">{body}</TabsContent>
-          <TabsContent value="stdio">{body}</TabsContent>
-        </Tabs>
-      ) : (
-        <>
-          {header}
-          {body}
-        </>
-      )}
+      {header}
+      {body}
     </CardStack>
   );
 }

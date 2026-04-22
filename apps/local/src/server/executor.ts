@@ -95,10 +95,18 @@ const makeScopeId = (cwd: string): string => {
 
 const createLocalPlugins = (configFile: ConfigFileSink) =>
   [
-    openApiPlugin({ configFile }),
+    openApiPlugin({
+      configFile,
+      composioApiKey: process.env.COMPOSIO_API_KEY || undefined,
+    }),
     mcpPlugin({ dangerouslyAllowStdioMCP: true, configFile }),
-    googleDiscoveryPlugin(),
-    graphqlPlugin({ configFile }),
+    googleDiscoveryPlugin({
+      composioApiKey: process.env.COMPOSIO_API_KEY || undefined,
+    }),
+    graphqlPlugin({
+      configFile,
+      composioApiKey: process.env.COMPOSIO_API_KEY || undefined,
+    }),
     keychainPlugin(),
     fileSecretsPlugin(),
     onepasswordPlugin(),

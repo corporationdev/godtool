@@ -1,3 +1,8 @@
+export interface GraphqlPresetComposio {
+  readonly app: string;
+  readonly authConfigId?: string;
+}
+
 export interface GraphqlPreset {
   readonly id: string;
   readonly name: string;
@@ -5,6 +10,7 @@ export interface GraphqlPreset {
   readonly url: string;
   readonly icon?: string;
   readonly featured?: boolean;
+  readonly composio?: GraphqlPresetComposio;
 }
 
 export const graphqlPresets: readonly GraphqlPreset[] = [
@@ -31,6 +37,7 @@ export const graphqlPresets: readonly GraphqlPreset[] = [
     url: "https://api.linear.app/graphql",
     icon: "https://linear.app/favicon.ico",
     featured: true,
+    composio: { app: "linear" },
   },
   {
     id: "monday",

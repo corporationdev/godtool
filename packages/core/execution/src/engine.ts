@@ -112,6 +112,7 @@ export const formatPausedExecution = (
     lines.push(`\nOpen this URL in a browser:\n${req.url}`);
     lines.push("\nAfter the browser flow, resume with the executionId below:");
   } else {
+    lines.push("\nAsk the user for the requested information before continuing.");
     lines.push("\nResume with the executionId below and a response matching the requested schema:");
     const schema = req.requestedSchema;
     if (schema && Object.keys(schema).length > 0) {

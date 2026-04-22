@@ -29,6 +29,7 @@ import type {
 } from "./elicitation";
 import type {
   ConnectionNotFoundError,
+  ConnectionAccessTokenNotAvailableError,
   ConnectionProviderNotRegisteredError,
   ConnectionRefreshNotSupportedError,
   SecretOwnedByConnectionError,
@@ -158,10 +159,11 @@ export interface PluginCtx<TStore = unknown> {
   };
 
   /** Connections — product-level sign-in state. Owns backing secret
-   *  rows via `secret.owned_by_connection_id`. Plugins call
-   *  `connections.accessToken(id)` at invoke time to get a guaranteed-
-   *  fresh token (the SDK handles refresh via the registered provider
-   *  keyed by `connection.provider`). */
+   *  rows via `secret.owned_by_connection_id` when local token material
+   *  exists. External auth systems can also surface as Connections
+   *  without local secrets; those list/remove normally but
+   *  `connections.accessToken(id)` fails with
+   *  `ConnectionAccessTokenNotAvailableError`. */
   readonly connections: {
     readonly get: (
       id: string,
@@ -192,6 +194,7 @@ export interface PluginCtx<TStore = unknown> {
       string,
       | ConnectionNotFoundError
       | ConnectionProviderNotRegisteredError
+      | ConnectionAccessTokenNotAvailableError
       | ConnectionRefreshNotSupportedError
       | ConnectionRefreshError
       | StorageFailure

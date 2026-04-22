@@ -1,12 +1,17 @@
 export { googleDiscoveryPlugin } from "./plugin";
 export type {
   GoogleDiscoveryAddSourceInput,
+  GoogleDiscoveryCompleteComposioConnectInput,
+  GoogleDiscoveryCompleteComposioConnectResponse,
   GoogleDiscoveryOAuthAuthResult,
   GoogleDiscoveryOAuthCompleteInput,
   GoogleDiscoveryOAuthStartInput,
   GoogleDiscoveryOAuthStartResponse,
   GoogleDiscoveryPluginExtension,
+  GoogleDiscoveryPluginOptions,
   GoogleDiscoveryProbeResult,
+  GoogleDiscoveryStartComposioConnectInput,
+  GoogleDiscoveryStartComposioConnectResponse,
 } from "./plugin";
 export { extractGoogleDiscoveryManifest } from "./document";
 export {
@@ -36,8 +41,12 @@ export {
   GoogleDiscoveryParameterLocation,
   GoogleDiscoveryStoredSourceData,
 } from "./types";
-export type { GoogleDiscoveryOAuthSession } from "./types";
+export type {
+  GoogleDiscoveryComposioSession,
+  GoogleDiscoveryOAuthSession,
+} from "./types";
 export {
+  GoogleDiscoveryComposioError,
   GoogleDiscoveryInvocationError,
   GoogleDiscoveryOAuthError,
   GoogleDiscoveryParseError,

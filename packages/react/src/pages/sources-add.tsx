@@ -51,7 +51,14 @@ export function SourcesAddPage(props: {
             initialUrl={url}
             initialPreset={preset}
             initialNamespace={namespace}
-            onComplete={() => {
+            onComplete={(sourceId) => {
+              if (sourceId) {
+                void navigate({
+                  to: "/sources/$namespace",
+                  params: { namespace: sourceId },
+                });
+                return;
+              }
               void navigate({ to: "/" });
             }}
             onCancel={() => {

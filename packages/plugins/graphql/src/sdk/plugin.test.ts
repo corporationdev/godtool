@@ -1,7 +1,10 @@
 import { describe, it, expect } from "@effect/vitest";
 import { Effect } from "effect";
+import { vi } from "vitest";
 
 import {
+  ConnectionId,
+  CreateConnectionInput,
   createExecutor,
   makeTestConfig,
   Scope,
@@ -249,12 +252,189 @@ describe("graphqlPlugin", () => {
         introspectionJson,
         namespace: "via_static",
       });
-      expect(result).toEqual({ toolCount: 2 });
+      expect(result).toEqual({ toolCount: 2, namespace: "via_static" });
 
       const tools = yield* executor.tools.list();
       expect(
         tools.filter((t) => t.sourceId === "via_static").length,
       ).toBe(2);
+    }),
+  );
+
+  it.effect("registers tools through Composio-backed introspection", () =>
+    Effect.gen(function* () {
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            status: 200,
+            headers: { "content-type": "application/json" },
+            data: { data: introspectionResult },
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        ),
+      );
+
+      try {
+        const executor = yield* createExecutor(
+          makeTestConfig({
+            plugins: [graphqlPlugin({ composioApiKey: "composio-test-key" })] as const,
+          }),
+        );
+
+        yield* executor.connections.create(
+          new CreateConnectionInput({
+            id: ConnectionId.make("linear-composio-conn"),
+            scope: ScopeId.make(TEST_SCOPE),
+            provider: "graphql-composio",
+            kind: "user",
+            identityLabel: "Linear",
+            accessToken: null,
+            refreshToken: null,
+            expiresAt: null,
+            oauthScope: null,
+            providerState: {
+              connectedAccountId: "ca_linear_123",
+              app: "linear",
+              authConfigId: null,
+            },
+          }),
+        );
+
+        const composioAuth = {
+          kind: "composio" as const,
+          app: "linear",
+          authConfigId: null,
+          connectionId: "linear-composio-conn",
+        };
+
+        const result = yield* executor.graphql.addSource({
+          endpoint: "https://api.linear.app/graphql",
+          scope: TEST_SCOPE,
+          namespace: "linear",
+          composio: composioAuth,
+          auth: composioAuth,
+        });
+
+        expect(result).toEqual({ toolCount: 2, namespace: "linear" });
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+        const [url, init] = fetchSpy.mock.calls[0] ?? [];
+        expect(url).toBe("https://backend.composio.dev/api/v3/tools/execute/proxy");
+
+        const payload = JSON.parse(String(init?.body)) as {
+          connected_account_id: string;
+          endpoint: string;
+          method: string;
+        };
+
+        expect(payload.connected_account_id).toBe("ca_linear_123");
+        expect(payload.endpoint).toBe("https://api.linear.app/graphql");
+        expect(payload.method).toBe("POST");
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    }),
+  );
+
+  it.effect("proxies Composio-backed GraphQL invocations", () =>
+    Effect.gen(function* () {
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              status: 200,
+              headers: { "content-type": "application/json" },
+              data: { data: introspectionResult },
+            }),
+            {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            },
+          ),
+        )
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              status: 200,
+              headers: { "content-type": "application/json" },
+              data: { data: { hello: "Hi from Composio" } },
+            }),
+            {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            },
+          ),
+        );
+
+      try {
+        const executor = yield* createExecutor(
+          makeTestConfig({
+            plugins: [graphqlPlugin({ composioApiKey: "composio-test-key" })] as const,
+          }),
+        );
+
+        yield* executor.connections.create(
+          new CreateConnectionInput({
+            id: ConnectionId.make("linear-composio-conn"),
+            scope: ScopeId.make(TEST_SCOPE),
+            provider: "graphql-composio",
+            kind: "user",
+            identityLabel: "Linear",
+            accessToken: null,
+            refreshToken: null,
+            expiresAt: null,
+            oauthScope: null,
+            providerState: {
+              connectedAccountId: "ca_linear_123",
+              app: "linear",
+              authConfigId: null,
+            },
+          }),
+        );
+
+        const composioAuth = {
+          kind: "composio" as const,
+          app: "linear",
+          authConfigId: null,
+          connectionId: "linear-composio-conn",
+        };
+
+        yield* executor.graphql.addSource({
+          endpoint: "https://api.linear.app/graphql",
+          scope: TEST_SCOPE,
+          namespace: "linear",
+          composio: composioAuth,
+          auth: composioAuth,
+        });
+
+        const result = yield* executor.tools.invoke("linear.query.hello", {
+          name: "Isaac",
+        });
+
+        expect(result).toEqual({
+          status: 200,
+          data: { hello: "Hi from Composio" },
+          errors: null,
+        });
+        expect(fetchSpy).toHaveBeenCalledTimes(2);
+
+        const [, init] = fetchSpy.mock.calls[1] ?? [];
+        const payload = JSON.parse(String(init?.body)) as {
+          body: { query: string; variables?: Record<string, unknown> };
+          connected_account_id: string;
+        };
+
+        expect(payload.connected_account_id).toBe("ca_linear_123");
+        expect(payload.body.variables).toEqual({ name: "Isaac" });
+        expect(payload.body.query).toContain("query");
+        expect(payload.body.query).toContain("hello");
+      } finally {
+        fetchSpy.mockRestore();
+      }
     }),
   );
 

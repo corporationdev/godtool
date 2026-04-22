@@ -187,12 +187,20 @@ export class InvocationConfig extends Schema.Class<InvocationConfig>("Invocation
   headers: Schema.optionalWith(Schema.Record({ key: Schema.String, value: HeaderValue }), {
     default: () => ({}),
   }),
-  /**
-   * Optional OAuth2 auth — if set, the invoker resolves/refreshes the
-   * access token and injects `Authorization: Bearer <token>` on every
-   * request. Coexists with `headers` but wins for the Authorization header.
-   */
-  oauth2: Schema.optionalWith(OAuth2Auth, { as: "Option" }),
+  /** Active auth path for invocation. Sources can keep reconnect metadata for
+   *  multiple auth modes in `config`, but execution follows exactly one. */
+  auth: Schema.optionalWith(
+    Schema.Union(
+      OAuth2Auth,
+      Schema.Struct({
+        kind: Schema.Literal("composio"),
+        app: Schema.String,
+        authConfigId: Schema.NullOr(Schema.String),
+        connectionId: Schema.String,
+      }),
+    ),
+    { as: "Option" },
+  ),
 }) {}
 
 // ---------------------------------------------------------------------------
@@ -231,6 +239,55 @@ export class OpenApiOAuthSession extends Schema.Class<OpenApiOAuthSession>(
   refreshTokenSecretId: Schema.String,
   scopes: Schema.Array(Schema.String),
   codeVerifier: Schema.String,
+}) {}
+
+// ---------------------------------------------------------------------------
+// Composio managed auth — points at a local Connection row that in turn
+// carries the Composio connected_account_id in its providerState. Unlike
+// OAuth2Auth, there are no local token secrets to manage; the actual API
+// calls are proxied through Composio which injects credentials server-side.
+//
+// connectionId is pre-decided at source creation time (stable, derived from
+// the source namespace). The UI checks connections.some(c => c.id ===
+// connectionId) to determine connect vs reconnect state.
+// ---------------------------------------------------------------------------
+
+export class ComposioSourceConfig extends Schema.Class<ComposioSourceConfig>(
+  "ComposioSourceConfig",
+)({
+  kind: Schema.Literal("composio"),
+  /** Composio toolkit slug (e.g. "cloudflare", "gmail", "notion"). */
+  app: Schema.String,
+  /** Composio auth config id for BYO OAuth apps. Null = Composio-managed. */
+  authConfigId: Schema.NullOr(Schema.String),
+  /** Stable local Connection id. Pre-decided at source creation so the
+   *  UI can check connection state without needing the connection to exist. */
+  connectionId: Schema.String,
+}) {}
+
+export const OpenApiInvocationAuth = Schema.Union(OAuth2Auth, ComposioSourceConfig);
+export type OpenApiInvocationAuth = typeof OpenApiInvocationAuth.Type;
+
+// ---------------------------------------------------------------------------
+// Composio connect session — persisted between startComposioConnect and the
+// callback. Carries enough state to create the Connection row on return.
+// ---------------------------------------------------------------------------
+
+export class OpenApiComposioSession extends Schema.Class<OpenApiComposioSession>(
+  "OpenApiComposioSession",
+)({
+  /** Executor scope that will own the resulting Connection. */
+  tokenScope: Schema.String,
+  /** Source namespace this connection belongs to when reconnecting an
+   *  existing source. Null when the add flow connects before the source
+   *  has been created. */
+  sourceId: Schema.NullOr(Schema.String),
+  /** Pre-decided Connection id written to the connection row on success. */
+  connectionId: Schema.String,
+  /** Friendly local label for the resulting connection/source. */
+  displayName: Schema.String,
+  app: Schema.String,
+  authConfigId: Schema.NullOr(Schema.String),
 }) {}
 
 export class InvocationResult extends Schema.Class<InvocationResult>("InvocationResult")({

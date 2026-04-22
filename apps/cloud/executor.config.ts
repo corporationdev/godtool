@@ -1,6 +1,7 @@
 import { defineExecutorConfig } from "@executor/sdk";
 import { openApiPlugin } from "@executor/plugin-openapi";
 import { mcpPlugin } from "@executor/plugin-mcp";
+import { googleDiscoveryPlugin } from "@executor/plugin-google-discovery";
 import { graphqlPlugin } from "@executor/plugin-graphql";
 import { workosVaultPlugin } from "@executor/plugin-workos-vault";
 
@@ -17,6 +18,7 @@ export default defineExecutorConfig({
   plugins: [
     openApiPlugin(),
     mcpPlugin({ dangerouslyAllowStdioMCP: false }),
+    googleDiscoveryPlugin(),
     graphqlPlugin(),
     workosVaultPlugin({
       credentials: { apiKey: "", clientId: "" },

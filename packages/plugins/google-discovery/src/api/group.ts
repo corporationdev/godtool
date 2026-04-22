@@ -4,6 +4,7 @@ import { ScopeId } from "@executor/sdk";
 import { InternalError } from "@executor/api";
 
 import {
+  GoogleDiscoveryComposioError,
   GoogleDiscoveryOAuthError,
   GoogleDiscoveryParseError,
   GoogleDiscoverySourceError,
@@ -25,6 +26,12 @@ const AuthPayload = Schema.Union(
     clientIdSecretId: Schema.String,
     clientSecretSecretId: Schema.NullOr(Schema.String),
     scopes: Schema.Array(Schema.String),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("composio"),
+    app: Schema.String,
+    authConfigId: Schema.NullOr(Schema.String),
+    connectionId: Schema.String,
   }),
 );
 
@@ -103,6 +110,31 @@ const CompleteOAuthResponse = Schema.Struct({
   scopes: Schema.Array(Schema.String),
 });
 
+const StartComposioConnectPayload = Schema.Union(
+  Schema.Struct({
+    sourceId: Schema.String,
+    callbackBaseUrl: Schema.String,
+  }),
+  Schema.Struct({
+    callbackBaseUrl: Schema.String,
+    app: Schema.String,
+    authConfigId: Schema.optional(Schema.NullOr(Schema.String)),
+    connectionId: Schema.String,
+    displayName: Schema.optional(Schema.String),
+  }),
+);
+
+const StartComposioConnectResponse = Schema.Struct({
+  redirectUrl: Schema.String,
+});
+
+const ComposioCallbackUrlParams = Schema.Struct({
+  state: Schema.String,
+  connected_account_id: Schema.optional(Schema.String),
+  status: Schema.optional(Schema.String),
+  error: Schema.optional(Schema.String),
+});
+
 const OAuthCallbackParams = Schema.Struct({
   state: Schema.String,
   code: Schema.optional(Schema.String),
@@ -161,6 +193,18 @@ export class GoogleDiscoveryGroup extends HttpApiGroup.make("googleDiscovery")
       .addSuccess(CompleteOAuthResponse),
   )
   .add(
+    HttpApiEndpoint.post(
+      "startComposioConnect",
+    )`/scopes/${scopeIdParam}/google-discovery/composio/start`
+      .setPayload(StartComposioConnectPayload)
+      .addSuccess(StartComposioConnectResponse),
+  )
+  .add(
+    HttpApiEndpoint.get("composioCallback")`/google-discovery/composio/callback`
+      .setUrlParams(ComposioCallbackUrlParams)
+      .addSuccess(HtmlResponse),
+  )
+  .add(
     HttpApiEndpoint.get("oauthCallback")`/google-discovery/oauth/callback`
       .setUrlParams(OAuthCallbackParams)
       .addSuccess(HtmlResponse),
@@ -182,6 +226,7 @@ export class GoogleDiscoveryGroup extends HttpApiGroup.make("googleDiscovery")
   // Discovery-group endpoint, so it doesn't belong here.
   .addError(InternalError)
   .addError(GoogleDiscoveryApiError)
+  .addError(GoogleDiscoveryComposioError)
   .addError(GoogleDiscoveryOAuthError)
   .addError(GoogleDiscoveryParseError)
   .addError(GoogleDiscoverySourceError) {}

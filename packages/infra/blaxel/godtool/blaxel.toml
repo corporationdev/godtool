@@ -1,0 +1,7 @@
+name = "godtool"
+type = "sandbox"
+description = "Godtool sandbox image with Bun preinstalled for TypeScript execution"
+
+[runtime]
+generation = "mk3"
+memory = 4096

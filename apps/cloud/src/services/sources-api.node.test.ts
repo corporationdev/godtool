@@ -6,6 +6,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Effect } from "effect";
 import { readFileSync } from "node:fs";
+import { createServer, type Server } from "node:http";
 import { resolve } from "node:path";
 
 import { ScopeId } from "@executor/sdk";
@@ -37,6 +38,56 @@ const CLOUDFLARE_SPEC_PATH = resolve(
   "../../../../packages/plugins/openapi/fixtures/cloudflare.json",
 );
 const CLOUDFLARE_SPEC = readFileSync(CLOUDFLARE_SPEC_PATH, "utf-8");
+
+const GOOGLE_DISCOVERY_FIXTURE_PATH = resolve(
+  __dirname,
+  "../../../../packages/plugins/google-discovery/fixtures/drive.json",
+);
+const GOOGLE_DISCOVERY_FIXTURE = readFileSync(GOOGLE_DISCOVERY_FIXTURE_PATH, "utf-8");
+
+interface DiscoveryServerHandle {
+  readonly discoveryUrl: string;
+  readonly close: () => Promise<void>;
+}
+
+const startGoogleDiscoveryServer = (): Promise<DiscoveryServerHandle> =>
+  new Promise((resolvePromise, rejectPromise) => {
+    const server: Server = createServer((_request, response) => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        response.statusCode = 500;
+        response.end();
+        return;
+      }
+
+      const fixture = JSON.stringify({
+        ...JSON.parse(GOOGLE_DISCOVERY_FIXTURE),
+        rootUrl: `http://127.0.0.1:${address.port}/`,
+      });
+      response.statusCode = 200;
+      response.setHeader("content-type", "application/json");
+      response.end(fixture);
+    });
+
+    server.listen(0, "127.0.0.1", (error?: Error) => {
+      if (error) {
+        rejectPromise(error);
+        return;
+      }
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        rejectPromise(new Error("Failed to resolve discovery server address"));
+        return;
+      }
+      resolvePromise({
+        discoveryUrl: `http://127.0.0.1:${address.port}/$discovery/rest?version=v3`,
+        close: () =>
+          new Promise((resolveClose, rejectClose) => {
+            server.close((err) => (err ? rejectClose(err) : resolveClose()));
+          }),
+      });
+    });
+  });
 
 describe("sources api (HTTP)", () => {
   it.effect("addSpec → sources.list includes the new namespace", () =>
@@ -159,6 +210,41 @@ describe("sources api (HTTP)", () => {
       );
       expect(fetched?.name).toBe("Renamed API");
       expect(fetched?.config.baseUrl).toBe("https://override.example.com");
+    }),
+  );
+
+  it.effect("googleDiscovery.addSource stores the source and exposes it via getSource", () =>
+    Effect.gen(function* () {
+      const org = `org_${crypto.randomUUID()}`;
+      const namespace = `google_${crypto.randomUUID().replace(/-/g, "_")}`;
+      const server = yield* Effect.promise(() => startGoogleDiscoveryServer());
+
+      try {
+        const result = yield* asOrg(org, (client) =>
+          client.googleDiscovery.addSource({
+            path: { scopeId: ScopeId.make(org) },
+            payload: {
+              name: "Google Drive",
+              discoveryUrl: server.discoveryUrl,
+              namespace,
+              auth: { kind: "none" },
+            },
+          }),
+        );
+        expect(result.namespace).toBe(namespace);
+        expect(result.toolCount).toBeGreaterThan(0);
+
+        const fetched = yield* asOrg(org, (client) =>
+          client.googleDiscovery.getSource({
+            path: { scopeId: ScopeId.make(org), namespace },
+          }),
+        );
+        expect(fetched).not.toBeNull();
+        expect(fetched?.namespace).toBe(namespace);
+        expect(fetched?.config.service).toBe("drive");
+      } finally {
+        yield* Effect.promise(() => server.close());
+      }
     }),
   );
 

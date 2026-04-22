@@ -6,7 +6,7 @@
   "main": "src/server.ts",
   "routes": [
     {
-      "pattern": "executor.sh",
+      "pattern": "app.godtool.dev",
       "custom_domain": true,
     },
   ],
@@ -30,17 +30,10 @@
       "new_classes": ["McpSessionDO"],
     },
   ],
-  "services": [
-    {
-      "binding": "MARKETING",
-      "service": "executor-marketing",
-    },
-  ],
   "hyperdrive": [
     {
       "binding": "HYPERDRIVE",
-      "id": "776c27dfec5f47f59343603b35a7b4c2",
-      "localConnectionString": "postgresql://postgres:postgres@127.0.0.1:5433/postgres",
+      "id": "f4e930a3e86d46b6b5a3400e8494570a",
     },
   ],
   "worker_loaders": [
@@ -48,8 +41,4 @@
       "binding": "LOADER",
     },
   ],
-  "vars": {
-    "VITE_PUBLIC_SENTRY_DSN": "https://e20b1bdeea27008092a4dc0ac303e97a@o4511196985556992.ingest.us.sentry.io/4511197010067456",
-    "VITE_PUBLIC_SITE_URL": "https://executor.sh",
-  },
 }

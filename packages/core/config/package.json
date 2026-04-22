@@ -4,7 +4,10 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./runtime": "./src/runtime.ts",
+    "./stage": "./src/stage.ts",
+    "./stage-kind": "./src/stage-kind.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",

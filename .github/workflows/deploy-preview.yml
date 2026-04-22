@@ -1,0 +1,219 @@
+name: Deploy Preview
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+    branches-ignore:
+      - "dependabot/*"
+
+concurrency:
+  group: preview-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  migrate-database:
+    name: Migrate Preview Database
+    runs-on: ubuntu-latest
+    if: ${{ github.event.pull_request.head.ref != 'main' || github.event_name == 'push' }}
+    environment: Preview
+
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Load Neon secrets
+        uses: 1password/load-secrets-action@v3
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          NEON_API_KEY: op://godtool-preview/Neon/api-key
+          NEON_PROJECT_ID: op://godtool-preview/Neon/project-id
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Clean branch name
+        id: clean-branch-name
+        uses: ./.github/actions/clean-branch-name
+        with:
+          branch: ${{ github.event.pull_request.head.ref || github.ref_name }}
+
+      - name: Set stage
+        run: echo "STAGE=preview-${{ steps.clean-branch-name.outputs.clean_branch_name }}" >> "$GITHUB_ENV"
+
+      - name: Create database branch
+        id: create-database-branch
+        uses: neondatabase/create-branch-action@v6
+        with:
+          project_id: ${{ env.NEON_PROJECT_ID }}
+          branch_name: preview/${{ steps.clean-branch-name.outputs.clean_branch_name }}
+          parent_branch: production
+          role: neondb_owner
+          api_key: ${{ env.NEON_API_KEY }}
+
+      - name: Get migration database URL
+        uses: ./.github/actions/get-neon-connection-string
+        with:
+          branch: ${{ steps.create-database-branch.outputs.branch_id }}
+          project_id: ${{ env.NEON_PROJECT_ID }}
+          role: neondb_owner
+          api_key: ${{ env.NEON_API_KEY }}
+          pooled: "false"
+
+      - name: Inject secrets
+        uses: ./.github/actions/inject-secrets
+        with:
+          stage: ${{ env.STAGE }}
+          op-service-account-token: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+
+      - name: Run preview migrations
+        run: bun run db:migrate:prod:ci
+
+  deploy:
+    name: Deploy Preview
+    runs-on: ubuntu-latest
+    needs:
+      - migrate-database
+    if: ${{ github.event.pull_request.head.ref != 'main' || github.event_name == 'push' }}
+    environment: Preview
+
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Load Neon secrets
+        uses: 1password/load-secrets-action@v3
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          NEON_API_KEY: op://godtool-preview/Neon/api-key
+          NEON_PROJECT_ID: op://godtool-preview/Neon/project-id
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Clean branch name
+        id: clean-branch-name
+        uses: ./.github/actions/clean-branch-name
+        with:
+          branch: ${{ github.event.pull_request.head.ref || github.ref_name }}
+
+      - name: Set stage
+        run: echo "STAGE=preview-${{ steps.clean-branch-name.outputs.clean_branch_name }}" >> "$GITHUB_ENV"
+
+      - name: Get preview database URL
+        uses: ./.github/actions/get-neon-connection-string
+        with:
+          branch: preview/${{ steps.clean-branch-name.outputs.clean_branch_name }}
+          project_id: ${{ env.NEON_PROJECT_ID }}
+          role: neondb_owner
+          api_key: ${{ env.NEON_API_KEY }}
+          pooled: "true"
+
+      - name: Inject secrets
+        uses: ./.github/actions/inject-secrets
+        with:
+          stage: ${{ env.STAGE }}
+          op-service-account-token: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+
+      - name: Deploy preview
+        id: deploy
+        working-directory: apps/cloud
+        run: |
+          bun run build
+          bun --env-file=.env alchemy deploy --stage "$STAGE" --adopt
+          echo "frontend_url=https://preview-pr-${{ steps.clean-branch-name.outputs.clean_branch_name }}.godtool.dev" >> "$GITHUB_OUTPUT"
+
+      - name: Comment PR - Success
+        if: ${{ github.event_name == 'pull_request' && success() }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const frontendUrl = '${{ steps.deploy.outputs.frontend_url }}';
+            const commentBody = [
+              '## Preview Deployment',
+              '',
+              `**Stage:** ${process.env.STAGE}`,
+              `**URL:** ${frontendUrl}`,
+              '',
+              `_Updated: ${new Date().toUTCString()}_`,
+            ].join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.find((comment) =>
+              comment.user.type === 'Bot' && comment.body.includes('Preview Deployment')
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: commentBody,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: commentBody,
+              });
+            }
+
+      - name: Comment PR - Failure
+        if: ${{ github.event_name == 'pull_request' && failure() }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const commentBody = [
+              '## Preview Deployment Failed',
+              '',
+              `**Stage:** ${process.env.STAGE}`,
+              `[View logs](${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID})`,
+              '',
+              `_Updated: ${new Date().toUTCString()}_`,
+            ].join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.find((comment) =>
+              comment.user.type === 'Bot' && comment.body.includes('Preview Deployment')
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: commentBody,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: commentBody,
+              });
+            }

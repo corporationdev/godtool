@@ -1,7 +1,7 @@
 // Shared HTTP test harness for node-pool integration tests.
 //
 // Stands up the real ProtectedCloudApi against a real DbService and
-// every real plugin (openapi / mcp / graphql / workos-vault), with
+// every real plugin (openapi / mcp / google-discovery / graphql / workos-vault), with
 // two test-only swaps:
 //
 //   - `OrgAuthLive` is replaced with `FakeOrgAuthLive`, which reads
@@ -44,6 +44,7 @@ import {
 } from "@executor/storage-postgres";
 import { openApiPlugin } from "@executor/plugin-openapi";
 import { mcpPlugin } from "@executor/plugin-mcp";
+import { googleDiscoveryPlugin } from "@executor/plugin-google-discovery";
 import { graphqlPlugin } from "@executor/plugin-graphql";
 import {
   workosVaultPlugin,
@@ -54,6 +55,7 @@ import {
 } from "@executor/plugin-workos-vault";
 import { OpenApiExtensionService } from "@executor/plugin-openapi/api";
 import { McpExtensionService } from "@executor/plugin-mcp/api";
+import { GoogleDiscoveryExtensionService } from "@executor/plugin-google-discovery/api";
 import { GraphqlExtensionService } from "@executor/plugin-graphql/api";
 
 import { AuthContext, OrgAuth } from "../../auth/middleware";
@@ -187,6 +189,7 @@ const createTestScopedExecutor = (
     const plugins = [
       openApiPlugin(),
       mcpPlugin({ dangerouslyAllowStdioMCP: false }),
+      googleDiscoveryPlugin({ composioApiKey: "composio-test-key" }),
       graphqlPlugin(),
       workosVaultPlugin({ client: fakeVault }),
     ] as const;
@@ -245,6 +248,14 @@ const TestApiLive = HttpApiBuilder.api(ProtectedCloudApi).pipe(
   Layer.provide(Layer.merge(ProtectedCloudApiHandlers, FakeOrgAuthLive)),
 );
 
+const assumeTestOrgAuthProvided = <E, R>(
+  app: HttpApp.Default<E, R | AuthContext>,
+): HttpApp.Default<E, R> =>
+  // FakeOrgAuthLive is merged into TestApiLive, so the returned app is fully
+  // request-scoped even if the builder's inferred environment still includes
+  // the middleware-provided auth tag.
+  app as HttpApp.Default<E, R>;
+
 const buildAppForScope = (userId: string, orgId: string, orgName: string) =>
   Effect.gen(function* () {
     const executor = yield* createTestScopedExecutor(userId, orgId, orgName);
@@ -254,9 +265,11 @@ const buildAppForScope = (userId: string, orgId: string, orgName: string) =>
       Layer.succeed(ExecutionEngineService, engine),
       Layer.succeed(OpenApiExtensionService, executor.openapi),
       Layer.succeed(McpExtensionService, executor.mcp),
+      Layer.succeed(GoogleDiscoveryExtensionService, executor.googleDiscovery),
       Layer.succeed(GraphqlExtensionService, executor.graphql),
     );
-    return yield* HttpApiBuilder.httpApp.pipe(
+    return assumeTestOrgAuthProvided(
+      yield* HttpApiBuilder.httpApp.pipe(
       Effect.provide(
         HttpApiSwagger.layer({ path: "/docs" }).pipe(
           Layer.provideMerge(HttpApiBuilder.middlewareOpenApi()),
@@ -267,6 +280,7 @@ const buildAppForScope = (userId: string, orgId: string, orgName: string) =>
           Layer.provideMerge(HttpApiBuilder.Router.Live),
           Layer.provideMerge(HttpApiBuilder.Middleware.layer),
         ),
+      ),
       ),
     );
   });
@@ -286,10 +300,10 @@ const RouterApp = Effect.gen(function* () {
 });
 
 const handler = HttpApp.toWebHandler(
-  RouterApp.pipe(
+  (RouterApp.pipe(
     Effect.provide(DbService.Live),
     Effect.provide(HttpServer.layerContext),
-  ),
+  ) as Parameters<typeof HttpApp.toWebHandler>[0]),
 );
 
 export const fetchForOrg = (orgId: string): typeof globalThis.fetch =>

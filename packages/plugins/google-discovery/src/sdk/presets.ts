@@ -5,13 +5,18 @@ export interface GoogleDiscoveryPreset {
   readonly url: string;
   readonly icon?: string;
   readonly featured?: boolean;
+  readonly composio?: {
+    readonly app: string;
+    readonly authConfigId?: string;
+  };
 }
 
 const gd = (service: string, version: string) =>
   `https://www.googleapis.com/discovery/v1/apis/${service}/${version}/rest`;
 
 /** Shared Google "G" logo for services without a dedicated product icon. */
-const GOOGLE_G = "https://fonts.gstatic.com/s/i/productlogos/googleg/v6/192px.svg";
+export const GOOGLE_DISCOVERY_FALLBACK_ICON =
+  "https://fonts.gstatic.com/s/i/productlogos/googleg/v6/192px.svg";
 
 export const googleDiscoveryPresets: readonly GoogleDiscoveryPreset[] = [
   // ── Featured (shown in top-level grid) ──────────────────────────────
@@ -30,6 +35,7 @@ export const googleDiscoveryPresets: readonly GoogleDiscoveryPreset[] = [
     url: gd("gmail", "v1"),
     icon: "https://fonts.gstatic.com/s/i/productlogos/gmail_2020q4/v8/web-96dp/logo_gmail_2020q4_color_2x_web_96dp.png",
     featured: true,
+    composio: { app: "gmail" },
   },
   {
     id: "google-sheets",
@@ -111,7 +117,7 @@ export const googleDiscoveryPresets: readonly GoogleDiscoveryPreset[] = [
     name: "Google Search Console",
     summary: "Sites, sitemaps, URL inspection, and search performance.",
     url: gd("searchconsole", "v1"),
-    icon: GOOGLE_G,
+    icon: GOOGLE_DISCOVERY_FALLBACK_ICON,
   },
   {
     id: "google-classroom",

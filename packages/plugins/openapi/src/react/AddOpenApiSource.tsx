@@ -47,11 +47,16 @@ import { IOSSpinner, Spinner } from "@executor/react/components/spinner";
 import {
   addOpenApiSpec,
   previewOpenApiSpec,
+  startComposioConnect,
   startOpenApiOAuth,
 } from "./atoms";
+import { openApiComposioCallbackUrl } from "./composio-callback";
 import type { SpecPreview, HeaderPreset, OAuth2Preset } from "../sdk/preview";
+import { openApiPresets } from "../sdk/presets";
 import {
+  ComposioSourceConfig,
   OAuth2Auth,
+  type OpenApiInvocationAuth,
   type HeaderValue,
   type ServerInfo,
   type ServerVariable,
@@ -60,6 +65,9 @@ import {
 export const OPENAPI_OAUTH_CHANNEL = "executor:openapi-oauth-result";
 export const OPENAPI_OAUTH_POPUP_NAME = "openapi-oauth";
 export const OPENAPI_OAUTH_CALLBACK_PATH = "/api/openapi/oauth/callback";
+export const OPENAPI_COMPOSIO_CHANNEL = "executor:openapi-composio-result";
+export const OPENAPI_COMPOSIO_POPUP_NAME = "openapi-composio";
+export const OPENAPI_COMPOSIO_CALLBACK_PATH = "/api/openapi/composio/callback";
 
 const substituteUrlVariables = (url: string, values: Record<string, string>): string => {
   let out = url;
@@ -93,6 +101,7 @@ export function resolveOAuthUrl(url: string, baseUrl: string): string {
 
 type StrategySelection =
   | { readonly kind: "none" }
+  | { readonly kind: "composio" }
   | { readonly kind: "custom" }
   | { readonly kind: "header"; readonly presetIndex: number }
   | { readonly kind: "oauth2"; readonly presetIndex: number };
@@ -101,6 +110,8 @@ const serializeStrategy = (s: StrategySelection): string => {
   switch (s.kind) {
     case "none":
       return "none";
+    case "composio":
+      return "composio";
     case "custom":
       return "custom";
     case "header":
@@ -110,8 +121,12 @@ const serializeStrategy = (s: StrategySelection): string => {
   }
 };
 
+const composioConnectionIdForNamespace = (namespace: string): string =>
+  `openapi-composio-${namespace || "default"}`;
+
 const parseStrategy = (value: string): StrategySelection => {
   if (value === "none") return { kind: "none" };
+  if (value === "composio") return { kind: "composio" };
   if (value === "custom") return { kind: "custom" };
   if (value.startsWith("header:")) {
     return { kind: "header", presetIndex: Number(value.slice("header:".length)) };
@@ -153,11 +168,15 @@ function entriesFromSpecPreset(preset: HeaderPreset): HeaderState[] {
 // ---------------------------------------------------------------------------
 
 export default function AddOpenApiSource(props: {
-  onComplete: () => void;
+  onComplete: (sourceId?: string) => void;
   onCancel: () => void;
   initialUrl?: string;
+  initialPreset?: string;
   initialNamespace?: string;
 }) {
+  const resolvedPreset = props.initialPreset
+    ? (openApiPresets.find((p) => p.id === props.initialPreset) ?? null)
+    : null;
   // Spec input
   const [specUrl, setSpecUrl] = useState(props.initialUrl ?? "");
   const [analyzing, setAnalyzing] = useState(false);
@@ -189,6 +208,10 @@ export default function AddOpenApiSource(props: {
   const [startingOAuth, setStartingOAuth] = useState(false);
   const [oauth2Error, setOauth2Error] = useState<string | null>(null);
   const oauthCleanup = useRef<(() => void) | null>(null);
+  const [startingComposio, setStartingComposio] = useState(false);
+  const [composioError, setComposioError] = useState<string | null>(null);
+  const [composioConnectionId, setComposioConnectionId] = useState<string | null>(null);
+  const composioCleanup = useRef<(() => void) | null>(null);
 
   // Submit
   const [adding, setAdding] = useState(false);
@@ -198,6 +221,7 @@ export default function AddOpenApiSource(props: {
   const doPreview = useAtomSet(previewOpenApiSpec, { mode: "promise" });
   const doAdd = useAtomSet(addOpenApiSpec, { mode: "promise" });
   const doStartOAuth = useAtomSet(startOpenApiOAuth, { mode: "promise" });
+  const doStartComposioConnect = useAtomSet(startComposioConnect, { mode: "promise" });
   const { beginAdd } = usePendingSources();
   const secretList = useSecretPickerSecrets();
 
@@ -267,17 +291,30 @@ export default function AddOpenApiSource(props: {
     typeof window !== "undefined"
       ? `${window.location.origin}${OPENAPI_OAUTH_CALLBACK_PATH}`
       : OPENAPI_OAUTH_CALLBACK_PATH;
+  const composioCallbackBaseUrl = openApiComposioCallbackUrl(
+    OPENAPI_COMPOSIO_CALLBACK_PATH,
+  );
   const selectedOAuth2Preset: OAuth2Preset | null =
     strategy.kind === "oauth2" ? (oauth2Presets[strategy.presetIndex] ?? null) : null;
+  const namespaceSlug =
+    slugifyNamespace(identity.namespace) ||
+    (preview ? Option.getOrElse(preview.title, () => "openapi") : "openapi");
+  const displayName =
+    identity.name.trim() ||
+    (preview ? Option.getOrElse(preview.title, () => namespaceSlug) : namespaceSlug);
+  const derivedComposioConnectionId = composioConnectionId ?? composioConnectionIdForNamespace(namespaceSlug);
 
   const oauth2Ready =
     strategy.kind !== "oauth2" || oauth2Auth !== null;
+  const composioReady =
+    strategy.kind !== "composio" || composioConnectionId !== null;
 
   const canAdd =
     preview !== null &&
     resolvedBaseUrl.length > 0 &&
     (customHeaders.length === 0 || customHeadersValid) &&
-    oauth2Ready;
+    oauth2Ready &&
+    composioReady;
 
   // ---- Handlers ----
 
@@ -303,13 +340,19 @@ export default function AddOpenApiSource(props: {
         setCustomBaseUrl("");
       }
 
-      const firstPreset = result.headerPresets[0];
-      if (firstPreset) {
-        setStrategy({ kind: "header", presetIndex: 0 });
-        setCustomHeaders(entriesFromSpecPreset(firstPreset));
-      } else {
-        setStrategy({ kind: "none" });
+      if (resolvedPreset?.composio) {
+        setStrategy({ kind: "composio" });
         setCustomHeaders([]);
+        setComposioError(null);
+      } else {
+        const firstPreset = result.headerPresets[0];
+        if (firstPreset) {
+          setStrategy({ kind: "header", presetIndex: 0 });
+          setCustomHeaders(entriesFromSpecPreset(firstPreset));
+        } else {
+          setStrategy({ kind: "none" });
+          setCustomHeaders([]);
+        }
       }
     } catch (e) {
       setAnalyzeError(e instanceof Error ? e.message : "Failed to parse spec");
@@ -327,8 +370,12 @@ export default function AddOpenApiSource(props: {
       setOauth2Auth(null);
       setOauth2Error(null);
     }
+    if (next.kind !== "composio") {
+      setComposioError(null);
+    }
     switch (next.kind) {
       case "none":
+      case "composio":
         setCustomHeaders([]);
         return;
       case "custom": {
@@ -508,21 +555,104 @@ export default function AddOpenApiSource(props: {
 
   useEffect(() => () => oauthCleanup.current?.(), []);
 
+  const handleConnectComposio = useCallback(async () => {
+    if (!resolvedPreset?.composio) return;
+    composioCleanup.current?.();
+    composioCleanup.current = null;
+    setStartingComposio(true);
+    setComposioError(null);
+    try {
+      const response = await doStartComposioConnect({
+        path: { scopeId },
+        payload: {
+          callbackBaseUrl: composioCallbackBaseUrl,
+          app: resolvedPreset.composio.app,
+          authConfigId: resolvedPreset.composio.authConfigId ?? null,
+          connectionId: derivedComposioConnectionId,
+          displayName,
+        },
+      });
+
+      const popup = window.open(
+        response.redirectUrl,
+        OPENAPI_COMPOSIO_POPUP_NAME,
+        "width=600,height=700,scrollbars=yes",
+      );
+      if (!popup) {
+        setStartingComposio(false);
+        setComposioError("Connect popup was blocked by the browser");
+        return;
+      }
+
+      const channel = new BroadcastChannel(OPENAPI_COMPOSIO_CHANNEL);
+      const cleanup = () => {
+        clearInterval(popupTimer);
+        channel.removeEventListener("message", onMessage);
+        channel.close();
+        composioCleanup.current = null;
+      };
+      const onMessage = (ev: MessageEvent) => {
+        cleanup();
+        const data = ev.data as { ok: boolean; connectionId?: string; error?: string };
+        if (data.ok) {
+          setComposioConnectionId(data.connectionId ?? derivedComposioConnectionId);
+          setStartingComposio(false);
+        } else {
+          setStartingComposio(false);
+          setComposioError(data.error ?? "Managed OAuth failed");
+        }
+      };
+      channel.addEventListener("message", onMessage);
+
+      const popupTimer = setInterval(() => {
+        if (popup.closed) {
+          cleanup();
+          setStartingComposio(false);
+          setComposioError("Connect cancelled — popup was closed before completing the flow.");
+        }
+      }, 500);
+
+      composioCleanup.current = cleanup;
+    } catch (e) {
+      setStartingComposio(false);
+      setComposioError(e instanceof Error ? e.message : "Failed to start managed auth");
+    }
+  }, [
+    composioCallbackBaseUrl,
+    derivedComposioConnectionId,
+    displayName,
+    doStartComposioConnect,
+    resolvedPreset?.composio,
+    scopeId,
+  ]);
+
+  useEffect(() => () => composioCleanup.current?.(), []);
+
   const handleAdd = async () => {
     setAdding(true);
     setAddError(null);
-    const namespace =
-      slugifyNamespace(identity.namespace) ||
-      (preview ? Option.getOrElse(preview.title, () => "openapi") : "openapi");
-    const displayName =
-      identity.name.trim() ||
-      (preview ? Option.getOrElse(preview.title, () => namespace) : namespace);
     const placeholder = beginAdd({
-      id: namespace,
+      id: namespaceSlug,
       name: displayName,
       kind: "openapi",
       url: resolvedBaseUrl || undefined,
     });
+    const composioConfig =
+      resolvedPreset?.composio
+        ? {
+            kind: "composio" as const,
+            app: resolvedPreset.composio.app,
+            authConfigId: resolvedPreset.composio.authConfigId ?? null,
+            connectionId: derivedComposioConnectionId,
+          } satisfies ComposioSourceConfig
+        : undefined;
+    const activeAuth: OpenApiInvocationAuth | undefined =
+      strategy.kind === "oauth2"
+        ? oauth2Auth ?? undefined
+        : strategy.kind === "composio"
+          ? composioConfig
+          : undefined;
+
     try {
       await doAdd({
         path: { scopeId },
@@ -533,10 +663,12 @@ export default function AddOpenApiSource(props: {
           baseUrl: resolvedBaseUrl || undefined,
           ...(hasHeaders ? { headers: allHeaders } : {}),
           ...(oauth2Auth ? { oauth2: oauth2Auth } : {}),
+          ...(composioConfig ? { composio: composioConfig } : {}),
+          ...(activeAuth ? { auth: activeAuth } : {}),
         },
         reactivityKeys: sourceWriteKeys,
       });
-      props.onComplete();
+      props.onComplete(namespaceSlug);
     } catch (e) {
       setAddError(e instanceof Error ? e.message : "Failed to add source");
       setAdding(false);
@@ -572,6 +704,8 @@ export default function AddOpenApiSource(props: {
                     setStrategy({ kind: "none" });
                     setOauth2Auth(null);
                     setOauth2Error(null);
+                    setComposioConnectionId(null);
+                    setComposioError(null);
                   }
                 }}
                 placeholder="https://api.example.com/openapi.json"
@@ -769,12 +903,29 @@ export default function AddOpenApiSource(props: {
 
           <section className="space-y-2.5">
             <FieldLabel>Authentication</FieldLabel>
-            {(preview.headerPresets.length > 0 || oauth2Presets.length > 0) && (
+            {(preview.headerPresets.length > 0 || oauth2Presets.length > 0 || resolvedPreset?.composio) && (
               <RadioGroup
                 value={serializeStrategy(strategy)}
                 onValueChange={(value) => selectStrategy(parseStrategy(value))}
                 className="gap-1.5"
               >
+                {resolvedPreset?.composio && (
+                  <Label
+                    className={`flex items-start gap-2.5 rounded-lg border px-3 py-2 cursor-pointer transition-colors ${
+                      strategy.kind === "composio"
+                        ? "border-primary/50 bg-primary/[0.03]"
+                        : "border-border hover:bg-accent/50"
+                    }`}
+                  >
+                    <RadioGroupItem value="composio" className="mt-0.5" />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-xs font-medium text-foreground">Managed OAuth</div>
+                      <div className="mt-0.5 text-[10px] text-muted-foreground">
+                        Connect your account
+                      </div>
+                    </div>
+                  </Label>
+                )}
                 {preview.headerPresets.map((preset, i) => {
                   const selected =
                     strategy.kind === "header" && strategy.presetIndex === i;
@@ -846,13 +997,75 @@ export default function AddOpenApiSource(props: {
             )}
 
             {/* Header-based auth input */}
-            {strategy.kind !== "none" && strategy.kind !== "oauth2" && (
+            {strategy.kind !== "none" && strategy.kind !== "composio" && strategy.kind !== "oauth2" && (
               <HeadersList
                 headers={customHeaders}
                 onHeadersChange={handleHeadersChange}
                 existingSecrets={secretList}
                 sourceName={identity.name}
               />
+            )}
+
+            {/* Managed OAuth */}
+            {strategy.kind === "composio" && resolvedPreset?.composio && (
+              <div className="space-y-3 rounded-lg border border-border/60 bg-muted/10 p-3">
+                {composioConnectionId ? (
+                  <div className="flex items-center justify-between rounded-md border border-green-500/30 bg-green-500/5 px-3 py-2">
+                    <div className="text-[11px] text-green-700 dark:text-green-400">
+                      Connected
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setComposioConnectionId(null)}
+                    >
+                      Disconnect
+                    </Button>
+                  </div>
+                ) : startingComposio ? (
+                  <div className="flex items-center gap-2">
+                    <div className="flex flex-1 items-center gap-2 rounded-md border border-border/60 bg-background/50 px-3 py-2 text-[11px] text-muted-foreground">
+                      <Spinner className="size-3.5" />
+                      Waiting for connection… complete the flow in the popup, or cancel to retry.
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        composioCleanup.current?.();
+                        composioCleanup.current = null;
+                        setStartingComposio(false);
+                        setComposioError(null);
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => void handleConnectComposio()}
+                    >
+                      Retry
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    variant="secondary"
+                    onClick={() => void handleConnectComposio()}
+                    disabled={resolvedBaseUrl.length === 0}
+                    className="w-full"
+                  >
+                    Connect
+                  </Button>
+                )}
+
+                {composioError && (
+                  <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2">
+                    <p className="text-[11px] text-destructive">{composioError}</p>
+                  </div>
+                )}
+
+              </div>
             )}
 
             {/* OAuth2 configuration */}

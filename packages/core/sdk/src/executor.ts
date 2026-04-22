@@ -39,6 +39,7 @@ import {
   type ElicitationRequest,
 } from "./elicitation";
 import {
+  ConnectionAccessTokenNotAvailableError,
   ConnectionNotFoundError,
   ConnectionProviderNotRegisteredError,
   ConnectionRefreshNotSupportedError,
@@ -992,7 +993,10 @@ export const createExecutor = <
         provider: row.provider as string,
         kind: (row.kind as "user" | "app") ?? "user",
         identityLabel: (row.identity_label as string | null | undefined) ?? null,
-        accessTokenSecretId: SecretId.make(row.access_token_secret_id as string),
+        accessTokenSecretId:
+          row.access_token_secret_id != null
+            ? SecretId.make(row.access_token_secret_id as string)
+            : null,
         refreshTokenSecretId:
           row.refresh_token_secret_id != null
             ? SecretId.make(row.refresh_token_secret_id as string)
@@ -1160,15 +1164,38 @@ export const createExecutor = <
           );
         }
 
-        const writable = yield* pickWritableProvider();
         const now = new Date();
 
         return yield* adapter.transaction(() =>
           Effect.gen(function* () {
             // Drop any existing connection row at this scope first so a
-            // re-auth replaces cleanly. Owned-secret rows for the old
-            // connection are removed by the cascade below (we delete
-            // both old + new token secret ids explicitly).
+            // re-auth replaces cleanly. Remove any previously-owned
+            // secret rows too so transitions like token-backed ->
+            // external don't leave orphaned plumbing behind.
+            const previouslyOwned = yield* core.findMany({
+              model: "secret",
+              where: [
+                { field: "owned_by_connection_id", value: input.id as string },
+                { field: "scope_id", value: input.scope as string },
+              ],
+            });
+            const deleters = [...secretProviders.values()].filter(
+              (p): p is typeof p & { delete: NonNullable<typeof p.delete> } =>
+                !!(p.writable && p.delete),
+            );
+            for (const secret of previouslyOwned) {
+              yield* Effect.all(
+                deleters.map((p) => p.delete(secret.id as string, input.scope as string)),
+                { concurrency: "unbounded" },
+              );
+            }
+            yield* core.deleteMany({
+              model: "secret",
+              where: [
+                { field: "owned_by_connection_id", value: input.id as string },
+                { field: "scope_id", value: input.scope as string },
+              ],
+            });
             yield* core.delete({
               model: "connection",
               where: [
@@ -1177,21 +1204,27 @@ export const createExecutor = <
               ],
             });
 
-            yield* writeOwnedSecret({
-              id: input.accessToken.secretId as string,
-              scope: input.scope as string,
-              name: input.accessToken.name,
-              value: input.accessToken.value,
-              provider: writable.key,
-              ownedByConnectionId: input.id as string,
-            });
+            const writable = input.accessToken || input.refreshToken
+              ? yield* pickWritableProvider()
+              : null;
+
+            if (input.accessToken) {
+              yield* writeOwnedSecret({
+                id: input.accessToken.secretId as string,
+                scope: input.scope as string,
+                name: input.accessToken.name,
+                value: input.accessToken.value,
+                provider: writable!.key,
+                ownedByConnectionId: input.id as string,
+              });
+            }
             if (input.refreshToken) {
               yield* writeOwnedSecret({
                 id: input.refreshToken.secretId as string,
                 scope: input.scope as string,
                 name: input.refreshToken.name,
                 value: input.refreshToken.value,
-                provider: writable.key,
+                provider: writable!.key,
                 ownedByConnectionId: input.id as string,
               });
             }
@@ -1204,7 +1237,8 @@ export const createExecutor = <
                 provider: input.provider,
                 kind: input.kind,
                 identity_label: input.identityLabel ?? undefined,
-                access_token_secret_id: input.accessToken.secretId as string,
+                access_token_secret_id:
+                  input.accessToken?.secretId ?? undefined,
                 refresh_token_secret_id:
                   input.refreshToken?.secretId ?? undefined,
                 expires_at: input.expiresAt ?? undefined,
@@ -1222,7 +1256,7 @@ export const createExecutor = <
               provider: input.provider,
               kind: input.kind,
               identityLabel: input.identityLabel,
-              accessTokenSecretId: input.accessToken.secretId,
+              accessTokenSecretId: input.accessToken?.secretId ?? null,
               refreshTokenSecretId:
                 input.refreshToken?.secretId ?? null,
               expiresAt: input.expiresAt,
@@ -1251,6 +1285,16 @@ export const createExecutor = <
         if (!row) {
           return yield* Effect.fail(
             new ConnectionNotFoundError({ connectionId: input.id }),
+          );
+        }
+        if (!row.access_token_secret_id) {
+          return yield* Effect.fail(
+            new StorageError({
+              message:
+                `connections.updateTokens("${input.id}") cannot write token material ` +
+                `for a connection without local token storage.`,
+              cause: undefined,
+            }),
           );
         }
         const writable = yield* pickWritableProvider();
@@ -1347,6 +1391,24 @@ export const createExecutor = <
         const row = yield* findInnermostConnectionRow(id);
         if (!row) return;
         const scope = row.scope_id as string;
+        const ref = rowToConnection(row);
+        const provider = connectionProviders.get(ref.provider);
+        if (provider?.remove) {
+          yield* provider.remove({
+            connectionId: ref.id,
+            scopeId: ref.scopeId,
+            kind: ref.kind,
+            identityLabel: ref.identityLabel,
+            providerState: ref.providerState,
+          }).pipe(
+            Effect.mapError((err) =>
+              new StorageError({
+                message: err.message,
+                cause: err,
+              }),
+            ),
+          );
+        }
         yield* adapter.transaction(() =>
           Effect.gen(function* () {
             // Find every owned secret at this scope and drop through
@@ -1400,6 +1462,7 @@ export const createExecutor = <
       string,
       | ConnectionNotFoundError
       | ConnectionProviderNotRegisteredError
+      | ConnectionAccessTokenNotAvailableError
       | ConnectionRefreshNotSupportedError
       | ConnectionRefreshError
       | StorageFailure
@@ -1414,6 +1477,14 @@ export const createExecutor = <
           );
         }
         const ref = rowToConnection(row);
+        if (ref.accessTokenSecretId === null) {
+          return yield* Effect.fail(
+            new ConnectionAccessTokenNotAvailableError({
+              connectionId: ref.id,
+              provider: ref.provider,
+            }),
+          );
+        }
         const now = Date.now();
         const needsRefresh =
           ref.expiresAt !== null &&

@@ -87,6 +87,15 @@ export const GoogleDiscoveryAuth = Schema.Union(
     /** Scopes requested on sign-in. */
     scopes: Schema.Array(Schema.String),
   }),
+  Schema.Struct({
+    kind: Schema.Literal("composio"),
+    /** Composio toolkit slug (e.g. "gmail"). */
+    app: Schema.String,
+    /** Composio auth config id for BYO OAuth apps. Null = Composio-managed. */
+    authConfigId: Schema.NullOr(Schema.String),
+    /** Stable local Connection id. */
+    connectionId: Schema.String,
+  }),
 );
 export type GoogleDiscoveryAuth = typeof GoogleDiscoveryAuth.Type;
 
@@ -133,3 +142,19 @@ export const GoogleDiscoveryOAuthSession = Schema.Struct({
   connectionId: Schema.String,
 });
 export type GoogleDiscoveryOAuthSession = typeof GoogleDiscoveryOAuthSession.Type;
+
+/** Pending Composio session persisted between startComposioConnect and
+ *  completeComposioConnect. */
+export const GoogleDiscoveryComposioSession = Schema.Struct({
+  /** Executor scope that will own the resulting Connection. */
+  tokenScope: Schema.String,
+  /** Source namespace when reconnecting an existing source. */
+  sourceId: Schema.NullOr(Schema.String),
+  /** Pre-decided Connection id written to the connection row on success. */
+  connectionId: Schema.String,
+  /** Friendly local label for the resulting connection/source. */
+  displayName: Schema.String,
+  app: Schema.String,
+  authConfigId: Schema.NullOr(Schema.String),
+});
+export type GoogleDiscoveryComposioSession = typeof GoogleDiscoveryComposioSession.Type;

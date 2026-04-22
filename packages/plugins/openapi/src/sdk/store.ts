@@ -8,9 +8,12 @@ import {
 
 import {
   AnnotationPolicy,
+  ComposioSourceConfig,
   HeaderValue,
   InvocationConfig,
+  OpenApiInvocationAuth,
   OAuth2Auth,
+  OpenApiComposioSession,
   OpenApiOAuthSession,
   OperationBinding,
 } from "./types";
@@ -37,6 +40,7 @@ export const openapiSchema = defineSchema({
       base_url: { type: "string", required: false },
       headers: { type: "json", required: false },
       oauth2: { type: "json", required: false },
+      composio: { type: "json", required: false },
       annotation_policy: { type: "json", required: false },
       invocation_config: { type: "json", required: true },
     },
@@ -50,6 +54,14 @@ export const openapiSchema = defineSchema({
     },
   },
   openapi_oauth_session: {
+    fields: {
+      id: { type: "string", required: true },
+      scope_id: { type: "string", required: true, index: true },
+      session: { type: "json", required: true },
+      created_at: { type: "date", required: true },
+    },
+  },
+  openapi_composio_session: {
     fields: {
       id: { type: "string", required: true },
       scope_id: { type: "string", required: true, index: true },
@@ -74,6 +86,11 @@ export interface SourceConfig {
   readonly namespace?: string;
   readonly headers?: Record<string, HeaderValue>;
   readonly oauth2?: OAuth2Auth;
+  /** Composio managed-auth binding. Present when this source was onboarded
+   *  with a preset that declares a Composio app mapping. Mutually exclusive
+   *  with oauth2 from the user's perspective, though both can coexist in
+   *  storage for sources that support both paths. */
+  readonly composio?: ComposioSourceConfig;
   readonly annotationPolicy?: AnnotationPolicy;
 }
 
@@ -110,6 +127,7 @@ export class StoredSourceSchema extends Schema.Class<StoredSourceSchema>(
     // sources onboarded with an OAuth2 preset — one OAuth2Auth per
     // securitySchemeName, with the secret ids that back its tokens.
     oauth2: Schema.optional(OAuth2Auth),
+    composio: Schema.optional(ComposioSourceConfig),
   }),
   invocationConfig: Schema.optional(InvocationConfig),
 }) {}
@@ -138,6 +156,12 @@ const decodeOAuth2 = Schema.decodeUnknownSync(OAuth2Auth);
 
 const encodeOAuthSession = Schema.encodeSync(OpenApiOAuthSession);
 const decodeOAuthSession = Schema.decodeUnknownSync(OpenApiOAuthSession);
+
+const encodeComposioSourceConfig = Schema.encodeSync(ComposioSourceConfig);
+const decodeComposioSourceConfig = Schema.decodeUnknownSync(ComposioSourceConfig);
+
+const encodeComposioSession = Schema.encodeSync(OpenApiComposioSession);
+const decodeComposioSession = Schema.decodeUnknownSync(OpenApiComposioSession);
 
 const asJsonObject = (value: unknown): Record<string, unknown> => {
   if (value == null) return {};
@@ -185,6 +209,8 @@ export interface OpenapiStore {
       readonly baseUrl?: string;
       readonly headers?: Record<string, HeaderValue>;
       readonly oauth2?: OAuth2Auth;
+      readonly composio?: ComposioSourceConfig;
+      readonly auth?: OpenApiInvocationAuth | null;
     },
   ) => Effect.Effect<void, StorageFailure>;
 
@@ -220,6 +246,17 @@ export interface OpenapiStore {
   ) => Effect.Effect<OpenApiOAuthSession | null, StorageFailure>;
 
   readonly deleteOAuthSession: (sessionId: string) => Effect.Effect<void, StorageFailure>;
+
+  readonly putComposioSession: (
+    sessionId: string,
+    session: OpenApiComposioSession,
+  ) => Effect.Effect<void, StorageFailure>;
+
+  readonly getComposioSession: (
+    sessionId: string,
+  ) => Effect.Effect<OpenApiComposioSession | null, StorageFailure>;
+
+  readonly deleteComposioSession: (sessionId: string) => Effect.Effect<void, StorageFailure>;
 }
 
 // ---------------------------------------------------------------------------
@@ -235,6 +272,13 @@ export const makeDefaultOpenapiStore = ({
       oauth2Raw == null
         ? undefined
         : decodeOAuth2(typeof oauth2Raw === "string" ? JSON.parse(oauth2Raw) : oauth2Raw);
+    const composioRaw = row.composio;
+    const composio =
+      composioRaw == null
+        ? undefined
+        : decodeComposioSourceConfig(
+            typeof composioRaw === "string" ? JSON.parse(composioRaw) : composioRaw,
+          );
     const headers = decodeHeaders(row.headers);
     const invocationConfig = decodeInvocationConfig(asJsonObject(row.invocation_config));
     return {
@@ -247,6 +291,7 @@ export const makeDefaultOpenapiStore = ({
         baseUrl: (row.base_url as string | null | undefined) ?? undefined,
         headers,
         oauth2,
+        composio,
       },
       invocationConfig,
     };
@@ -295,6 +340,11 @@ export const makeDefaultOpenapiStore = ({
             oauth2: input.config.oauth2
               ? (encodeOAuth2(input.config.oauth2) as unknown as Record<string, unknown>)
               : undefined,
+            composio: input.config.composio
+              ? (encodeComposioSourceConfig(
+                  input.config.composio,
+                ) as unknown as Record<string, unknown>)
+              : undefined,
             invocation_config: encodeInvocationConfig(
               input.invocationConfig,
             ) as unknown as Record<string, unknown>,
@@ -334,11 +384,19 @@ export const makeDefaultOpenapiStore = ({
           patch.headers !== undefined ? patch.headers : existing.config.headers ?? {};
         const nextOAuth2 =
           patch.oauth2 !== undefined ? patch.oauth2 : existing.config.oauth2;
+        const nextComposio =
+          patch.composio !== undefined ? patch.composio : existing.config.composio;
+        const nextAuth =
+          patch.auth !== undefined
+            ? patch.auth
+            : patch.oauth2 !== undefined
+              ? patch.oauth2
+            : Option.getOrUndefined(existing.invocationConfig.auth);
 
         const nextInvocationConfig = new InvocationConfig({
           baseUrl: nextBaseUrl ?? existing.invocationConfig.baseUrl,
           headers: nextHeaders,
-          oauth2: nextOAuth2 ? Option.some(nextOAuth2) : Option.none(),
+          auth: nextAuth ? Option.some(nextAuth) : Option.none(),
         });
 
         yield* adapter.update({
@@ -353,6 +411,9 @@ export const makeDefaultOpenapiStore = ({
             headers: nextHeaders as unknown as Record<string, unknown>,
             oauth2: nextOAuth2
               ? (encodeOAuth2(nextOAuth2) as unknown as Record<string, unknown>)
+              : undefined,
+            composio: nextComposio
+              ? (encodeComposioSourceConfig(nextComposio) as unknown as Record<string, unknown>)
               : undefined,
             invocation_config: encodeInvocationConfig(
               nextInvocationConfig,
@@ -450,6 +511,49 @@ export const makeDefaultOpenapiStore = ({
       adapter
         .delete({
           model: "openapi_oauth_session",
+          where: [{ field: "id", value: sessionId }],
+        })
+        .pipe(Effect.asVoid),
+
+    putComposioSession: (sessionId, session) =>
+      Effect.gen(function* () {
+        yield* adapter.delete({
+          model: "openapi_composio_session",
+          where: [
+            { field: "id", value: sessionId },
+            { field: "scope_id", value: session.tokenScope },
+          ],
+        });
+        yield* adapter.create({
+          model: "openapi_composio_session",
+          data: {
+            id: sessionId,
+            scope_id: session.tokenScope,
+            session: encodeComposioSession(session) as unknown as Record<string, unknown>,
+            created_at: new Date(),
+          },
+          forceAllowId: true,
+        });
+      }),
+
+    getComposioSession: (sessionId) =>
+      adapter
+        .findOne({
+          model: "openapi_composio_session",
+          where: [{ field: "id", value: sessionId }],
+        })
+        .pipe(
+          Effect.map((row) => {
+            if (!row) return null;
+            const raw = row.session;
+            return decodeComposioSession(typeof raw === "string" ? JSON.parse(raw) : raw);
+          }),
+        ),
+
+    deleteComposioSession: (sessionId) =>
+      adapter
+        .delete({
+          model: "openapi_composio_session",
           where: [{ field: "id", value: sessionId }],
         })
         .pipe(Effect.asVoid),

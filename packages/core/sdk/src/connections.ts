@@ -36,7 +36,9 @@ export class ConnectionRef extends Schema.Class<ConnectionRef>("ConnectionRef")(
   provider: Schema.String,
   kind: ConnectionKind,
   identityLabel: Schema.NullOr(Schema.String),
-  accessTokenSecretId: SecretId,
+  /** Backing access-token secret row. Null for external connections whose
+   *  auth material is managed outside the executor (for example Composio). */
+  accessTokenSecretId: Schema.NullOr(SecretId),
   refreshTokenSecretId: Schema.NullOr(SecretId),
   /** Epoch ms when the access token expires; null if not declared. */
   expiresAt: Schema.NullOr(Schema.Number),
@@ -81,7 +83,9 @@ export class CreateConnectionInput extends Schema.Class<CreateConnectionInput>(
   provider: Schema.String,
   kind: ConnectionKind,
   identityLabel: Schema.NullOr(Schema.String),
-  accessToken: TokenMaterial,
+  /** Backing access token. Null for external connections that don't store
+   *  local token material. */
+  accessToken: Schema.NullOr(TokenMaterial),
   refreshToken: Schema.NullOr(TokenMaterial),
   expiresAt: Schema.NullOr(Schema.Number),
   /** OAuth-style scope string. Distinct from the executor scope above. */
@@ -124,6 +128,20 @@ export interface ConnectionRefreshInput {
 }
 
 // ---------------------------------------------------------------------------
+// ConnectionRemovalInput — what the SDK hands to a provider's optional
+// remove callback before deleting the local row. Used for external auth
+// systems that need remote disconnect / revocation.
+// ---------------------------------------------------------------------------
+
+export interface ConnectionRemovalInput {
+  readonly connectionId: ConnectionId;
+  readonly scopeId: ScopeId;
+  readonly kind: ConnectionKind;
+  readonly identityLabel: string | null;
+  readonly providerState: ConnectionProviderState | null;
+}
+
+// ---------------------------------------------------------------------------
 // ConnectionRefreshResult — what a provider's `refresh` callback returns
 // on success. The SDK writes the new token values through the secret
 // providers, updates `expires_at` / `scope` / `provider_state` on the
@@ -152,6 +170,8 @@ export interface ConnectionRefreshResult {
 // Omitting `refresh` means "tokens minted by this provider never
 // refresh" — accessToken(id) just returns the stored value. Useful for
 // long-lived API tokens wrapped as connections for UX consistency.
+// `remove` is optional and lets providers revoke / disconnect remote
+// auth state before the local connection row is deleted.
 // ---------------------------------------------------------------------------
 
 export interface ConnectionProvider {
@@ -159,6 +179,9 @@ export interface ConnectionProvider {
   readonly refresh?: (
     input: ConnectionRefreshInput,
   ) => Effect.Effect<ConnectionRefreshResult, ConnectionRefreshError>;
+  readonly remove?: (
+    input: ConnectionRemovalInput,
+  ) => Effect.Effect<void, ConnectionRefreshError>;
 }
 
 // ---------------------------------------------------------------------------

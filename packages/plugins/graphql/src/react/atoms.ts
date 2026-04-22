@@ -20,3 +20,8 @@ export const graphqlSourceAtom = (scopeId: ScopeId, namespace: string) =>
 export const addGraphqlSource = GraphqlClient.mutation("graphql", "addSource");
 
 export const updateGraphqlSource = GraphqlClient.mutation("graphql", "updateSource");
+
+export const startGraphqlComposioConnect = GraphqlClient.mutation(
+  "graphql",
+  "startComposioConnect",
+);
