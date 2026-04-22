@@ -84,6 +84,7 @@ addOptionalSecretBinding(bindings, "AUTUMN_SECRET_KEY");
 addOptionalSecretBinding(bindings, "SENTRY_DSN");
 addOptionalSecretBinding(bindings, "AXIOM_TOKEN");
 addOptionalSecretBinding(bindings, "BLAXEL_API_KEY");
+addOptionalSecretBinding(bindings, "COMPOSIO_API_KEY");
 
 addOptionalStringBinding(bindings, "VITE_PUBLIC_SENTRY_DSN");
 addOptionalStringBinding(bindings, "AXIOM_DATASET");
