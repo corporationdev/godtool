@@ -78,6 +78,14 @@ export const openApiPresets: readonly OpenApiPreset[] = [
     featured: true,
   },
   {
+    id: "openrouter",
+    name: "OpenRouter",
+    summary: "Models, chat completions, rankings, and unified model routing.",
+    url: "https://openrouter.ai/openapi.json",
+    icon: "https://openrouter.ai/favicon.ico",
+    featured: true,
+  },
+  {
     id: "sentry",
     name: "Sentry",
     summary: "Error tracking, performance monitoring, and releases.",
