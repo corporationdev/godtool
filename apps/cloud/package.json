@@ -17,7 +17,7 @@
     "db:migrate:prod:ci": "bun run db:migrate",
     "build": "vite build",
     "preview": "vite preview",
-    "deploy:ci": "bun run build && bun --env-file=.env alchemy deploy --stage prod --adopt",
+    "deploy:ci": "bun run build && STAGE=prod bun --env-file=.env alchemy deploy --stage prod --adopt && STAGE=prod bun --env-file=.env run scripts/verify-deploy.ts",
     "deploy": "sh -lc 'if [ \"$CI\" != \"true\" ]; then echo \"Production deploys run in CI only.\" >&2; exit 1; fi; bun run deploy:ci'",
     "alchemy:typecheck": "tsc --noEmit --module ESNext --moduleResolution bundler --target ESNext --lib ESNext,DOM --types node,@cloudflare/workers-types --skipLibCheck --strict alchemy.run.ts",
     "cf-typegen": "wrangler types",

@@ -43,6 +43,7 @@ export interface RuntimeContext {
   blaxelRegion: string;
   blaxelTemplateImage: string;
   blaxelWorkspace: string;
+  cloudWorkerName: string;
   serverHostname: string;
   serverUrl: string;
   stage: string;
@@ -128,6 +129,23 @@ export function getStageBlaxelTemplateImage(stage: string): string {
   return defaultBlaxelTemplateImage;
 }
 
+export function getStageCloudWorkerName(stage: string): string {
+  const stageKind = getStageKind(stage);
+
+  if (stageKind === "dev") {
+    return `godtool-web-${stage}`;
+  }
+  if (stageKind === "preview" || stageKind === "test") {
+    const previewLabel = stage.replace(previewStagePrefixRegex, "");
+    return `godtool-web-preview-${previewLabel}`;
+  }
+  if (stageKind === "production") {
+    return "godtool-web-production";
+  }
+
+  throw new Error(`Unsupported stage "${stage}" for cloud worker resolution.`);
+}
+
 export function resolveRuntimeContext(stage: string): RuntimeContext {
   const stageKind = assertSupportedRuntimeStage(stage);
 
@@ -138,6 +156,7 @@ export function resolveRuntimeContext(stage: string): RuntimeContext {
     blaxelRegion: getStageBlaxelRegion(stage),
     blaxelTemplateImage: getStageBlaxelTemplateImage(stage),
     blaxelWorkspace: getStageBlaxelWorkspace(stage),
+    cloudWorkerName: getStageCloudWorkerName(stage),
     serverHostname: getStageServerHostname(stage),
     serverUrl: getStageServerUrl(stage),
     stage,

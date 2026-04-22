@@ -34,6 +34,7 @@ export {
   getStageBlaxelRegion,
   getStageBlaxelTemplateImage,
   getStageBlaxelWorkspace,
+  getStageCloudWorkerName,
 } from "./runtime";
 export {
   resolveStage,

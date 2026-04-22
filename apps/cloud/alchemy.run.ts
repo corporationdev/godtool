@@ -95,7 +95,7 @@ addOptionalStringBinding(bindings, "BLAXEL_REGION");
 addOptionalStringBinding(bindings, "BLAXEL_TEMPLATE_IMAGE");
 
 export const cloud = await Worker("cloud", {
-  name: "executor-cloud",
+  name: runtime.cloudWorkerName,
   cwd: ".",
   entrypoint: "./dist/server/index.js",
   noBundle: true,
