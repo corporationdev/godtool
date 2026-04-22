@@ -1,0 +1,63 @@
+name: Teardown Preview
+
+on:
+  pull_request:
+    types:
+      - closed
+  workflow_dispatch: {}
+
+concurrency:
+  group: preview-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  teardown:
+    name: Teardown Preview
+    runs-on: ubuntu-latest
+    if: ${{ (github.event.pull_request.head.ref || github.ref_name) != 'main' }}
+    environment: Preview
+
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Load Neon secrets
+        uses: 1password/load-secrets-action@v3
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          NEON_API_KEY: op://godtool-preview/Neon/api-key
+          NEON_PROJECT_ID: op://godtool-preview/Neon/project-id
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Clean branch name
+        id: clean-branch-name
+        uses: ./.github/actions/clean-branch-name
+        with:
+          branch: ${{ github.event.pull_request.head.ref || github.ref_name }}
+
+      - name: Set stage
+        run: echo "STAGE=preview-${{ steps.clean-branch-name.outputs.clean_branch_name }}" >> "$GITHUB_ENV"
+
+      - name: Inject secrets
+        uses: ./.github/actions/inject-secrets
+        with:
+          stage: ${{ env.STAGE }}
+          op-service-account-token: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+
+      - name: Destroy preview deployment
+        working-directory: apps/cloud
+        run: bun --env-file=.env alchemy destroy --stage "$STAGE"
+
+      - name: Tear down Neon branch
+        continue-on-error: true
+        uses: neondatabase/delete-branch-action@v3
+        with:
+          project_id: ${{ env.NEON_PROJECT_ID }}
+          branch: preview/${{ env.CLEAN_BRANCH_NAME }}
+          api_key: ${{ env.NEON_API_KEY }}

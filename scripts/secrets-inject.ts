@@ -57,11 +57,10 @@ const runtime = resolveRuntimeContext(stage);
 const template = readFileSync(templatePath, "utf8")
   .replace(stageVariableRegex, stage)
   .replace(envTierVariableRegex, envTier);
+const runtimeOverrides = getRuntimeOverrides(runtime.stageKind);
 const secrets = {
   ...normalizeEnvValues(parseDotEnv(injectSecretsTemplate(template))),
-  BLAXEL_REGION: runtime.blaxelRegion,
-  BLAXEL_TEMPLATE_IMAGE: runtime.blaxelTemplateImage,
-  BLAXEL_WORKSPACE: runtime.blaxelWorkspace,
+  ...runtimeOverrides,
   VITE_PUBLIC_SITE_URL: runtime.appUrl,
   MCP_AUTHKIT_DOMAIN: runtime.authkitDomain,
   MCP_RESOURCE_ORIGIN: runtime.appUrl,
@@ -191,4 +190,21 @@ function shouldPreserveExistingValue(
   stageKind: (typeof runtime)["stageKind"],
 ): boolean {
   return key === "DATABASE_URL" && (stageKind === "dev" || stageKind === "sandbox");
+}
+
+function getRuntimeOverrides(stageKind: (typeof runtime)["stageKind"]): Record<string, string> {
+  const overrides: Record<string, string> = {
+    BLAXEL_REGION: runtime.blaxelRegion,
+    BLAXEL_TEMPLATE_IMAGE: runtime.blaxelTemplateImage,
+    BLAXEL_WORKSPACE: runtime.blaxelWorkspace,
+  };
+
+  if (stageKind === "preview") {
+    const previewDatabaseUrl = normalizeEnvValue(process.env.DATABASE_URL);
+    if (previewDatabaseUrl) {
+      overrides.DATABASE_URL = previewDatabaseUrl;
+    }
+  }
+
+  return overrides;
 }
