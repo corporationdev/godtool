@@ -1,10 +1,13 @@
 // @ts-nocheck
 
+import { unlink } from "node:fs/promises";
+import { pathToFileURL } from "node:url";
+
 const DEFAULT_HOST = "0.0.0.0";
 const DEFAULT_PORT = 4789;
 
 type ExecuteRequest = {
-  readonly code?: string;
+  readonly moduleSource?: string;
 };
 
 const parseArgs = (argv: string[]) => {
@@ -82,17 +85,37 @@ const runServer = async (): Promise<void> => {
           return badRequestResponse("Invalid execute request JSON.");
         }
 
-        if (typeof payload.code !== "string" || payload.code.trim().length === 0) {
-          return badRequestResponse("Code is required.");
+        if (
+          typeof payload.moduleSource !== "string" ||
+          payload.moduleSource.trim().length === 0
+        ) {
+          return badRequestResponse("moduleSource is required.");
         }
 
-        return jsonResponse({
-          logs: [],
-          result: {
-            placeholder: true,
-            receivedCodeLength: payload.code.length,
-          },
-        });
+        const modulePath = `/tmp/godtool-exec-${crypto.randomUUID()}.mjs`;
+
+        try {
+          await Bun.write(modulePath, payload.moduleSource);
+          const moduleUrl = `${pathToFileURL(modulePath).href}?t=${Date.now()}`;
+          const loaded = await import(moduleUrl);
+
+          if (typeof loaded.default !== "function") {
+            throw new Error("Sandbox execute module must export a default function.");
+          }
+
+          return jsonResponse(await loaded.default());
+        } catch (error) {
+          return jsonResponse(
+            {
+              error: error instanceof Error ? error.message : String(error),
+              logs: [],
+              result: null,
+            },
+            { status: 500 },
+          );
+        } finally {
+          await unlink(modulePath).catch(() => undefined);
+        }
       }
 
       return new Response("Not found", { status: 404 });

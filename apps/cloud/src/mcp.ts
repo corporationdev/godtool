@@ -45,6 +45,7 @@ const CORS_PREFLIGHT_HEADERS = {
 } as const;
 
 const WWW_AUTHENTICATE = `Bearer resource_metadata="${RESOURCE_ORIGIN}/.well-known/oauth-protected-resource"`;
+const INTERNAL_TOOL_CALL_PATH_PREFIX = "/mcp/internal/tool-call/";
 
 // ---------------------------------------------------------------------------
 // Response helpers
@@ -599,7 +600,12 @@ const dispatchDelete = (request: Request) => {
 // App
 // ---------------------------------------------------------------------------
 
-type McpRoute = "mcp" | "oauth-protected-resource" | "oauth-authorization-server" | null;
+type McpRoute =
+  | "mcp"
+  | "internal-tool-call"
+  | "oauth-protected-resource"
+  | "oauth-authorization-server"
+  | null;
 
 /**
  * Returns the MCP route type for a pathname, or `null` if the path isn't owned
@@ -611,9 +617,19 @@ type McpRoute = "mcp" | "oauth-protected-resource" | "oauth-authorization-server
  */
 export const classifyMcpPath = (pathname: string): McpRoute => {
   if (pathname === "/mcp") return "mcp";
+  if (pathname.startsWith(INTERNAL_TOOL_CALL_PATH_PREFIX)) return "internal-tool-call";
   if (pathname === "/.well-known/oauth-protected-resource") return "oauth-protected-resource";
   if (pathname === "/.well-known/oauth-authorization-server") return "oauth-authorization-server";
   return null;
+};
+
+const readInternalToolCallSessionId = (pathname: string): string | null => {
+  if (!pathname.startsWith(INTERNAL_TOOL_CALL_PATH_PREFIX)) {
+    return null;
+  }
+
+  const encoded = pathname.slice(INTERNAL_TOOL_CALL_PATH_PREFIX.length);
+  return encoded.length > 0 ? decodeURIComponent(encoded) : null;
 };
 
 /**
@@ -629,11 +645,22 @@ export const mcpApp: Effect.Effect<
 > = Effect.gen(function* () {
   const httpRequest = yield* HttpServerRequest.HttpServerRequest;
   const request = httpRequest.source as Request;
-  const route = classifyMcpPath(new URL(request.url).pathname);
+  const pathname = new URL(request.url).pathname;
+  const route = classifyMcpPath(pathname);
 
   if (request.method === "OPTIONS") return corsPreflight;
   if (route === "oauth-protected-resource") return yield* protectedResourceMetadata;
   if (route === "oauth-authorization-server") return yield* authorizationServerMetadata;
+  if (route === "internal-tool-call") {
+    const sessionId = readInternalToolCallSessionId(pathname);
+    if (!sessionId) {
+      return jsonResponse({ ok: false, error: { message: "Missing MCP session id" } }, 400);
+    }
+    if (request.method !== "POST") {
+      return jsonResponse({ ok: false, error: { message: "Method not allowed" } }, 405);
+    }
+    return yield* forwardToExistingSession(request, sessionId, false);
+  }
 
   const auth = yield* McpAuth;
   const token = yield* auth.verifyBearer(request);

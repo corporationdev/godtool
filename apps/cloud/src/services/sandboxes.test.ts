@@ -7,6 +7,7 @@ import {
   EXECUTE_RUNTIME_SERVER_PATH_FOR_TESTS,
   EXECUTE_RUNTIME_VERSION_PATH_FOR_TESTS,
   getExecuteRuntimeVersion,
+  getSandboxNameForOrganization,
   makeSandboxesService,
   type SandboxHandle,
   type SandboxHandleProvider,
@@ -89,7 +90,7 @@ const makeProvider = (calls: { create: number; wake: number }): SandboxProvider 
     calls.create += 1;
     return {
       externalId: `sbx_${organizationId}`,
-      sandboxName: `godtool-org-${organizationId}`,
+      sandboxName: getSandboxNameForOrganization(organizationId),
       status: "created",
     };
   },
@@ -97,7 +98,7 @@ const makeProvider = (calls: { create: number; wake: number }): SandboxProvider 
     calls.wake += 1;
     return {
       externalId,
-      sandboxName: `godtool-org-${organizationId}`,
+      sandboxName: getSandboxNameForOrganization(organizationId),
       status: "reused",
     };
   },
@@ -114,6 +115,21 @@ const makeHandleProvider = (
 });
 
 describe("sandboxes service", () => {
+  it("builds a blaxel-safe sandbox name from the organization id", () => {
+    const sandboxName = getSandboxNameForOrganization("Org_ID.With Weird__Chars");
+    const longSandboxName = getSandboxNameForOrganization(
+      "ORG_WITH_A_VERY_LONG_IDENTIFIER_THAT_SHOULD_BE_TRUNCATED_SAFELY_1234567890",
+    );
+
+    expect(sandboxName).toMatch(/^godtool-org-[a-z0-9-]+-[a-f0-9]{8}$/);
+    expect(sandboxName.length).toBeLessThanOrEqual(49);
+    expect(sandboxName).not.toContain("_");
+    expect(sandboxName).not.toContain(".");
+    expect(sandboxName).toBe(getSandboxNameForOrganization("Org_ID.With Weird__Chars"));
+    expect(sandboxName).not.toBe(getSandboxNameForOrganization("org-id-with-weird-chars"));
+    expect(longSandboxName.length).toBeLessThanOrEqual(49);
+  });
+
   it("creates the sandbox, installs runtime assets, and starts the execute server", async () => {
     const orgId = `org_${crypto.randomUUID()}`;
     const providerCalls = { create: 0, wake: 0 };
@@ -340,5 +356,52 @@ describe("sandboxes service", () => {
     expect(String(result)).toContain("sandbox is broken");
     expect(providerCalls).toEqual({ create: 1, wake: 0 });
     expect(handleCalls).toEqual({ getHandle: 0 });
+  });
+
+  it("persists structured provider errors instead of [object Object]", async () => {
+    const orgId = `org_${crypto.randomUUID()}`;
+
+    const result = await program(
+      Effect.gen(function* () {
+        const { db } = yield* DbService;
+        yield* Effect.promise(() =>
+          makeUserStore(db).upsertOrganization({ id: orgId, name: "StructuredError" }),
+        );
+
+        const service = makeSandboxesService(
+          db,
+          {
+            createOrGetSandbox: async () => {
+              throw {
+                code: "sandbox_create_failed",
+                message: "provider exploded",
+                status: 500,
+              };
+            },
+            wakeSandbox: async () => {
+              throw new Error("unexpected wake");
+            },
+          },
+          makeHandleProvider(new FakeSandboxHandle(), { getHandle: 0 }),
+        );
+
+        const error = yield* Effect.promise(async () => {
+          try {
+            await service.ensureSandbox(orgId);
+            return null;
+          } catch (cause) {
+            return cause;
+          }
+        });
+        const row = yield* Effect.promise(() => service.getSandbox(orgId));
+        return { error, row };
+      }),
+    );
+
+    expect(String(result.error)).toContain("provider exploded");
+    expect(result.row?.status).toBe("error");
+    expect(result.row?.error).toContain("provider exploded");
+    expect(result.row?.error).toContain("sandbox_create_failed");
+    expect(result.row?.error).not.toBe("[object Object]");
   });
 });

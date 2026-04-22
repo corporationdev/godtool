@@ -18,6 +18,9 @@ const EXECUTE_RUNTIME_PROCESS_NAME = "godtool-execute-runtime";
 const EXECUTE_RUNTIME_START_POLL_MS = 250;
 const EXECUTE_RUNTIME_START_TIMEOUT_MS = 10_000;
 const MAX_PROCESS_LOG_CHARS = 12_000;
+const MAX_SANDBOX_NAME_LENGTH = 49;
+const SANDBOX_NAME_HASH_LENGTH = 8;
+const SANDBOX_NAME_PREFIX = "godtool-org";
 const WORKSPACE_RUNTIME_DIRECTORY = "/workspace/runtime";
 
 export const EXECUTE_RUNTIME_PORT = 4789;
@@ -161,8 +164,29 @@ const configureBlaxel = () => {
   return config;
 };
 
-export const getSandboxNameForOrganization = (organizationId: string) =>
-  `godtool-org-${organizationId}`;
+const normalizeSandboxNameSegment = (value: string): string => {
+  const normalized = value
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return normalized.length > 0 ? normalized : "org";
+};
+
+export const getSandboxNameForOrganization = (organizationId: string) => {
+  const hash = createHash("sha256")
+    .update(organizationId)
+    .digest("hex")
+    .slice(0, SANDBOX_NAME_HASH_LENGTH);
+  const maxSegmentLength =
+    MAX_SANDBOX_NAME_LENGTH - SANDBOX_NAME_PREFIX.length - SANDBOX_NAME_HASH_LENGTH - 2;
+  const baseSegment = normalizeSandboxNameSegment(organizationId)
+    .slice(0, maxSegmentLength)
+    .replace(/-+$/g, "");
+
+  return `${SANDBOX_NAME_PREFIX}-${baseSegment || "org"}-${hash}`;
+};
 
 const resolveSandboxExternalId = async (sandbox: Awaited<ReturnType<typeof SandboxInstance.get>>) => {
   await sandbox.wait();
@@ -256,6 +280,37 @@ const truncateOutput = (output: string, maxChars: number): string => {
   }
 
   return `${output.slice(0, maxChars)}\n...[truncated ${output.length - maxChars} characters]`;
+};
+
+const renderUnknownError = (error: unknown): string => {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (typeof error === "string") {
+    return error;
+  }
+
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof error.message === "string"
+  ) {
+    const code =
+      "code" in error && typeof error.code === "string" ? ` (${error.code})` : "";
+    return `${error.message}${code}`;
+  }
+
+  if (typeof error === "object" && error !== null) {
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return Object.prototype.toString.call(error);
+    }
+  }
+
+  return String(error);
 };
 
 const quoteShellArgument = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
@@ -517,7 +572,7 @@ export const makeSandboxesService = (
         };
       } catch (error) {
         const broken = await store.markError({
-          error: error instanceof Error ? error.message : String(error),
+          error: renderUnknownError(error),
           organizationId: record.organizationId,
         });
         throw new Error(inferBrokenMessage(record.organizationId, broken.error));
@@ -545,7 +600,7 @@ export const makeSandboxesService = (
       };
     } catch (error) {
       const broken = await store.markError({
-        error: error instanceof Error ? error.message : String(error),
+        error: renderUnknownError(error),
         organizationId: record.organizationId,
       });
       throw new Error(inferBrokenMessage(record.organizationId, broken.error));
@@ -590,7 +645,7 @@ export const makeSandboxesService = (
       };
     } catch (error) {
       const broken = await store.markError({
-        error: error instanceof Error ? error.message : String(error),
+        error: renderUnknownError(error),
         organizationId,
       });
       throw new Error(inferBrokenMessage(organizationId, broken.error));

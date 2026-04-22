@@ -5,6 +5,7 @@
 import { DurableObject, env } from "cloudflare:workers";
 import { createTraceState } from "@opentelemetry/api";
 import { Data, Effect, Layer } from "effect";
+import * as Cause from "effect/Cause";
 import * as OtelTracer from "@effect/opentelemetry/Tracer";
 import type * as Tracer from "effect/Tracer";
 import * as Sentry from "@sentry/cloudflare";
@@ -14,7 +15,8 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
 import { createExecutorMcpServer } from "@executor/host-mcp";
-import { buildExecuteDescription } from "@executor/execution";
+import { buildExecuteDescription, createExecutionEngine } from "@executor/execution";
+import type { SandboxToolInvoker } from "@executor/codemode-core";
 import type { DrizzleDb, DbServiceShape } from "./services/db";
 
 // Import directly from core-shared-services, NOT from ./api/layers.ts.
@@ -23,9 +25,12 @@ import type { DrizzleDb, DbServiceShape } from "./services/db";
 // load under vitest-pool-workers. The DO only needs the core two services
 // (WorkOSAuth + AutumnService), so we import them from the tight module.
 import { CoreSharedServices } from "./api/core-shared-services";
+import { withExecutionUsageTracking } from "./api/execution-usage";
 import { UserStoreService } from "./auth/context";
 import { resolveOrganization } from "./auth/resolve-organization";
+import { AutumnService } from "./services/autumn";
 import { DbService, combinedSchema } from "./services/db";
+import { createScopedExecutor } from "./services/executor";
 import { makeExecutionStack } from "./services/execution-stack";
 import { DoTelemetryLive } from "./services/telemetry";
 
@@ -48,6 +53,8 @@ const HEARTBEAT_MS = 30 * 1000;
 const SESSION_TIMEOUT_MS = 5 * 60 * 1000;
 const TRANSPORT_STATE_KEY = "transport";
 const SESSION_META_KEY = "session-meta";
+const INTERNAL_TOOL_CALL_PATH_PREFIX = "/mcp/internal/tool-call/";
+const SANDBOX_TOOL_CALL_TOKEN_HEADER = "x-executor-callback-token";
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -110,6 +117,35 @@ type SessionMeta = {
   readonly organizationId: string;
   readonly organizationName: string;
   readonly userId: string;
+};
+
+type ActiveSandboxRun = {
+  readonly token: string;
+  readonly toolInvoker: SandboxToolInvoker;
+};
+
+const formatSandboxToolCallError = (cause: Cause.Cause<unknown>) => {
+  const failure = Array.from(Cause.failures(cause))[0];
+  if (
+    typeof failure === "object" &&
+    failure !== null &&
+    "message" in failure &&
+    typeof failure.message === "string"
+  ) {
+    return { message: failure.message };
+  }
+
+  const defect = Array.from(Cause.defects(cause))[0];
+  if (
+    typeof defect === "object" &&
+    defect !== null &&
+    "message" in defect &&
+    typeof defect.message === "string"
+  ) {
+    return { message: defect.message };
+  }
+
+  return { message: Cause.isInterrupted(cause) ? "Interrupted" : "Tool invocation failed" };
 };
 
 /**
@@ -191,6 +227,7 @@ export class McpSessionDO extends DurableObject {
   private lastActivityMs = 0;
   private dbHandle: DbHandle | null = null;
   private sessionMeta: SessionMeta | null = null;
+  private readonly activeSandboxRuns = new Map<string, ActiveSandboxRun>();
   // Updated at the start of each `handleRequest` so the host-mcp server's
   // `parentSpan` getter — invoked by the MCP SDK's deferred tool callbacks
   // after `transport.handleRequest()` has already returned its streaming
@@ -245,16 +282,58 @@ export class McpSessionDO extends DurableObject {
   ) {
     const self = this;
     return Effect.gen(function* () {
-      const { executor, engine } = yield* makeExecutionStack(
+      if (requestScopedRuntimeEnabled) {
+        const { executor, engine } = yield* makeExecutionStack(
+          sessionMeta.userId,
+          sessionMeta.organizationId,
+          sessionMeta.organizationName,
+        );
+        const description = yield* buildExecuteDescription(executor);
+        const mcpServer = yield* createExecutorMcpServer({
+          engine,
+          description,
+          parentSpan: () => self.currentRequestSpan ?? undefined,
+          debug: env.EXECUTOR_MCP_DEBUG === "true",
+        }).pipe(Effect.withSpan("McpSessionDO.createExecutorMcpServer"));
+        const transport = new WorkerTransport({
+          sessionIdGenerator: () => self.ctx.id.toString(),
+          storage: self.makeStorage(),
+          enableJsonResponse: options.enableJsonResponse,
+        });
+        yield* Effect.promise(() => mcpServer.connect(transport)).pipe(
+          Effect.withSpan("McpSessionDO.transport.connect"),
+        );
+        return { mcpServer, transport };
+      }
+
+      const executor = yield* createScopedExecutor(
         sessionMeta.userId,
         sessionMeta.organizationId,
         sessionMeta.organizationName,
+      ).pipe(Effect.withSpan("McpSessionDO.createScopedExecutor"));
+      const { makeBlaxelCodeExecutor } = yield* Effect.promise(
+        () => import("./services/blaxel-code-executor"),
       );
-      // Build the description here so the postgres query it runs
-      // (`executor.sources.list`) lands as a child of
-      // `McpSessionDO.createRuntime`. host-mcp would otherwise call
-      // `Effect.runPromise(engine.getDescription)` at its async
-      // MCP-SDK boundary and orphan the sub-span.
+      const codeExecutor = makeBlaxelCodeExecutor({
+        activeRuns: {
+          register: ({ runId, token, toolInvoker }) => {
+            self.activeSandboxRuns.set(runId, { token, toolInvoker });
+          },
+          unregister: (runId) => {
+            self.activeSandboxRuns.delete(runId);
+          },
+        },
+        callbackOrigin: env.MCP_RESOURCE_ORIGIN ?? "https://executor.sh",
+        db: options.dbHandle.db,
+        organizationId: sessionMeta.organizationId,
+        sessionId: self.ctx.id.toString(),
+      });
+      const autumn = yield* AutumnService;
+      const engine = withExecutionUsageTracking(
+        sessionMeta.organizationId,
+        createExecutionEngine({ executor, codeExecutor }),
+        (orgId) => Effect.runFork(autumn.trackExecution(orgId)),
+      );
       const description = yield* buildExecuteDescription(executor);
       const mcpServer = yield* createExecutorMcpServer({
         engine,
@@ -471,6 +550,10 @@ export class McpSessionDO extends DurableObject {
   }
 
   private dispatchRequest(request: Request): Effect.Effect<Response> {
+    if (new URL(request.url).pathname.startsWith(INTERNAL_TOOL_CALL_PATH_PREFIX)) {
+      return this.handleSandboxToolCallRequest(request);
+    }
+
     if (requestScopedRuntimeEnabled) {
       return this.handleRequestWithRequestScopedRuntime(request);
     }
@@ -516,6 +599,145 @@ export class McpSessionDO extends DurableObject {
     );
   }
 
+  private handleSandboxToolCallRequest(request: Request): Effect.Effect<Response> {
+    const self = this;
+    return Effect.gen(function* () {
+      const token = request.headers.get(SANDBOX_TOOL_CALL_TOKEN_HEADER);
+      if (!token) {
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error: { message: "Missing sandbox callback token" },
+          }),
+          {
+            status: 401,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      }
+
+      let body: { readonly runId?: string; readonly path?: string; readonly args?: unknown };
+      try {
+        body = (yield* Effect.promise(() => request.json())) as {
+          readonly runId?: string;
+          readonly path?: string;
+          readonly args?: unknown;
+        };
+      } catch {
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error: { message: "Invalid sandbox tool-call JSON" },
+          }),
+          {
+            status: 400,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      }
+
+      if (typeof body.runId !== "string" || body.runId.length === 0) {
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error: { message: "Missing runId" },
+          }),
+          {
+            status: 400,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      }
+
+      if (typeof body.path !== "string" || body.path.length === 0) {
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error: { message: "Missing tool path" },
+          }),
+          {
+            status: 400,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      }
+
+      const activeRun = self.activeSandboxRuns.get(body.runId);
+      if (!activeRun) {
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error: { message: `Unknown sandbox run "${body.runId}"` },
+          }),
+          {
+            status: 404,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      }
+
+      if (activeRun.token !== token) {
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error: { message: "Invalid sandbox callback token" },
+          }),
+          {
+            status: 403,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      }
+
+      const invocation = activeRun.toolInvoker.invoke({
+        path: body.path,
+        args: body.args,
+      }) as Effect.Effect<unknown, unknown, never>;
+
+      const result = yield* invocation.pipe(
+        Effect.map((value) => ({ ok: true as const, result: value })),
+        Effect.catchAllCause((cause) =>
+          Effect.succeed({
+            ok: false as const,
+            error: formatSandboxToolCallError(cause),
+          }),
+        ),
+        Effect.withSpan("McpSessionDO.sandboxToolCall", {
+          attributes: {
+            "mcp.tool.name": body.path,
+          },
+        }),
+      );
+
+      return new Response(JSON.stringify(result), {
+        status: result.ok ? 200 : 500,
+        headers: { "content-type": "application/json" },
+      });
+    }).pipe(
+      Effect.catchAllCause((cause) =>
+        Effect.sync(() => {
+          console.error("[mcp-session] sandbox tool call failed:", cause);
+          const message = Array.from(Cause.failures(cause))[0];
+          Sentry.captureException(
+            typeof message === "object" && message !== null
+              ? message
+              : new Error("Sandbox tool call failed"),
+          );
+          return new Response(
+            JSON.stringify({
+              ok: false,
+              error: { message: "Internal sandbox tool-call error" },
+            }),
+            {
+              status: 500,
+              headers: { "content-type": "application/json" },
+            },
+          );
+        }),
+      ),
+    );
+  }
+
   async alarm(): Promise<void> {
     const program = Effect.promise(() => this.runAlarm()).pipe(
       Effect.withSpan("McpSessionDO.alarm"),
@@ -534,6 +756,7 @@ export class McpSessionDO extends DurableObject {
   }
 
   private async cleanup(): Promise<void> {
+    this.activeSandboxRuns.clear();
     if (this.transport) {
       await this.transport.close().catch(() => undefined);
       this.transport = null;
