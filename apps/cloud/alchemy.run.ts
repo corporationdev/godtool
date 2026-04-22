@@ -81,12 +81,16 @@ const bindings: Bindings = {
 addOptionalSecretBinding(bindings, "AUTUMN_SECRET_KEY");
 addOptionalSecretBinding(bindings, "SENTRY_DSN");
 addOptionalSecretBinding(bindings, "AXIOM_TOKEN");
+addOptionalSecretBinding(bindings, "BLAXEL_API_KEY");
 
 addOptionalStringBinding(bindings, "VITE_PUBLIC_SENTRY_DSN");
 addOptionalStringBinding(bindings, "AXIOM_DATASET");
 addOptionalStringBinding(bindings, "AXIOM_TRACES_URL");
 addOptionalStringBinding(bindings, "AXIOM_TRACES_SAMPLE_RATIO");
 addOptionalStringBinding(bindings, "EXECUTOR_MCP_DEBUG");
+addOptionalStringBinding(bindings, "BLAXEL_WORKSPACE");
+addOptionalStringBinding(bindings, "BLAXEL_REGION");
+addOptionalStringBinding(bindings, "BLAXEL_TEMPLATE_IMAGE");
 
 export const cloud = await Worker("cloud", {
   name: "executor-cloud",

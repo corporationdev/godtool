@@ -29,6 +29,9 @@ export {
   getStageAppHostname,
   getStageAppUrl,
   getStageAuthkitDomain,
+  getStageBlaxelRegion,
+  getStageBlaxelTemplateImage,
+  getStageBlaxelWorkspace,
 } from "./runtime";
 export {
   resolveStage,

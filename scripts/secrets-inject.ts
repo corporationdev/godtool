@@ -59,6 +59,9 @@ const template = readFileSync(templatePath, "utf8")
   .replace(envTierVariableRegex, envTier);
 const secrets = {
   ...normalizeEnvValues(parseDotEnv(injectSecretsTemplate(template))),
+  BLAXEL_REGION: runtime.blaxelRegion,
+  BLAXEL_TEMPLATE_IMAGE: runtime.blaxelTemplateImage,
+  BLAXEL_WORKSPACE: runtime.blaxelWorkspace,
   VITE_PUBLIC_SITE_URL: runtime.appUrl,
   MCP_AUTHKIT_DOMAIN: runtime.authkitDomain,
   MCP_RESOURCE_ORIGIN: runtime.appUrl,
@@ -92,7 +95,11 @@ for (const examplePath of envExamples) {
       return "";
     }
 
-    const resolvedValue = secrets[key] ?? normalizeEnvValue(existingEnv[key]) ?? exampleValue;
+    const existingValue = normalizeEnvValue(existingEnv[key]);
+    const resolvedValue =
+      shouldPreserveExistingValue(key, runtime.stageKind) && existingValue
+        ? existingValue
+        : (secrets[key] ?? existingValue ?? exampleValue);
     return `${prefix}${key}${equals}${resolvedValue}`;
   });
 
@@ -177,4 +184,11 @@ function normalizeEnvValues(env: Record<string, string>): Record<string, string>
 
 function normalizeEnvValue(value: string | undefined): string | undefined {
   return value === undefined || value.length === 0 ? undefined : value;
+}
+
+function shouldPreserveExistingValue(
+  key: string,
+  stageKind: (typeof runtime)["stageKind"],
+): boolean {
+  return key === "DATABASE_URL" && (stageKind === "dev" || stageKind === "sandbox");
 }

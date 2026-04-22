@@ -1,5 +1,8 @@
 import { getStageKind, type StageKind } from "./stage-kind";
 
+const defaultBlaxelRegion = "us-pdx-1";
+const defaultBlaxelTemplateImage = "sandbox/godtool:latest";
+const defaultBlaxelWorkspace = "godtool";
 const previewSubdomainPrefix = "preview-pr-";
 const productionSubdomain = "app";
 const rootDomain = "godtool.dev";
@@ -35,8 +38,26 @@ export interface RuntimeContext {
   appHostname: string | null;
   appUrl: string;
   authkitDomain: string;
+  blaxelRegion: string;
+  blaxelTemplateImage: string;
+  blaxelWorkspace: string;
   stage: string;
   stageKind: Exclude<StageKind, "test" | "unknown">;
+}
+
+function assertSupportedRuntimeStage(stage: string): Exclude<StageKind, "test" | "unknown"> {
+  const stageKind = getStageKind(stage);
+
+  if (
+    stageKind !== "dev" &&
+    stageKind !== "sandbox" &&
+    stageKind !== "preview" &&
+    stageKind !== "production"
+  ) {
+    throw new Error(`Unsupported stage "${stage}" for runtime resolution.`);
+  }
+
+  return stageKind;
 }
 
 export function getStageAppHostname(stage: string): string | null {
@@ -65,36 +86,36 @@ export function getStageAppUrl(stage: string): string {
 }
 
 export function getStageAuthkitDomain(stage: string): string {
-  const stageKind = getStageKind(stage);
-
-  if (
-    stageKind !== "dev" &&
-    stageKind !== "sandbox" &&
-    stageKind !== "preview" &&
-    stageKind !== "production"
-  ) {
-    throw new Error(`Unsupported stage "${stage}" for authkit domain resolution.`);
-  }
+  assertSupportedRuntimeStage(stage);
 
   return sharedAuthkitDomain;
 }
 
-export function resolveRuntimeContext(stage: string): RuntimeContext {
-  const stageKind = getStageKind(stage);
+export function getStageBlaxelWorkspace(stage: string): string {
+  assertSupportedRuntimeStage(stage);
+  return defaultBlaxelWorkspace;
+}
 
-  if (
-    stageKind !== "dev" &&
-    stageKind !== "sandbox" &&
-    stageKind !== "preview" &&
-    stageKind !== "production"
-  ) {
-    throw new Error(`Unsupported stage "${stage}" for runtime resolution.`);
-  }
+export function getStageBlaxelRegion(stage: string): string {
+  assertSupportedRuntimeStage(stage);
+  return defaultBlaxelRegion;
+}
+
+export function getStageBlaxelTemplateImage(stage: string): string {
+  assertSupportedRuntimeStage(stage);
+  return defaultBlaxelTemplateImage;
+}
+
+export function resolveRuntimeContext(stage: string): RuntimeContext {
+  const stageKind = assertSupportedRuntimeStage(stage);
 
   return {
     appHostname: getStageAppHostname(stage),
     appUrl: getStageAppUrl(stage),
     authkitDomain: getStageAuthkitDomain(stage),
+    blaxelRegion: getStageBlaxelRegion(stage),
+    blaxelTemplateImage: getStageBlaxelTemplateImage(stage),
+    blaxelWorkspace: getStageBlaxelWorkspace(stage),
     stage,
     stageKind,
   };
