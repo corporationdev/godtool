@@ -50,21 +50,13 @@ jobs:
       - name: Set stage
         run: echo "STAGE=preview-${{ steps.clean-branch-name.outputs.clean_branch_name }}" >> "$GITHUB_ENV"
 
-      - name: Select Neon parent branch
-        run: |
-          if [ "${{ steps.clean-branch-name.outputs.clean_branch_name }}" = "main" ]; then
-            echo "NEON_PARENT_BRANCH=main" >> "$GITHUB_ENV"
-          else
-            echo "NEON_PARENT_BRANCH=preview/main" >> "$GITHUB_ENV"
-          fi
-
       - name: Create database branch
         id: create-database-branch
         uses: neondatabase/create-branch-action@v6
         with:
           project_id: ${{ env.NEON_PROJECT_ID }}
           branch_name: preview/${{ steps.clean-branch-name.outputs.clean_branch_name }}
-          parent_branch: ${{ env.NEON_PARENT_BRANCH }}
+          parent_branch: main
           role: neondb_owner
           api_key: ${{ env.NEON_API_KEY }}
 

@@ -1,13 +1,29 @@
+import { createHash } from "node:crypto";
+
 import { initialize, SandboxInstance } from "@blaxel/core";
 import { env } from "cloudflare:workers";
 import { eq } from "drizzle-orm";
 
+import { EXECUTE_RUNTIME_ASSETS } from "./execute-runtime.generated";
 import { sandboxes } from "./schema";
 import type { DrizzleDb } from "./db";
 
 const DEFAULT_BLAXEL_MEMORY_MB = 4096;
 const DEFAULT_BLAXEL_REGION = "us-pdx-1";
 const BLAXEL_PROVIDER = "blaxel" as const;
+const EXECUTE_RUNTIME_DIRECTORY = "/workspace/runtime/execute";
+const EXECUTE_RUNTIME_SERVER_PATH = `${EXECUTE_RUNTIME_DIRECTORY}/server.js`;
+const EXECUTE_RUNTIME_VERSION_PATH = `${EXECUTE_RUNTIME_DIRECTORY}/version.txt`;
+const EXECUTE_RUNTIME_PROCESS_NAME = "godtool-execute-runtime";
+const EXECUTE_RUNTIME_START_POLL_MS = 250;
+const EXECUTE_RUNTIME_START_TIMEOUT_MS = 10_000;
+const MAX_PROCESS_LOG_CHARS = 12_000;
+const WORKSPACE_RUNTIME_DIRECTORY = "/workspace/runtime";
+
+export const EXECUTE_RUNTIME_PORT = 4789;
+export const EXECUTE_RUNTIME_PROCESS_NAME_FOR_TESTS = EXECUTE_RUNTIME_PROCESS_NAME;
+export const EXECUTE_RUNTIME_SERVER_PATH_FOR_TESTS = EXECUTE_RUNTIME_SERVER_PATH;
+export const EXECUTE_RUNTIME_VERSION_PATH_FOR_TESTS = EXECUTE_RUNTIME_VERSION_PATH;
 
 export type SandboxStatus = "creating" | "ready" | "error";
 export type SandboxRecord = typeof sandboxes.$inferSelect;
@@ -17,6 +33,23 @@ export interface EnsuredSandbox {
   readonly record: SandboxRecord;
   readonly sandboxName: string;
   readonly status: "created" | "reused";
+}
+
+export interface ExecuteRuntimeInstallResult {
+  readonly cacheHit: boolean;
+  readonly runtimeVersion: string;
+}
+
+export interface EnsuredExecuteRuntime {
+  readonly health: {
+    readonly ok: true;
+    readonly status: number;
+  };
+  readonly install: ExecuteRuntimeInstallResult;
+  readonly runtime: {
+    readonly status: "started" | "reused";
+  };
+  readonly sandbox: EnsuredSandbox;
 }
 
 export interface SandboxProvider {
@@ -35,6 +68,53 @@ export interface SandboxProvider {
     readonly sandboxName: string;
     readonly status: "reused";
   }>;
+}
+
+export interface SandboxProcessExecOptions {
+  readonly command: string;
+  readonly maxRestarts?: number;
+  readonly name: string;
+  readonly restartOnFailure?: boolean;
+  readonly waitForCompletion?: boolean;
+  readonly workingDir?: string;
+}
+
+export interface SandboxResponse {
+  readonly ok: boolean;
+  readonly status: number;
+  readonly text?: () => Promise<string>;
+}
+
+export interface SandboxHandle {
+  readonly fetch: (
+    port: number,
+    path: string,
+    init?: {
+      readonly body?: string;
+      readonly headers?: Record<string, string>;
+      readonly method?: string;
+    },
+  ) => Promise<SandboxResponse>;
+  readonly fs: {
+    readonly mkdir: (path: string) => Promise<unknown>;
+    readonly read: (path: string) => Promise<string>;
+    readonly write: (path: string, content: string) => Promise<unknown>;
+  };
+  readonly process: {
+    readonly exec: (options: SandboxProcessExecOptions) => Promise<unknown>;
+    readonly kill: (name: string) => Promise<unknown>;
+    readonly logs: (name: string, scope: "all") => Promise<string>;
+    readonly stop: (name: string) => Promise<unknown>;
+  };
+}
+
+export interface SandboxHandleProvider {
+  readonly getSandboxHandle: (externalId: string) => Promise<SandboxHandle>;
+}
+
+export interface SandboxesServiceOptions {
+  readonly executeRuntimeStartPollMs?: number;
+  readonly executeRuntimeStartTimeoutMs?: number;
 }
 
 const getRequiredBlaxelConfig = () => {
@@ -107,6 +187,12 @@ export const makeBlaxelSandboxProvider = (): SandboxProvider => ({
       },
       memory: config.memoryMb,
       name: sandboxName,
+      ports: [
+        {
+          protocol: "HTTP",
+          target: EXECUTE_RUNTIME_PORT,
+        },
+      ],
       region: config.region,
     });
 
@@ -129,10 +215,58 @@ export const makeBlaxelSandboxProvider = (): SandboxProvider => ({
   },
 });
 
+export const makeBlaxelSandboxHandleProvider = (): SandboxHandleProvider => ({
+  getSandboxHandle: async (externalId) => {
+    configureBlaxel();
+    const sandbox = await SandboxInstance.get(externalId);
+    await sandbox.wait();
+    return sandbox as unknown as SandboxHandle;
+  },
+});
+
 const inferBrokenMessage = (organizationId: string, error: string | null | undefined) =>
   error?.trim().length
     ? error
     : `Sandbox for organization "${organizationId}" is marked broken.`;
+
+const ensureRuntimeAssetsPresent = () => {
+  if (
+    typeof EXECUTE_RUNTIME_ASSETS.server !== "string" ||
+    EXECUTE_RUNTIME_ASSETS.server.trim().length === 0
+  ) {
+    throw new Error(
+      "Sandbox execute runtime assets are missing from the generated module. Run `bun run rebuild:execute-runtime` before using the sandbox runtime.",
+    );
+  }
+
+  return EXECUTE_RUNTIME_ASSETS;
+};
+
+export const getExecuteRuntimeVersion = (): string =>
+  createHash("sha256").update(ensureRuntimeAssetsPresent().server).digest("hex");
+
+const sleep = (durationMs: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, durationMs);
+  });
+
+const truncateOutput = (output: string, maxChars: number): string => {
+  if (output.length <= maxChars) {
+    return output;
+  }
+
+  return `${output.slice(0, maxChars)}\n...[truncated ${output.length - maxChars} characters]`;
+};
+
+const quoteShellArgument = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
+
+const ensureDirectoryExists = async (sandbox: SandboxHandle, path: string) => {
+  try {
+    await sandbox.fs.mkdir(path);
+  } catch {
+    // Directory already exists.
+  }
+};
 
 export const makeSandboxStore = (db: DrizzleDb) => {
   const getByOrganizationId = async (organizationId: string) => {
@@ -206,11 +340,148 @@ export const makeSandboxStore = (db: DrizzleDb) => {
   };
 };
 
+export const fetchExecuteRuntimeHealth = async (
+  sandbox: SandboxHandle,
+): Promise<{ readonly ok: boolean; readonly status: number }> => {
+  try {
+    const response = await sandbox.fetch(EXECUTE_RUNTIME_PORT, "/health");
+    return {
+      ok: response.ok,
+      status: response.status,
+    };
+  } catch {
+    return {
+      ok: false,
+      status: 0,
+    };
+  }
+};
+
+export const ensureExecuteRuntimeInstalled = async (
+  sandbox: SandboxHandle,
+): Promise<ExecuteRuntimeInstallResult> => {
+  const assets = ensureRuntimeAssetsPresent();
+  const runtimeVersion = getExecuteRuntimeVersion();
+
+  try {
+    const installedVersion = (await sandbox.fs.read(EXECUTE_RUNTIME_VERSION_PATH)).trim();
+    if (installedVersion === runtimeVersion) {
+      return {
+        cacheHit: true,
+        runtimeVersion,
+      };
+    }
+  } catch {
+    // Runtime not installed yet or marker missing.
+  }
+
+  await ensureDirectoryExists(sandbox, WORKSPACE_RUNTIME_DIRECTORY);
+  await ensureDirectoryExists(sandbox, EXECUTE_RUNTIME_DIRECTORY);
+  await sandbox.fs.write(EXECUTE_RUNTIME_SERVER_PATH, assets.server);
+  await sandbox.fs.write(EXECUTE_RUNTIME_VERSION_PATH, runtimeVersion);
+
+  return {
+    cacheHit: false,
+    runtimeVersion,
+  };
+};
+
+const stopExecuteRuntimeProcess = async (sandbox: SandboxHandle): Promise<void> => {
+  try {
+    await sandbox.process.stop(EXECUTE_RUNTIME_PROCESS_NAME);
+    return;
+  } catch {
+    // Process may not be running or may require a kill.
+  }
+
+  try {
+    await sandbox.process.kill(EXECUTE_RUNTIME_PROCESS_NAME);
+  } catch {
+    // Process does not exist.
+  }
+};
+
+const waitForExecuteRuntimeHealth = async (
+  sandbox: SandboxHandle,
+  options?: SandboxesServiceOptions,
+) => {
+  const timeoutMs = options?.executeRuntimeStartTimeoutMs ?? EXECUTE_RUNTIME_START_TIMEOUT_MS;
+  const pollMs = options?.executeRuntimeStartPollMs ?? EXECUTE_RUNTIME_START_POLL_MS;
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const health = await fetchExecuteRuntimeHealth(sandbox);
+    if (health.ok) {
+      return {
+        ok: true as const,
+        status: health.status,
+      };
+    }
+
+    await sleep(pollMs);
+  }
+
+  const processLogs = await sandbox.process.logs(EXECUTE_RUNTIME_PROCESS_NAME, "all").catch(() => "");
+  throw new Error(
+    processLogs.trim().length > 0
+      ? `Timed out waiting for execute runtime to become healthy.\n${truncateOutput(processLogs.trim(), MAX_PROCESS_LOG_CHARS)}`
+      : "Timed out waiting for execute runtime to become healthy.",
+  );
+};
+
+const ensureExecuteRuntimeStarted = async (
+  sandbox: SandboxHandle,
+  options?: SandboxesServiceOptions,
+): Promise<{
+  readonly healthStatus: number;
+  readonly runtimeStatus: "started" | "reused";
+}> => {
+  const health = await fetchExecuteRuntimeHealth(sandbox);
+  if (health.ok) {
+    return {
+      healthStatus: health.status,
+      runtimeStatus: "reused",
+    };
+  }
+
+  await stopExecuteRuntimeProcess(sandbox);
+
+  await sandbox.process.exec({
+    command: [
+      "bun",
+      quoteShellArgument(EXECUTE_RUNTIME_SERVER_PATH),
+      "--host",
+      quoteShellArgument("0.0.0.0"),
+      "--port",
+      String(EXECUTE_RUNTIME_PORT),
+    ].join(" "),
+    maxRestarts: 5,
+    name: EXECUTE_RUNTIME_PROCESS_NAME,
+    restartOnFailure: true,
+    waitForCompletion: false,
+    workingDir: "/workspace",
+  });
+
+  const ready = await waitForExecuteRuntimeHealth(sandbox, options);
+  return {
+    healthStatus: ready.status,
+    runtimeStatus: "started",
+  };
+};
+
 export const makeSandboxesService = (
   db: DrizzleDb,
   provider: SandboxProvider = makeBlaxelSandboxProvider(),
+  sandboxHandleProvider: SandboxHandleProvider = makeBlaxelSandboxHandleProvider(),
+  options?: SandboxesServiceOptions,
 ) => {
   const store = makeSandboxStore(db);
+  const runtimeOptions: SandboxesServiceOptions = {
+    executeRuntimeStartPollMs:
+      options?.executeRuntimeStartPollMs ?? EXECUTE_RUNTIME_START_POLL_MS,
+    executeRuntimeStartTimeoutMs:
+      options?.executeRuntimeStartTimeoutMs ?? EXECUTE_RUNTIME_START_TIMEOUT_MS,
+  };
 
   const ensureProvisioned = async (
     record: SandboxRecord,
@@ -280,19 +551,50 @@ export const makeSandboxesService = (
     }
   };
 
+  const ensureSandbox = async (organizationId: string) => {
+    const row =
+      (await store.getByOrganizationId(organizationId)) ??
+      (await store.createPending(organizationId));
+
+    if (!row) {
+      throw new Error(`Failed to create sandbox row for organization "${organizationId}".`);
+    }
+
+    return await ensureProvisioned(row);
+  };
+
+  const ensureExecuteRuntimeRunning = async (
+    organizationId: string,
+  ): Promise<EnsuredExecuteRuntime> => {
+    const ensuredSandbox = await ensureSandbox(organizationId);
+
+    try {
+      const sandbox = await sandboxHandleProvider.getSandboxHandle(ensuredSandbox.externalId);
+      const install = await ensureExecuteRuntimeInstalled(sandbox);
+      const runtimeState = await ensureExecuteRuntimeStarted(sandbox, runtimeOptions);
+      return {
+        health: {
+          ok: true,
+          status: runtimeState.healthStatus,
+        },
+        install,
+        runtime: {
+          status: runtimeState.runtimeStatus,
+        },
+        sandbox: ensuredSandbox,
+      };
+    } catch (error) {
+      const broken = await store.markError({
+        error: error instanceof Error ? error.message : String(error),
+        organizationId,
+      });
+      throw new Error(inferBrokenMessage(organizationId, broken.error));
+    }
+  };
+
   return {
+    ensureExecuteRuntimeRunning,
+    ensureSandbox,
     getSandbox: (organizationId: string) => store.getByOrganizationId(organizationId),
-
-    ensureSandbox: async (organizationId: string) => {
-      const row =
-        (await store.getByOrganizationId(organizationId)) ??
-        (await store.createPending(organizationId));
-
-      if (!row) {
-        throw new Error(`Failed to create sandbox row for organization "${organizationId}".`);
-      }
-
-      return await ensureProvisioned(row);
-    },
   };
 };
