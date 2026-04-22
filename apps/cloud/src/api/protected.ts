@@ -5,6 +5,7 @@ import { AuthContext } from "../auth/middleware";
 import { ExecutorService, ExecutionEngineService } from "@executor/api/server";
 import { OpenApiExtensionService } from "@executor/plugin-openapi/api";
 import { McpExtensionService } from "@executor/plugin-mcp/api";
+import { GoogleDiscoveryExtensionService } from "@executor/plugin-google-discovery/api";
 import { GraphqlExtensionService } from "@executor/plugin-graphql/api";
 
 import { authorizeOrganization } from "../auth/authorize-organization";
@@ -53,6 +54,7 @@ const createProtectedApp = (userId: string, organizationId: string, organization
       Layer.succeed(ExecutionEngineService, engine),
       Layer.succeed(OpenApiExtensionService, executor.openapi),
       Layer.succeed(McpExtensionService, executor.mcp),
+      Layer.succeed(GoogleDiscoveryExtensionService, executor.googleDiscovery),
       Layer.succeed(GraphqlExtensionService, executor.graphql),
     );
 

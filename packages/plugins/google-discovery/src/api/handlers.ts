@@ -9,7 +9,10 @@ import type {
   GoogleDiscoveryOAuthAuthResult,
   GoogleDiscoveryPluginExtension,
 } from "../sdk/plugin";
-import { GoogleDiscoveryOAuthError } from "../sdk/errors";
+import {
+  GoogleDiscoveryComposioError,
+  GoogleDiscoveryOAuthError,
+} from "../sdk/errors";
 import { GoogleDiscoveryGroup } from "./group";
 
 // ---------------------------------------------------------------------------
@@ -35,9 +38,28 @@ export class GoogleDiscoveryExtensionService extends Context.Tag("GoogleDiscover
 const ExecutorApiWithGoogleDiscovery = addGroup(GoogleDiscoveryGroup);
 
 const GOOGLE_DISCOVERY_OAUTH_CHANNEL = "executor:google-discovery-oauth-result";
+const GOOGLE_DISCOVERY_COMPOSIO_CHANNEL = "executor:google-discovery-composio-result";
+
+const composioPopupHtml = (payload: unknown, channelName: string): string => {
+  const json = JSON.stringify(payload)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026");
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Connecting…</title></head><body><script>
+(function(){
+  var ch=new BroadcastChannel(${JSON.stringify(channelName)});
+  ch.postMessage(${json});
+  ch.close();
+  if(window.opener){window.opener.postMessage({channel:${JSON.stringify(channelName)},payload:${json}},"*");}
+  window.close();
+})();
+</script></body></html>`;
+};
 
 const toPopupErrorMessage = (error: unknown): string =>
   error instanceof GoogleDiscoveryOAuthError ? error.message : "Authentication failed";
+const toComposioErrorMessage = (error: unknown): string =>
+  error instanceof GoogleDiscoveryComposioError ? error.message : "Managed OAuth failed";
 
 // ---------------------------------------------------------------------------
 // Handlers
@@ -104,6 +126,26 @@ export const GoogleDiscoveryHandlers = HttpApiBuilder.group(
           return yield* ext.getSource(path.namespace, path.scopeId);
         })),
       )
+      .handle("startComposioConnect", ({ path, payload }) =>
+        capture(Effect.gen(function* () {
+          const ext = yield* GoogleDiscoveryExtensionService;
+          if ("sourceId" in payload) {
+            return yield* ext.startComposioConnect({
+              scopeId: path.scopeId,
+              sourceId: payload.sourceId,
+              callbackUrl: payload.callbackBaseUrl,
+            });
+          }
+          return yield* ext.startComposioConnect({
+            scopeId: path.scopeId,
+            callbackUrl: payload.callbackBaseUrl,
+            app: payload.app,
+            authConfigId: payload.authConfigId ?? null,
+            connectionId: payload.connectionId,
+            displayName: payload.displayName,
+          });
+        })),
+      )
       .handle("updateSource", ({ path, payload }) =>
         capture(Effect.gen(function* () {
           const ext = yield* GoogleDiscoveryExtensionService;
@@ -112,6 +154,40 @@ export const GoogleDiscoveryHandlers = HttpApiBuilder.group(
             auth: payload.auth,
           });
           return { updated: true };
+        })),
+      )
+      .handle("composioCallback", ({ urlParams }) =>
+        capture(Effect.gen(function* () {
+          const ext = yield* GoogleDiscoveryExtensionService;
+
+          if (urlParams.error || !urlParams.connected_account_id) {
+            const msg = urlParams.error ?? "Composio auth was cancelled or failed";
+            return yield* HttpServerResponse.html(
+              composioPopupHtml(
+                { ok: false, error: msg },
+                GOOGLE_DISCOVERY_COMPOSIO_CHANNEL,
+              ),
+            );
+          }
+
+          const result = yield* ext
+            .completeComposioConnect({
+              state: urlParams.state,
+              connectedAccountId: urlParams.connected_account_id,
+            })
+            .pipe(
+              Effect.match({
+                onSuccess: (r) => ({ ok: true as const, connectionId: r.connectionId }),
+                onFailure: (err) => ({
+                  ok: false as const,
+                  error: toComposioErrorMessage(err),
+                }),
+              }),
+            );
+
+          return yield* HttpServerResponse.html(
+            composioPopupHtml(result, GOOGLE_DISCOVERY_COMPOSIO_CHANNEL),
+          );
         })),
       )
       .handle("oauthCallback", ({ urlParams }) =>

@@ -25,6 +25,10 @@ export const startGoogleDiscoveryOAuth = GoogleDiscoveryClient.mutation(
   "googleDiscovery",
   "startOAuth",
 );
+export const startGoogleDiscoveryComposioConnect = GoogleDiscoveryClient.mutation(
+  "googleDiscovery",
+  "startComposioConnect",
+);
 export const completeGoogleDiscoveryOAuth = GoogleDiscoveryClient.mutation(
   "googleDiscovery",
   "completeOAuth",

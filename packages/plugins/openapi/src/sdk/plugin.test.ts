@@ -373,7 +373,7 @@ layer(TestLayer)("OpenAPI Plugin", (it) => {
           new CreateConnectionInput({
             id: ConnectionId.make("github-composio-conn"),
             scope: ScopeId.make(TEST_SCOPE),
-            provider: "composio",
+            provider: "openapi-composio",
             kind: "user",
             identityLabel: "GitHub",
             accessToken: null,

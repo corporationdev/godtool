@@ -30,7 +30,9 @@ import {
 // Friendly labels for the internal provider keys minted by plugins.
 // Falls through to the raw key so new providers still render something.
 const providerDisplayNames: Record<string, string> = {
-  composio: "Managed OAuth",
+  "openapi-composio": "Managed OAuth",
+  "graphql-composio": "Managed OAuth",
+  "google-discovery-composio": "Managed OAuth",
   "mcp:oauth2": "MCP",
   "openapi:oauth2": "OpenAPI",
   "google-discovery:oauth2": "Google",

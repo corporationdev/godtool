@@ -4,5 +4,6 @@ export {
   addGoogleDiscoverySource,
   completeGoogleDiscoveryOAuth,
   probeGoogleDiscovery,
+  startGoogleDiscoveryComposioConnect,
   startGoogleDiscoveryOAuth,
 } from "./atoms";

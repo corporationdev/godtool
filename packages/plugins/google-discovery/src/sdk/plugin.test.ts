@@ -22,6 +22,7 @@ import {
 import { googleDiscoveryPlugin } from "./plugin";
 
 const autoApprove: InvokeOptions = { onElicitation: "accept-all" };
+const TEST_SCOPE = "test-scope";
 
 const fixturePath = resolve(__dirname, "../../fixtures/drive.json");
 const fixtureText = readFileSync(fixturePath, "utf8");
@@ -405,6 +406,215 @@ describe("Google Discovery plugin", () => {
         }
       } finally {
         yield* Effect.promise(() => handle.close());
+      }
+    }),
+  );
+
+  it.effect("starts and completes Composio connect", () =>
+    Effect.gen(function* () {
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(((
+        input: RequestInfo | URL,
+      ) => {
+        const url =
+          typeof input === "string"
+            ? input
+            : input instanceof URL
+              ? input.toString()
+              : input.url;
+        if (url === "https://backend.composio.dev/api/v3.1/connected_accounts/link") {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                redirectUrl: "https://composio.test/connect",
+                connectedAccountId: "ca_google_123",
+              }),
+              { status: 200, headers: { "content-type": "application/json" } },
+            ),
+          );
+        }
+        if (url === "https://backend.composio.dev/api/v3.1/connected_accounts/ca_google_123") {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                id: "ca_google_123",
+                status: "ACTIVE",
+                toolkit: { slug: "gmail" },
+                auth_config: { id: "auth_cfg_google" },
+                display_name: "Gmail",
+              }),
+              { status: 200, headers: { "content-type": "application/json" } },
+            ),
+          );
+        }
+        return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+      }) as typeof fetch);
+
+      try {
+        const executor = yield* createExecutor(
+          makeTestConfig({
+            plugins: [
+              makeMemorySecretsPlugin()(),
+              googleDiscoveryPlugin({ composioApiKey: "composio-test-key" }),
+            ] as const,
+          }),
+        );
+
+        const started = yield* executor.googleDiscovery.startComposioConnect({
+          scopeId: TEST_SCOPE,
+          callbackUrl: "https://executor.test/api/google-discovery/composio/callback",
+          app: "gmail",
+          authConfigId: "auth_cfg_google",
+          connectionId: "google-discovery-composio-gmail",
+          displayName: "Gmail",
+        });
+
+        expect(started.redirectUrl).toBe("https://composio.test/connect");
+
+        const linkCall = fetchSpy.mock.calls.find(([url]) =>
+          String(url).includes("/connected_accounts/link"),
+        );
+        expect(linkCall).toBeDefined();
+        const payload = JSON.parse(String(linkCall?.[1]?.body)) as {
+          callback_url: string;
+        };
+        const state = new URL(payload.callback_url).searchParams.get("state");
+        expect(state).toBeTruthy();
+
+        const completed = yield* executor.googleDiscovery.completeComposioConnect({
+          state: state!,
+          connectedAccountId: "ca_google_123",
+        });
+
+        expect(completed.connectionId).toBe("google-discovery-composio-gmail");
+
+        const connection = yield* executor.connections.get(
+          ConnectionId.make(completed.connectionId),
+        );
+        expect(connection?.provider).toBe("google-discovery-composio");
+        expect(connection?.providerState).toEqual({
+          connectedAccountId: "ca_google_123",
+          app: "gmail",
+          authConfigId: "auth_cfg_google",
+        });
+
+        yield* executor.close();
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    }),
+  );
+
+  it.effect("proxies Composio-backed Google Discovery invocations", () =>
+    Effect.gen(function* () {
+      const discoveryUrl = "https://example.test/google-drive-discovery.json";
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(((
+        input: RequestInfo | URL,
+        init?: RequestInit,
+      ) => {
+        const url =
+          typeof input === "string"
+            ? input
+            : input instanceof URL
+              ? input.toString()
+              : input.url;
+        if (url === discoveryUrl) {
+          return Promise.resolve(
+            new Response(fixtureText, {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            }),
+          );
+        }
+        if (url === "https://backend.composio.dev/api/v3/tools/execute/proxy") {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                status: 200,
+                headers: { "content-type": "application/json" },
+                data: { id: "123", name: "Quarterly Plan" },
+              }),
+              { status: 200, headers: { "content-type": "application/json" } },
+            ),
+          );
+        }
+        return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+      }) as typeof fetch);
+
+      try {
+        const executor = yield* createExecutor(
+          makeTestConfig({
+            plugins: [
+              makeMemorySecretsPlugin()(),
+              googleDiscoveryPlugin({ composioApiKey: "composio-test-key" }),
+            ] as const,
+          }),
+        );
+
+        yield* executor.connections.create(
+          new CreateConnectionInput({
+            id: ConnectionId.make("google-discovery-composio-drive"),
+            scope: ScopeId.make(TEST_SCOPE),
+            provider: "google-discovery-composio",
+            kind: "user",
+            identityLabel: "Drive",
+            accessToken: null,
+            refreshToken: null,
+            expiresAt: null,
+            oauthScope: null,
+            providerState: {
+              connectedAccountId: "ca_drive_123",
+              app: "drive",
+              authConfigId: null,
+            },
+          }),
+        );
+
+        const result = yield* executor.googleDiscovery.addSource({
+          name: "Google Drive",
+          scope: TEST_SCOPE,
+          discoveryUrl,
+          namespace: "drive",
+          auth: {
+            kind: "composio",
+            app: "drive",
+            authConfigId: null,
+            connectionId: "google-discovery-composio-drive",
+          },
+        });
+
+        expect(result.toolCount).toBe(2);
+
+        const invocation = (yield* executor.tools.invoke(
+          "drive.files.get",
+          { fileId: "123", fields: "id,name", prettyPrint: true },
+          autoApprove,
+        )) as { data: unknown; error: unknown };
+
+        expect(invocation.error).toBeNull();
+        expect(invocation.data).toEqual({ id: "123", name: "Quarterly Plan" });
+
+        const [, init] =
+          fetchSpy.mock.calls.find(([url]) =>
+            String(url).includes("/tools/execute/proxy"),
+          ) ?? [];
+        const payload = JSON.parse(String(init?.body)) as {
+          connected_account_id: string;
+          endpoint: string;
+          method: string;
+          parameters: Array<{ name: string; value: string; type: string }>;
+        };
+
+        expect(payload.connected_account_id).toBe("ca_drive_123");
+        expect(payload.endpoint).toContain("/drive/v3/files/123");
+        expect(payload.method).toBe("GET");
+        expect(payload.parameters).toEqual([
+          { name: "fields", value: "id,name", type: "query" },
+          { name: "prettyPrint", value: "true", type: "query" },
+        ]);
+
+        yield* executor.close();
+      } finally {
+        fetchSpy.mockRestore();
       }
     }),
   );

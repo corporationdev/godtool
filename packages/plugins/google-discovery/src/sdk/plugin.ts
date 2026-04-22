@@ -26,6 +26,14 @@ import {
 } from "@executor/sdk";
 
 import {
+  createComposioConnectLink,
+  deleteComposioConnectedAccount,
+  ensureComposioManagedAuthConfig,
+  getComposioConnectedAccount,
+  ComposioClientError,
+} from "../composio/client";
+
+import {
   googleDiscoverySchema,
   makeGoogleDiscoveryStore,
   type GoogleDiscoveryStore,
@@ -34,6 +42,7 @@ import {
 import { extractGoogleDiscoveryManifest } from "./document";
 import { annotationsForOperation, invokeGoogleDiscoveryTool } from "./invoke";
 import {
+  GoogleDiscoveryComposioError,
   GoogleDiscoveryOAuthError,
   GoogleDiscoveryParseError,
   GoogleDiscoverySourceError,
@@ -46,6 +55,7 @@ import {
 } from "./oauth";
 import type {
   GoogleDiscoveryAuth,
+  GoogleDiscoveryComposioSession,
   GoogleDiscoveryManifest,
   GoogleDiscoveryManifestMethod,
   GoogleDiscoveryMethodBinding,
@@ -113,6 +123,34 @@ export interface GoogleDiscoveryOAuthCompleteInput {
   readonly error?: string;
 }
 
+export type GoogleDiscoveryStartComposioConnectInput =
+  | {
+      readonly scopeId: string;
+      readonly sourceId: string;
+      readonly callbackUrl: string;
+    }
+  | {
+      readonly scopeId: string;
+      readonly callbackUrl: string;
+      readonly app: string;
+      readonly authConfigId?: string | null;
+      readonly connectionId: string;
+      readonly displayName?: string;
+    };
+
+export interface GoogleDiscoveryStartComposioConnectResponse {
+  readonly redirectUrl: string;
+}
+
+export interface GoogleDiscoveryCompleteComposioConnectInput {
+  readonly state: string;
+  readonly connectedAccountId: string;
+}
+
+export interface GoogleDiscoveryCompleteComposioConnectResponse {
+  readonly connectionId: string;
+}
+
 /**
  * Completed OAuth auth handed back to the caller (either an HTTP client or
  * a static-tool handler). Carries the full API-level OAuth config so the
@@ -132,6 +170,7 @@ export interface GoogleDiscoveryOAuthAuthResult {
  * Errors any Google Discovery extension method may surface.
  */
 export type GoogleDiscoveryExtensionFailure =
+  | GoogleDiscoveryComposioError
   | GoogleDiscoveryParseError
   | GoogleDiscoverySourceError
   | GoogleDiscoveryOAuthError
@@ -168,6 +207,18 @@ export interface GoogleDiscoveryPluginExtension {
   ) => Effect.Effect<
     GoogleDiscoveryOAuthAuthResult,
     GoogleDiscoveryOAuthError | StorageFailure
+  >;
+  readonly startComposioConnect: (
+    input: GoogleDiscoveryStartComposioConnectInput,
+  ) => Effect.Effect<
+    GoogleDiscoveryStartComposioConnectResponse,
+    GoogleDiscoveryComposioError
+  >;
+  readonly completeComposioConnect: (
+    input: GoogleDiscoveryCompleteComposioConnectInput,
+  ) => Effect.Effect<
+    GoogleDiscoveryCompleteComposioConnectResponse,
+    GoogleDiscoveryComposioError
   >;
   readonly getSource: (
     namespace: string,
@@ -250,6 +301,7 @@ const deriveNamespace = (input: { name: string; service: string; version: string
 // ---------------------------------------------------------------------------
 
 const GOOGLE_DISCOVERY_OAUTH2_PROVIDER_KEY = "google-discovery:oauth2" as const;
+const GOOGLE_DISCOVERY_COMPOSIO_PROVIDER_KEY = "google-discovery-composio" as const;
 
 const OAuth2ProviderState = Schema.Struct({
   clientIdSecretId: Schema.String,
@@ -265,6 +317,15 @@ const toProviderStateRecord = (
   state: OAuth2ProviderState,
 ): Record<string, unknown> =>
   encodeProviderState(state) as unknown as Record<string, unknown>;
+
+const withQueryParam = (url: string, key: string, value: string): string => {
+  const next = new URL(url);
+  next.searchParams.set(key, value);
+  return next.toString();
+};
+
+const composioAliasForAttempt = (displayName: string, sessionId: string): string =>
+  `${displayName} (${sessionId.slice(0, 8)})`;
 
 // ---------------------------------------------------------------------------
 // Register a parsed manifest against the executor core + plugin storage.
@@ -329,443 +390,692 @@ const registerManifest = (
     return manifest.methods.length;
   });
 
+export interface GoogleDiscoveryPluginOptions {
+  readonly composioApiKey?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Plugin
 // ---------------------------------------------------------------------------
 
-export const googleDiscoveryPlugin = definePlugin(() => ({
-  id: "googleDiscovery" as const,
-  schema: googleDiscoverySchema,
-  storage: (deps) => makeGoogleDiscoveryStore(deps),
+export const googleDiscoveryPlugin = definePlugin(
+  (options?: GoogleDiscoveryPluginOptions) => {
+    const composioApiKey = options?.composioApiKey;
 
-  extension: (ctx) => ({
-    probeDiscovery: (discoveryUrl) =>
-      Effect.gen(function* () {
-        const text = yield* fetchDiscoveryDocument(discoveryUrl);
-        const manifest = yield* extractGoogleDiscoveryManifest(text);
-        const scopes = Object.keys(
-          manifest.oauthScopes._tag === "Some" ? manifest.oauthScopes.value : {},
-        ).sort();
-        const operations = manifest.methods.map((method) => ({
-          toolPath: method.toolPath,
-          method: method.binding.method,
-          pathTemplate: method.binding.pathTemplate,
-          description: method.description._tag === "Some" ? method.description.value : null,
-        }));
-        return {
-          name:
-            manifest.title._tag === "Some"
-              ? manifest.title.value
-              : `${manifest.service} ${manifest.version}`,
-          title: manifest.title._tag === "Some" ? manifest.title.value : null,
-          service: manifest.service,
-          version: manifest.version,
-          toolCount: manifest.methods.length,
-          scopes,
-          operations,
-        };
-      }),
+    return {
+      id: "googleDiscovery" as const,
+      schema: googleDiscoverySchema,
+      storage: (deps) => makeGoogleDiscoveryStore(deps),
 
-    addSource: (input) =>
-      ctx.transaction(
-        Effect.gen(function* () {
-          const text = yield* fetchDiscoveryDocument(input.discoveryUrl);
-          const manifest = yield* extractGoogleDiscoveryManifest(text);
-          const namespace =
-            input.namespace ??
-            deriveNamespace({
-              name: input.name,
+      extension: (ctx) => ({
+        probeDiscovery: (discoveryUrl) =>
+          Effect.gen(function* () {
+            const text = yield* fetchDiscoveryDocument(discoveryUrl);
+            const manifest = yield* extractGoogleDiscoveryManifest(text);
+            const scopes = Object.keys(
+              manifest.oauthScopes._tag === "Some" ? manifest.oauthScopes.value : {},
+            ).sort();
+            const operations = manifest.methods.map((method) => ({
+              toolPath: method.toolPath,
+              method: method.binding.method,
+              pathTemplate: method.binding.pathTemplate,
+              description:
+                method.description._tag === "Some" ? method.description.value : null,
+            }));
+            return {
+              name:
+                manifest.title._tag === "Some"
+                  ? manifest.title.value
+                  : `${manifest.service} ${manifest.version}`,
+              title: manifest.title._tag === "Some" ? manifest.title.value : null,
               service: manifest.service,
               version: manifest.version,
+              toolCount: manifest.methods.length,
+              scopes,
+              operations,
+            };
+          }),
+
+        addSource: (input) =>
+          ctx.transaction(
+            Effect.gen(function* () {
+              const text = yield* fetchDiscoveryDocument(input.discoveryUrl);
+              const manifest = yield* extractGoogleDiscoveryManifest(text);
+              const namespace =
+                input.namespace ??
+                deriveNamespace({
+                  name: input.name,
+                  service: manifest.service,
+                  version: manifest.version,
+                });
+              const sourceData = new GoogleDiscoveryStoredSourceDataSchema({
+                name: input.name,
+                discoveryUrl: normalizeDiscoveryUrl(input.discoveryUrl),
+                service: manifest.service,
+                version: manifest.version,
+                rootUrl: manifest.rootUrl,
+                servicePath: manifest.servicePath,
+                auth: input.auth,
+              });
+              const toolCount = yield* registerManifest(
+                ctx,
+                namespace,
+                input.scope,
+                manifest,
+                sourceData,
+              );
+              return { toolCount, namespace };
+            }),
+          ),
+
+        removeSource: (namespace, scope) =>
+          ctx.transaction(
+            Effect.gen(function* () {
+              yield* ctx.storage.removeBindingsBySource(namespace, scope);
+              yield* ctx.storage.removeSource(namespace, scope);
+              yield* ctx.core.sources.unregister(namespace).pipe(Effect.ignore);
+            }),
+          ),
+
+        startOAuth: (input) =>
+          Effect.gen(function* () {
+            const text = yield* fetchDiscoveryDocument(input.discoveryUrl);
+            const manifest = yield* extractGoogleDiscoveryManifest(text);
+            const scopes =
+              input.scopes && input.scopes.length > 0
+                ? [...input.scopes]
+                : Object.keys(
+                    manifest.oauthScopes._tag === "Some" ? manifest.oauthScopes.value : {},
+                  ).sort();
+            if (scopes.length === 0) {
+              return yield* new GoogleDiscoveryOAuthError({
+                message: "This Google Discovery document does not declare any OAuth scopes",
+              });
+            }
+            const clientIdValue = yield* ctx.secrets.get(input.clientIdSecretId);
+            if (clientIdValue === null) {
+              return yield* new GoogleDiscoveryOAuthError({
+                message: `OAuth client ID secret not found: ${input.clientIdSecretId}`,
+              });
+            }
+            const sessionId = randomUUID();
+            const codeVerifier = createPkceCodeVerifier();
+            const tokenScope = input.tokenScope ?? (ctx.scopes[0]!.id as string);
+            const connectionId = `google-discovery-oauth2-${randomUUID()}`;
+            yield* ctx.storage.putOAuthSession(sessionId, ctx.scopes[0]!.id as string, {
+              discoveryUrl: normalizeDiscoveryUrl(input.discoveryUrl),
+              name: input.name,
+              clientIdSecretId: input.clientIdSecretId,
+              clientSecretSecretId: input.clientSecretSecretId ?? null,
+              redirectUrl: input.redirectUrl,
+              scopes,
+              codeVerifier,
+              tokenScope,
+              connectionId,
             });
-          const sourceData = new GoogleDiscoveryStoredSourceDataSchema({
-            name: input.name,
-            discoveryUrl: normalizeDiscoveryUrl(input.discoveryUrl),
+            return {
+              sessionId,
+              authorizationUrl: buildGoogleAuthorizationUrl({
+                clientId: clientIdValue,
+                redirectUrl: input.redirectUrl,
+                scopes,
+                state: sessionId,
+                codeVerifier,
+              }),
+              scopes,
+            };
+          }),
+
+        completeOAuth: (input) =>
+          ctx.transaction(
+            Effect.gen(function* () {
+              const session = yield* ctx.storage.getOAuthSession(input.state);
+              if (!session) {
+                return yield* new GoogleDiscoveryOAuthError({
+                  message: "OAuth session not found or has expired",
+                });
+              }
+              yield* ctx.storage.deleteOAuthSession(input.state);
+
+              if (input.error) {
+                return yield* new GoogleDiscoveryOAuthError({ message: input.error });
+              }
+              if (!input.code) {
+                return yield* new GoogleDiscoveryOAuthError({
+                  message: "OAuth callback did not include an authorization code",
+                });
+              }
+
+              const clientIdValue = yield* ctx.secrets.get(session.clientIdSecretId);
+              if (clientIdValue === null) {
+                return yield* new GoogleDiscoveryOAuthError({
+                  message: `OAuth client ID secret not found: ${session.clientIdSecretId}`,
+                });
+              }
+
+              const clientSecretValue =
+                session.clientSecretSecretId === null
+                  ? null
+                  : yield* ctx.secrets.get(session.clientSecretSecretId).pipe(
+                      Effect.flatMap((v) =>
+                        v === null
+                          ? Effect.fail(
+                              new GoogleDiscoveryOAuthError({
+                                message: `OAuth client secret not found: ${session.clientSecretSecretId}`,
+                              }),
+                            )
+                          : Effect.succeed(v),
+                      ),
+                    );
+
+              const tokenResponse = yield* exchangeAuthorizationCode({
+                clientId: clientIdValue,
+                clientSecret: clientSecretValue,
+                redirectUrl: session.redirectUrl,
+                codeVerifier: session.codeVerifier,
+                code: input.code,
+              });
+
+              const expiresAt =
+                typeof tokenResponse.expires_in === "number"
+                  ? Date.now() + tokenResponse.expires_in * 1000
+                  : null;
+
+              const providerState: OAuth2ProviderState = {
+                clientIdSecretId: session.clientIdSecretId,
+                clientSecretSecretId: session.clientSecretSecretId,
+                scopes: [...session.scopes],
+              };
+
+              yield* ctx.connections
+                .create(
+                  new CreateConnectionInput({
+                    id: ConnectionId.make(session.connectionId),
+                    scope: ScopeId.make(session.tokenScope),
+                    provider: GOOGLE_DISCOVERY_OAUTH2_PROVIDER_KEY,
+                    kind: "user",
+                    identityLabel: session.name,
+                    accessToken: new TokenMaterial({
+                      secretId: SecretId.make(`${session.connectionId}.access_token`),
+                      name: `${session.name} Access Token`,
+                      value: tokenResponse.access_token,
+                    }),
+                    refreshToken: tokenResponse.refresh_token
+                      ? new TokenMaterial({
+                          secretId: SecretId.make(`${session.connectionId}.refresh_token`),
+                          name: `${session.name} Refresh Token`,
+                          value: tokenResponse.refresh_token,
+                        })
+                      : null,
+                    expiresAt,
+                    oauthScope: tokenResponse.scope ?? null,
+                    providerState: toProviderStateRecord(providerState),
+                  }),
+                )
+                .pipe(
+                  Effect.mapError(
+                    (err) =>
+                      new GoogleDiscoveryOAuthError({
+                        message:
+                          "message" in err
+                            ? (err as { message: string }).message
+                            : String(err),
+                      }),
+                  ),
+                );
+
+              return {
+                kind: "oauth2" as const,
+                connectionId: session.connectionId,
+                clientIdSecretId: session.clientIdSecretId,
+                clientSecretSecretId: session.clientSecretSecretId,
+                scopes: [...session.scopes],
+              };
+            }),
+          ).pipe(
+            Effect.mapError((err) =>
+              err instanceof GoogleDiscoveryOAuthError
+                ? err
+                : new GoogleDiscoveryOAuthError({ message: err.message }),
+            ),
+          ),
+
+        startComposioConnect: (input) =>
+          Effect.gen(function* () {
+            if (!composioApiKey) {
+              return yield* new GoogleDiscoveryComposioError({
+                message: "Composio API key is not configured",
+              });
+            }
+
+            const tokenScope = input.scopeId;
+            const connectConfig =
+              "sourceId" in input
+                ? yield* Effect.gen(function* () {
+                    const source = yield* ctx.storage
+                      .getSource(input.sourceId, tokenScope)
+                      .pipe(
+                        Effect.mapError(
+                          (err) =>
+                            new GoogleDiscoveryComposioError({ message: err.message }),
+                        ),
+                      );
+                    if (!source) {
+                      return yield* new GoogleDiscoveryComposioError({
+                        message: `Source "${input.sourceId}" not found`,
+                      });
+                    }
+                    if (source.config.auth.kind !== "composio") {
+                      return yield* new GoogleDiscoveryComposioError({
+                        message:
+                          `Source "${input.sourceId}" does not have Composio auth configured`,
+                      });
+                    }
+                    return {
+                      sourceId: input.sourceId,
+                      app: source.config.auth.app,
+                      authConfigId: source.config.auth.authConfigId,
+                      connectionId: source.config.auth.connectionId,
+                      displayName: source.name,
+                    } as const;
+                  })
+                : {
+                    sourceId: null,
+                    app: input.app,
+                    authConfigId: input.authConfigId ?? null,
+                    connectionId: input.connectionId,
+                    displayName: input.displayName ?? input.app,
+                  };
+
+            const authConfigId =
+              connectConfig.authConfigId ??
+              (yield* Effect.tryPromise({
+                try: () =>
+                  ensureComposioManagedAuthConfig(composioApiKey, connectConfig.app),
+                catch: (err) =>
+                  new GoogleDiscoveryComposioError({
+                    message:
+                      err instanceof ComposioClientError
+                        ? err.message
+                        : "Failed to resolve Composio auth config",
+                  }),
+              }));
+
+            const sessionId = randomUUID();
+            const session: GoogleDiscoveryComposioSession = {
+              tokenScope,
+              sourceId: connectConfig.sourceId,
+              connectionId: connectConfig.connectionId,
+              displayName: connectConfig.displayName,
+              app: connectConfig.app,
+              authConfigId,
+            };
+
+            yield* ctx.storage.putComposioSession(sessionId, session).pipe(
+              Effect.mapError(
+                (err) => new GoogleDiscoveryComposioError({ message: err.message }),
+              ),
+            );
+
+            const link = yield* Effect.tryPromise({
+              try: () =>
+                createComposioConnectLink({
+                  apiKey: composioApiKey,
+                  app: connectConfig.app,
+                  authConfigId,
+                  userId: tokenScope,
+                  callbackUrl: withQueryParam(input.callbackUrl, "state", sessionId),
+                  alias: composioAliasForAttempt(
+                    connectConfig.displayName,
+                    sessionId,
+                  ),
+                }),
+              catch: (err) =>
+                new GoogleDiscoveryComposioError({
+                  message:
+                    err instanceof ComposioClientError
+                      ? err.message
+                      : "Failed to create Composio connect link",
+                }),
+            });
+
+            return { redirectUrl: link.redirectUrl };
+          }),
+
+        completeComposioConnect: (input) =>
+          ctx.transaction(
+            Effect.gen(function* () {
+              const session = yield* ctx.storage.getComposioSession(input.state).pipe(
+                Effect.mapError(
+                  (err) => new GoogleDiscoveryComposioError({ message: err.message }),
+                ),
+              );
+              if (!session) {
+                return yield* new GoogleDiscoveryComposioError({
+                  message: "Composio session not found or has expired",
+                });
+              }
+
+              yield* ctx.storage.deleteComposioSession(input.state).pipe(
+                Effect.mapError(
+                  (err) => new GoogleDiscoveryComposioError({ message: err.message }),
+                ),
+              );
+
+              if (!composioApiKey) {
+                return yield* new GoogleDiscoveryComposioError({
+                  message: "Composio API key is not configured",
+                });
+              }
+
+              const account = yield* Effect.tryPromise({
+                try: () =>
+                  getComposioConnectedAccount(composioApiKey, input.connectedAccountId),
+                catch: (err) =>
+                  new GoogleDiscoveryComposioError({
+                    message:
+                      err instanceof ComposioClientError
+                        ? err.message
+                        : "Failed to verify Composio connected account",
+                  }),
+              });
+
+              if (account.status !== "ACTIVE") {
+                return yield* new GoogleDiscoveryComposioError({
+                  message:
+                    `Composio connected account is not active yet (status: ${account.status})`,
+                });
+              }
+              if (account.appName && account.appName !== session.app) {
+                return yield* new GoogleDiscoveryComposioError({
+                  message:
+                    `Connected account app mismatch: expected ${session.app}, got ${account.appName}`,
+                });
+              }
+              if (
+                session.authConfigId !== null &&
+                account.authConfigId !== null &&
+                account.authConfigId !== session.authConfigId
+              ) {
+                return yield* new GoogleDiscoveryComposioError({
+                  message:
+                    `Connected account auth config mismatch: expected ${session.authConfigId}, got ${account.authConfigId}`,
+                });
+              }
+
+              yield* ctx.connections
+                .create(
+                  new CreateConnectionInput({
+                    id: ConnectionId.make(session.connectionId),
+                    scope: ScopeId.make(session.tokenScope),
+                    provider: GOOGLE_DISCOVERY_COMPOSIO_PROVIDER_KEY,
+                    kind: "user",
+                    identityLabel: session.displayName,
+                    accessToken: null,
+                    refreshToken: null,
+                    expiresAt: null,
+                    oauthScope: null,
+                    providerState: {
+                      connectedAccountId: input.connectedAccountId,
+                      app: session.app,
+                      authConfigId: session.authConfigId,
+                    },
+                  }),
+                )
+                .pipe(
+                  Effect.mapError(
+                    (err) =>
+                      new GoogleDiscoveryComposioError({
+                        message:
+                          "message" in err
+                            ? (err as { message: string }).message
+                            : String(err),
+                      }),
+                  ),
+                );
+
+              return { connectionId: session.connectionId };
+            }),
+          ).pipe(
+            Effect.mapError((err) =>
+              err instanceof GoogleDiscoveryComposioError
+                ? err
+                : new GoogleDiscoveryComposioError({ message: err.message }),
+            ),
+          ),
+
+        getSource: (namespace, scope) => ctx.storage.getSource(namespace, scope),
+
+        updateSource: (namespace, scope, input) =>
+          ctx.storage.updateSourceMeta(namespace, scope, {
+            name: input.name?.trim() || undefined,
+            auth: input.auth,
+          }),
+      } satisfies GoogleDiscoveryPluginExtension),
+
+      invokeTool: ({ ctx, toolRow, args }) =>
+        invokeGoogleDiscoveryTool({
+          ctx: ctx as PluginCtx<GoogleDiscoveryStore>,
+          toolId: toolRow.id,
+          toolScope: toolRow.scope_id as string,
+          args,
+          composioApiKey,
+        }),
+
+      resolveAnnotations: ({ ctx, sourceId, toolRows }) =>
+        Effect.gen(function* () {
+          const typedCtx = ctx as PluginCtx<GoogleDiscoveryStore>;
+          const scopes = new Set<string>();
+          for (const row of toolRows) scopes.add(row.scope_id as string);
+          const byScope = new Map<string, ReadonlyMap<string, GoogleDiscoveryMethodBinding>>();
+          for (const scope of scopes) {
+            const bindings = yield* typedCtx.storage.getBindingsForSource(sourceId, scope);
+            byScope.set(scope, bindings);
+          }
+          const out: Record<string, ToolAnnotations> = {};
+          for (const row of toolRows) {
+            const binding = byScope.get(row.scope_id as string)?.get(row.id);
+            if (binding) {
+              out[row.id] = annotationsForOperation(binding.method, binding.pathTemplate);
+            }
+          }
+          return out;
+        }),
+
+      removeSource: ({ ctx, sourceId, scope }) =>
+        Effect.gen(function* () {
+          const typedCtx = ctx as PluginCtx<GoogleDiscoveryStore>;
+          yield* typedCtx.storage.removeBindingsBySource(sourceId, scope);
+          yield* typedCtx.storage.removeSource(sourceId, scope);
+        }),
+
+      detect: ({ url }) =>
+        Effect.gen(function* () {
+          const trimmed = url.trim();
+          if (!trimmed) return null;
+          const parsed = yield* Effect.try(() => new URL(trimmed)).pipe(Effect.option);
+          if (parsed._tag === "None") return null;
+
+          const isGoogleUrl = trimmed.includes("googleapis.com");
+          const isDiscoveryPath =
+            trimmed.includes("/discovery/") || trimmed.includes("$discovery");
+          if (!isGoogleUrl && !isDiscoveryPath) return null;
+
+          const discoveryText = yield* fetchDiscoveryDocument(trimmed).pipe(
+            Effect.catchAll(() => Effect.succeed(null)),
+          );
+          if (!discoveryText) return null;
+
+          const manifest = yield* extractGoogleDiscoveryManifest(discoveryText).pipe(
+            Effect.catchAll(() => Effect.succeed(null)),
+          );
+          if (!manifest) return null;
+
+          const name = Option.getOrElse(
+            manifest.title,
+            () => `${manifest.service} ${manifest.version}`,
+          );
+
+          return new SourceDetectionResult({
+            kind: "googleDiscovery",
+            confidence: "high",
+            endpoint: trimmed,
+            name,
+            namespace: deriveNamespace({
+              name,
+              service: manifest.service,
+              version: manifest.version,
+            }),
+          });
+        }),
+
+      refreshSource: ({ ctx, sourceId, scope }) =>
+        Effect.gen(function* () {
+          const typedCtx = ctx as PluginCtx<GoogleDiscoveryStore>;
+          const existing = yield* typedCtx.storage.getSource(sourceId, scope);
+          if (!existing) return;
+          const text = yield* fetchDiscoveryDocument(existing.config.discoveryUrl);
+          const manifest = yield* extractGoogleDiscoveryManifest(text);
+          const next = new GoogleDiscoveryStoredSourceDataSchema({
+            ...existing.config,
             service: manifest.service,
             version: manifest.version,
             rootUrl: manifest.rootUrl,
             servicePath: manifest.servicePath,
-            auth: input.auth,
           });
-          const toolCount = yield* registerManifest(
-            ctx,
-            namespace,
-            input.scope,
-            manifest,
-            sourceData,
-          );
-          return { toolCount, namespace };
-        }),
-      ),
-
-    removeSource: (namespace, scope) =>
-      ctx.transaction(
-        Effect.gen(function* () {
-          yield* ctx.storage.removeBindingsBySource(namespace, scope);
-          yield* ctx.storage.removeSource(namespace, scope);
-          yield* ctx.core.sources.unregister(namespace).pipe(Effect.ignore);
-        }),
-      ),
-
-    startOAuth: (input) =>
-      Effect.gen(function* () {
-        const text = yield* fetchDiscoveryDocument(input.discoveryUrl);
-        const manifest = yield* extractGoogleDiscoveryManifest(text);
-        const scopes =
-          input.scopes && input.scopes.length > 0
-            ? [...input.scopes]
-            : Object.keys(
-                manifest.oauthScopes._tag === "Some" ? manifest.oauthScopes.value : {},
-              ).sort();
-        if (scopes.length === 0) {
-          return yield* new GoogleDiscoveryOAuthError({
-            message: "This Google Discovery document does not declare any OAuth scopes",
-          });
-        }
-        const clientIdValue = yield* ctx.secrets.get(input.clientIdSecretId);
-        if (clientIdValue === null) {
-          return yield* new GoogleDiscoveryOAuthError({
-            message: `OAuth client ID secret not found: ${input.clientIdSecretId}`,
-          });
-        }
-        const sessionId = randomUUID();
-        const codeVerifier = createPkceCodeVerifier();
-        const tokenScope = input.tokenScope ?? (ctx.scopes[0]!.id as string);
-        const connectionId = `google-discovery-oauth2-${randomUUID()}`;
-        yield* ctx.storage.putOAuthSession(sessionId, ctx.scopes[0]!.id as string, {
-          discoveryUrl: normalizeDiscoveryUrl(input.discoveryUrl),
-          name: input.name,
-          clientIdSecretId: input.clientIdSecretId,
-          clientSecretSecretId: input.clientSecretSecretId ?? null,
-          redirectUrl: input.redirectUrl,
-          scopes,
-          codeVerifier,
-          tokenScope,
-          connectionId,
-        });
-        return {
-          sessionId,
-          authorizationUrl: buildGoogleAuthorizationUrl({
-            clientId: clientIdValue,
-            redirectUrl: input.redirectUrl,
-            scopes,
-            state: sessionId,
-            codeVerifier,
-          }),
-          scopes,
-        };
-      }),
-
-    completeOAuth: (input) =>
-      ctx.transaction(
-        Effect.gen(function* () {
-          const session = yield* ctx.storage.getOAuthSession(input.state);
-          if (!session) {
-            return yield* new GoogleDiscoveryOAuthError({
-              message: "OAuth session not found or has expired",
-            });
-          }
-          yield* ctx.storage.deleteOAuthSession(input.state);
-
-          if (input.error) {
-            return yield* new GoogleDiscoveryOAuthError({ message: input.error });
-          }
-          if (!input.code) {
-            return yield* new GoogleDiscoveryOAuthError({
-              message: "OAuth callback did not include an authorization code",
-            });
-          }
-
-          const clientIdValue = yield* ctx.secrets.get(session.clientIdSecretId);
-          if (clientIdValue === null) {
-            return yield* new GoogleDiscoveryOAuthError({
-              message: `OAuth client ID secret not found: ${session.clientIdSecretId}`,
-            });
-          }
-
-          const clientSecretValue =
-            session.clientSecretSecretId === null
-              ? null
-              : yield* ctx.secrets.get(session.clientSecretSecretId).pipe(
-                  Effect.flatMap((v) =>
-                    v === null
-                      ? Effect.fail(
-                          new GoogleDiscoveryOAuthError({
-                            message: `OAuth client secret not found: ${session.clientSecretSecretId}`,
-                          }),
-                        )
-                      : Effect.succeed(v),
-                  ),
-                );
-
-          const tokenResponse = yield* exchangeAuthorizationCode({
-            clientId: clientIdValue,
-            clientSecret: clientSecretValue,
-            redirectUrl: session.redirectUrl,
-            codeVerifier: session.codeVerifier,
-            code: input.code,
-          });
-
-          const expiresAt =
-            typeof tokenResponse.expires_in === "number"
-              ? Date.now() + tokenResponse.expires_in * 1000
-              : null;
-
-          const providerState: OAuth2ProviderState = {
-            clientIdSecretId: session.clientIdSecretId,
-            clientSecretSecretId: session.clientSecretSecretId,
-            scopes: [...session.scopes],
-          };
-
-          yield* ctx.connections
-            .create(
-              new CreateConnectionInput({
-                id: ConnectionId.make(session.connectionId),
-                scope: ScopeId.make(session.tokenScope),
-                provider: GOOGLE_DISCOVERY_OAUTH2_PROVIDER_KEY,
-                kind: "user",
-                identityLabel: session.name,
-                accessToken: new TokenMaterial({
-                  secretId: SecretId.make(`${session.connectionId}.access_token`),
-                  name: `${session.name} Access Token`,
-                  value: tokenResponse.access_token,
-                }),
-                refreshToken: tokenResponse.refresh_token
-                  ? new TokenMaterial({
-                      secretId: SecretId.make(`${session.connectionId}.refresh_token`),
-                      name: `${session.name} Refresh Token`,
-                      value: tokenResponse.refresh_token,
-                    })
-                  : null,
-                expiresAt,
-                oauthScope: tokenResponse.scope ?? null,
-                providerState: toProviderStateRecord(providerState),
-              }),
-            )
-            .pipe(
-              Effect.mapError(
-                (err) =>
-                  new GoogleDiscoveryOAuthError({
-                    message:
-                      "message" in err
-                        ? (err as { message: string }).message
-                        : String(err),
-                  }),
-              ),
-            );
-
-          return {
-            kind: "oauth2" as const,
-            connectionId: session.connectionId,
-            clientIdSecretId: session.clientIdSecretId,
-            clientSecretSecretId: session.clientSecretSecretId,
-            scopes: [...session.scopes],
-          };
-        }),
-      ).pipe(
-        Effect.mapError((err) =>
-          err instanceof GoogleDiscoveryOAuthError
-            ? err
-            : new GoogleDiscoveryOAuthError({ message: err.message }),
+          yield* registerManifest(typedCtx, sourceId, scope, manifest, next);
+        }).pipe(
+          Effect.mapError((err) => (err instanceof Error ? err : new Error(String(err)))),
         ),
-      ),
 
-    getSource: (namespace, scope) => ctx.storage.getSource(namespace, scope),
-
-    updateSource: (namespace, scope, input) =>
-      ctx.storage.updateSourceMeta(namespace, scope, {
-        name: input.name?.trim() || undefined,
-        auth: input.auth,
-      }),
-  } satisfies GoogleDiscoveryPluginExtension),
-
-  invokeTool: ({ ctx, toolRow, args }) =>
-    invokeGoogleDiscoveryTool({
-      ctx: ctx as PluginCtx<GoogleDiscoveryStore>,
-      toolId: toolRow.id,
-      toolScope: toolRow.scope_id as string,
-      args,
-    }),
-
-  resolveAnnotations: ({ ctx, sourceId, toolRows }) =>
-    Effect.gen(function* () {
-      const typedCtx = ctx as PluginCtx<GoogleDiscoveryStore>;
-      const scopes = new Set<string>();
-      for (const row of toolRows) scopes.add(row.scope_id as string);
-      const byScope = new Map<string, ReadonlyMap<string, GoogleDiscoveryMethodBinding>>();
-      for (const scope of scopes) {
-        const bindings = yield* typedCtx.storage.getBindingsForSource(sourceId, scope);
-        byScope.set(scope, bindings);
-      }
-      const out: Record<string, ToolAnnotations> = {};
-      for (const row of toolRows) {
-        const binding = byScope.get(row.scope_id as string)?.get(row.id);
-        if (binding) {
-          out[row.id] = annotationsForOperation(binding.method, binding.pathTemplate);
-        }
-      }
-      return out;
-    }),
-
-  removeSource: ({ ctx, sourceId, scope }) =>
-    Effect.gen(function* () {
-      const typedCtx = ctx as PluginCtx<GoogleDiscoveryStore>;
-      yield* typedCtx.storage.removeBindingsBySource(sourceId, scope);
-      yield* typedCtx.storage.removeSource(sourceId, scope);
-    }),
-
-  detect: ({ url }) =>
-    Effect.gen(function* () {
-      const trimmed = url.trim();
-      if (!trimmed) return null;
-      const parsed = yield* Effect.try(() => new URL(trimmed)).pipe(Effect.option);
-      if (parsed._tag === "None") return null;
-
-      const isGoogleUrl = trimmed.includes("googleapis.com");
-      const isDiscoveryPath =
-        trimmed.includes("/discovery/") || trimmed.includes("$discovery");
-      if (!isGoogleUrl && !isDiscoveryPath) return null;
-
-      const discoveryText = yield* fetchDiscoveryDocument(trimmed).pipe(
-        Effect.catchAll(() => Effect.succeed(null)),
-      );
-      if (!discoveryText) return null;
-
-      const manifest = yield* extractGoogleDiscoveryManifest(discoveryText).pipe(
-        Effect.catchAll(() => Effect.succeed(null)),
-      );
-      if (!manifest) return null;
-
-      const name = Option.getOrElse(
-        manifest.title,
-        () => `${manifest.service} ${manifest.version}`,
-      );
-
-      return new SourceDetectionResult({
-        kind: "googleDiscovery",
-        confidence: "high",
-        endpoint: trimmed,
-        name,
-        namespace: deriveNamespace({
-          name,
-          service: manifest.service,
-          version: manifest.version,
-        }),
-      });
-    }),
-
-  refreshSource: ({ ctx, sourceId, scope }) =>
-    Effect.gen(function* () {
-      const typedCtx = ctx as PluginCtx<GoogleDiscoveryStore>;
-      const existing = yield* typedCtx.storage.getSource(sourceId, scope);
-      if (!existing) return;
-      const text = yield* fetchDiscoveryDocument(existing.config.discoveryUrl);
-      const manifest = yield* extractGoogleDiscoveryManifest(text);
-      const next = new GoogleDiscoveryStoredSourceDataSchema({
-        ...existing.config,
-        service: manifest.service,
-        version: manifest.version,
-        rootUrl: manifest.rootUrl,
-        servicePath: manifest.servicePath,
-      });
-      yield* registerManifest(typedCtx, sourceId, scope, manifest, next);
-    }).pipe(Effect.mapError((err) => (err instanceof Error ? err : new Error(String(err))))),
-
-  // SDK's `ctx.connections.accessToken(id)` dispatches here when a token
-  // is near expiry. All knobs (client secret id, scopes) come from
-  // providerState; the refresh_token value is pre-resolved by the SDK.
-  connectionProviders: (ctx): readonly ConnectionProvider[] => [
-    {
-      key: GOOGLE_DISCOVERY_OAUTH2_PROVIDER_KEY,
-      refresh: (input: ConnectionRefreshInput) =>
-        Effect.gen(function* () {
-          if (!input.providerState) {
-            return yield* new ConnectionRefreshError({
-              connectionId: input.connectionId,
-              message:
-                "google-discovery:oauth2 connection is missing providerState",
-            });
-          }
-          const state = yield* Effect.try({
-            try: () => decodeProviderState(input.providerState),
-            catch: (cause) =>
-              new ConnectionRefreshError({
-                connectionId: input.connectionId,
-                message: `google-discovery:oauth2 providerState is malformed: ${
-                  cause instanceof Error ? cause.message : String(cause)
-                }`,
-                cause,
-              }),
-          });
-
-          if (input.refreshToken === null) {
-            return yield* new ConnectionRefreshError({
-              connectionId: input.connectionId,
-              message:
-                "google-discovery:oauth2 connection has no refresh token",
-            });
-          }
-
-          const clientId = yield* ctx.secrets.get(state.clientIdSecretId).pipe(
-            Effect.mapError(
-              (err) =>
-                new ConnectionRefreshError({
+      // SDK's `ctx.connections.accessToken(id)` dispatches here when a token
+      // is near expiry. All knobs (client secret id, scopes) come from
+      // providerState; the refresh_token value is pre-resolved by the SDK.
+      connectionProviders: (ctx): readonly ConnectionProvider[] => [
+        {
+          key: GOOGLE_DISCOVERY_COMPOSIO_PROVIDER_KEY,
+          remove: (input) =>
+            Effect.gen(function* () {
+              if (!composioApiKey) return;
+              const connectedAccountId = input.providerState?.connectedAccountId;
+              if (typeof connectedAccountId !== "string" || connectedAccountId.length === 0) {
+                return;
+              }
+              yield* Effect.tryPromise({
+                try: () =>
+                  deleteComposioConnectedAccount(composioApiKey, connectedAccountId),
+                catch: (cause) => cause,
+              }).pipe(
+                Effect.catchAll((cause) =>
+                  cause instanceof ComposioClientError && cause.status === 404
+                    ? Effect.void
+                    : Effect.fail(
+                        new ConnectionRefreshError({
+                          connectionId: input.connectionId,
+                          message:
+                            cause instanceof Error
+                              ? cause.message
+                              : "Failed to delete Composio connected account",
+                          cause,
+                        }),
+                      ),
+                ),
+              );
+            }),
+        },
+        {
+          key: GOOGLE_DISCOVERY_OAUTH2_PROVIDER_KEY,
+          refresh: (input: ConnectionRefreshInput) =>
+            Effect.gen(function* () {
+              if (!input.providerState) {
+                return yield* new ConnectionRefreshError({
                   connectionId: input.connectionId,
-                  message: `Failed to resolve client id secret: ${err.message}`,
-                  cause: err,
-                }),
-            ),
-          );
-          if (clientId === null) {
-            return yield* new ConnectionRefreshError({
-              connectionId: input.connectionId,
-              message: `Missing client id secret: ${state.clientIdSecretId}`,
-            });
-          }
+                  message:
+                    "google-discovery:oauth2 connection is missing providerState",
+                });
+              }
+              const state = yield* Effect.try({
+                try: () => decodeProviderState(input.providerState),
+                catch: (cause) =>
+                  new ConnectionRefreshError({
+                    connectionId: input.connectionId,
+                    message: `google-discovery:oauth2 providerState is malformed: ${
+                      cause instanceof Error ? cause.message : String(cause)
+                    }`,
+                    cause,
+                  }),
+              });
 
-          const clientSecret = state.clientSecretSecretId
-            ? yield* ctx.secrets.get(state.clientSecretSecretId).pipe(
+              if (input.refreshToken === null) {
+                return yield* new ConnectionRefreshError({
+                  connectionId: input.connectionId,
+                  message:
+                    "google-discovery:oauth2 connection has no refresh token",
+                });
+              }
+
+              const clientId = yield* ctx.secrets.get(state.clientIdSecretId).pipe(
                 Effect.mapError(
                   (err) =>
                     new ConnectionRefreshError({
                       connectionId: input.connectionId,
-                      message: `Failed to resolve client secret: ${err.message}`,
+                      message: `Failed to resolve client id secret: ${err.message}`,
                       cause: err,
                     }),
                 ),
-              )
-            : null;
-
-          const tokenResponse: OAuth2TokenResponse = yield* refreshAccessToken({
-            tokenUrl: GOOGLE_TOKEN_URL,
-            clientId,
-            clientSecret,
-            refreshToken: input.refreshToken,
-            scopes: state.scopes,
-          }).pipe(
-            Effect.mapError(
-              (err: OAuth2Error) =>
-                new ConnectionRefreshError({
+              );
+              if (clientId === null) {
+                return yield* new ConnectionRefreshError({
                   connectionId: input.connectionId,
-                  message: err.message,
-                  cause: err,
-                }),
-            ),
-          );
+                  message: `Missing client id secret: ${state.clientIdSecretId}`,
+                });
+              }
 
-          const expiresAt =
-            typeof tokenResponse.expires_in === "number"
-              ? Date.now() + tokenResponse.expires_in * 1000
-              : null;
+              const clientSecret = state.clientSecretSecretId
+                ? yield* ctx.secrets.get(state.clientSecretSecretId).pipe(
+                    Effect.mapError(
+                      (err) =>
+                        new ConnectionRefreshError({
+                          connectionId: input.connectionId,
+                          message: `Failed to resolve client secret: ${err.message}`,
+                          cause: err,
+                        }),
+                    ),
+                  )
+                : null;
 
-          const result: ConnectionRefreshResult = {
-            accessToken: tokenResponse.access_token,
-            refreshToken: tokenResponse.refresh_token ?? undefined,
-            expiresAt,
-            oauthScope: tokenResponse.scope ?? input.oauthScope,
-          };
-          return result;
-        }),
-    },
-  ],
-}));
+              const tokenResponse: OAuth2TokenResponse = yield* refreshAccessToken({
+                tokenUrl: GOOGLE_TOKEN_URL,
+                clientId,
+                clientSecret,
+                refreshToken: input.refreshToken,
+                scopes: state.scopes,
+              }).pipe(
+                Effect.mapError(
+                  (err: OAuth2Error) =>
+                    new ConnectionRefreshError({
+                      connectionId: input.connectionId,
+                      message: err.message,
+                      cause: err,
+                    }),
+                ),
+              );
+
+              const expiresAt =
+                typeof tokenResponse.expires_in === "number"
+                  ? Date.now() + tokenResponse.expires_in * 1000
+                  : null;
+
+              const result: ConnectionRefreshResult = {
+                accessToken: tokenResponse.access_token,
+                refreshToken: tokenResponse.refresh_token ?? undefined,
+                expiresAt,
+                oauthScope: tokenResponse.scope ?? input.oauthScope,
+              };
+              return result;
+            }),
+        },
+      ],
+    };
+  },
+);

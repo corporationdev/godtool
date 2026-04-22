@@ -398,12 +398,15 @@ const withQueryParam = (url: string, key: string, value: string): string => {
   return `${url}${separator}${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
 };
 
+const composioAliasForAttempt = (displayName: string, sessionId: string): string =>
+  `${displayName} (${sessionId.slice(0, 8)})`;
+
 export const openApiPlugin = definePlugin(
   (options?: OpenApiPluginOptions) => {
     const httpClientLayer = options?.httpClientLayer ?? FetchHttpClient.layer;
     const composioApiKey = options?.composioApiKey;
 
-    const COMPOSIO_PROVIDER_KEY = "composio" as const;
+    const COMPOSIO_PROVIDER_KEY = "openapi-composio" as const;
 
     type RebuildInput = {
       readonly specText: string;
@@ -965,6 +968,7 @@ export const openApiPlugin = definePlugin(
                 tokenScope,
                 sourceId: connectConfig.sourceId,
                 connectionId: connectConfig.connectionId,
+                displayName: connectConfig.displayName,
                 app: connectConfig.app,
                 authConfigId,
               });
@@ -983,7 +987,7 @@ export const openApiPlugin = definePlugin(
                     authConfigId,
                     userId: tokenScope,
                     callbackUrl: withQueryParam(input.callbackUrl, "state", sessionId),
-                    alias: connectConfig.displayName,
+                    alias: composioAliasForAttempt(connectConfig.displayName, sessionId),
                   }),
                 catch: (err) =>
                   new OpenApiComposioError({
@@ -1063,7 +1067,7 @@ export const openApiPlugin = definePlugin(
                       scope: ScopeId.make(session.tokenScope),
                       provider: COMPOSIO_PROVIDER_KEY,
                       kind: "user",
-                      identityLabel: account.displayName ?? account.appName,
+                      identityLabel: session.displayName,
                       accessToken: null,
                       refreshToken: null,
                       expiresAt: null,
@@ -1290,7 +1294,7 @@ export const openApiPlugin = definePlugin(
                     parameters: Object.entries(proxyHeaders).map(([name, value]) => ({
                       name,
                       value,
-                      in: "header" as const,
+                      type: "header" as const,
                     })),
                   }),
                 catch: (err) =>

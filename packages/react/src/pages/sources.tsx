@@ -21,15 +21,9 @@ import {
   CardStackEntryDescription,
   CardStackEntryActions,
 } from "../components/card-stack";
-import { SourceFavicon } from "../components/source-favicon";
+import { ConnectedSourceIcon } from "../components/connected-source-icon";
 import { Skeleton } from "../components/skeleton";
-
-const KIND_TO_PLUGIN_KEY: Record<string, string> = {
-  openapi: "openapi",
-  mcp: "mcp",
-  graphql: "graphql",
-  googleDiscovery: "googleDiscovery",
-};
+import { sourcePluginKeyForKind } from "../plugins/source-kind";
 
 // ---------------------------------------------------------------------------
 // Page
@@ -61,7 +55,7 @@ export function SourcesPage(props: { sourcePlugins: readonly SourcePlugin[] }) {
         setDetecting(false);
         return;
       }
-      const pluginKey = KIND_TO_PLUGIN_KEY[results[0].kind];
+      const pluginKey = sourcePluginKeyForKind(results[0].kind);
       if (pluginKey) {
         void navigate({
           to: "/sources/add/$pluginKey",
@@ -291,14 +285,14 @@ function SourceGrid(props: {
       <CardStackHeader>Connected</CardStackHeader>
       <CardStackContent>
         {props.sources.map((s) => {
-          const pluginKey = KIND_TO_PLUGIN_KEY[s.kind] ?? s.kind;
+          const pluginKey = sourcePluginKeyForKind(s.kind);
           const plugin = pluginByKind.get(pluginKey);
           const SummaryComponent = plugin?.summary;
           return (
             <CardStackEntry key={s.id} asChild searchText={`${s.name} ${s.id} ${s.kind}`}>
               <Link to="/sources/$namespace" params={{ namespace: s.id }}>
                 <CardStackEntryMedia>
-                  <SourceFavicon url={s.url} size={32} />
+                  <ConnectedSourceIcon source={s} plugin={plugin} size={32} />
                 </CardStackEntryMedia>
                 <CardStackEntryContent>
                   <CardStackEntryTitle>{s.name}</CardStackEntryTitle>

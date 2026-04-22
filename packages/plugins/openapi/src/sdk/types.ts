@@ -284,6 +284,8 @@ export class OpenApiComposioSession extends Schema.Class<OpenApiComposioSession>
   sourceId: Schema.NullOr(Schema.String),
   /** Pre-decided Connection id written to the connection row on success. */
   connectionId: Schema.String,
+  /** Friendly local label for the resulting connection/source. */
+  displayName: Schema.String,
   app: Schema.String,
   authConfigId: Schema.NullOr(Schema.String),
 }) {}

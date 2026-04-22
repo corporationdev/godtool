@@ -1,10 +1,16 @@
+import { randomUUID } from "node:crypto";
+
 import { Effect, Option } from "effect";
 import { FetchHttpClient, HttpClient } from "@effect/platform";
 import type { Layer } from "effect";
 
 import {
+  ConnectionId,
+  CreateConnectionInput,
+  ScopeId,
   definePlugin,
   SourceDetectionResult,
+  type ConnectionProvider,
   type StorageFailure,
   type ToolAnnotations,
   type ToolRow,
@@ -17,7 +23,15 @@ import {
 } from "@executor/config";
 
 import {
+  ensureComposioManagedAuthConfig,
+  createComposioConnectLink,
+  getComposioConnectedAccount,
+  executeComposioProxy,
+  ComposioClientError,
+} from "../composio/client";
+import {
   introspect,
+  INTROSPECTION_QUERY,
   parseIntrospectionJson,
   type IntrospectionResult,
   type IntrospectionType,
@@ -25,7 +39,11 @@ import {
   type IntrospectionTypeRef,
 } from "./introspect";
 import { extract } from "./extract";
-import { GraphqlExtractionError, GraphqlIntrospectionError } from "./errors";
+import {
+  GraphqlComposioError,
+  GraphqlExtractionError,
+  GraphqlIntrospectionError,
+} from "./errors";
 import { invokeWithLayer, resolveHeaders } from "./invoke";
 import {
   graphqlSchema,
@@ -35,8 +53,12 @@ import {
   type StoredOperation,
 } from "./store";
 import {
+  ComposioSourceConfig,
   ExtractedField,
+  GraphqlComposioSession,
+  GraphqlInvocationAuth,
   OperationBinding,
+  InvocationResult,
   type HeaderValue as HeaderValueValue,
   type GraphqlOperationKind,
 } from "./types";
@@ -65,6 +87,10 @@ export interface GraphqlSourceConfig {
   readonly namespace?: string;
   /** Headers applied to every request. Values can reference secrets. */
   readonly headers?: Record<string, HeaderValue>;
+  /** Managed auth metadata kept on the source for reconnect. */
+  readonly composio?: ComposioSourceConfig;
+  /** Active auth path for invocation / introspection. */
+  readonly auth?: GraphqlInvocationAuth;
 }
 
 // ---------------------------------------------------------------------------
@@ -75,6 +101,36 @@ export interface GraphqlUpdateSourceInput {
   readonly name?: string;
   readonly endpoint?: string;
   readonly headers?: Record<string, HeaderValue>;
+  readonly composio?: ComposioSourceConfig | null;
+  readonly auth?: GraphqlInvocationAuth | null;
+}
+
+export type StartComposioConnectInput =
+  | {
+      readonly scopeId: string;
+      readonly sourceId: string;
+      readonly callbackUrl: string;
+    }
+  | {
+      readonly scopeId: string;
+      readonly callbackUrl: string;
+      readonly app: string;
+      readonly authConfigId?: string | null;
+      readonly connectionId: string;
+      readonly displayName?: string;
+    };
+
+export interface StartComposioConnectResponse {
+  readonly redirectUrl: string;
+}
+
+export interface CompleteComposioConnectInput {
+  readonly state: string;
+  readonly connectedAccountId: string;
+}
+
+export interface CompleteComposioConnectResponse {
+  readonly connectionId: string;
 }
 
 /**
@@ -87,6 +143,7 @@ export interface GraphqlUpdateSourceInput {
  * Layer composition.
  */
 export type GraphqlExtensionFailure =
+  | GraphqlComposioError
   | GraphqlIntrospectionError
   | GraphqlExtractionError
   | StorageFailure;
@@ -95,7 +152,10 @@ export interface GraphqlPluginExtension {
   /** Add a GraphQL endpoint and register its operations as tools */
   readonly addSource: (
     config: GraphqlSourceConfig,
-  ) => Effect.Effect<{ readonly toolCount: number }, GraphqlExtensionFailure>;
+  ) => Effect.Effect<
+    { readonly toolCount: number; readonly namespace: string },
+    GraphqlExtensionFailure
+  >;
 
   /** Remove all tools from a previously added GraphQL source by namespace.
    *  `scope` pins the cleanup to the exact row — without it a shadowed
@@ -123,6 +183,12 @@ export interface GraphqlPluginExtension {
     scope: string,
     input: GraphqlUpdateSourceInput,
   ) => Effect.Effect<void, StorageFailure>;
+  readonly startComposioConnect: (
+    input: StartComposioConnectInput,
+  ) => Effect.Effect<StartComposioConnectResponse, GraphqlComposioError>;
+  readonly completeComposioConnect: (
+    input: CompleteComposioConnectInput,
+  ) => Effect.Effect<CompleteComposioConnectResponse, GraphqlComposioError>;
 }
 
 // ---------------------------------------------------------------------------
@@ -284,12 +350,77 @@ const annotationsFor = (binding: OperationBinding): ToolAnnotations => {
   return {};
 };
 
+const withQueryParam = (url: string, key: string, value: string): string => {
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
+};
+
+const composioAliasForAttempt = (displayName: string, sessionId: string): string =>
+  `${displayName} (${sessionId.slice(0, 8)})`;
+
+const buildGraphqlRequestBody = (
+  operation: OperationBinding,
+  args: Record<string, unknown>,
+): { readonly query: string; readonly variables?: Record<string, unknown> } => {
+  const variables: Record<string, unknown> = {};
+  for (const varName of operation.variableNames) {
+    if (args[varName] !== undefined) {
+      variables[varName] = args[varName];
+    }
+  }
+
+  if (typeof args.variables === "object" && args.variables !== null) {
+    Object.assign(variables, args.variables);
+  }
+
+  return {
+    query: operation.operationString,
+    variables: Object.keys(variables).length > 0 ? variables : undefined,
+  };
+};
+
+const parseIntrospectionPayload = (
+  raw: unknown,
+): Effect.Effect<IntrospectionResult, GraphqlIntrospectionError> =>
+  Effect.gen(function* () {
+    const json = raw as { data?: IntrospectionResult; errors?: unknown[] } | null;
+
+    if (json?.errors && Array.isArray(json.errors) && json.errors.length > 0) {
+      return yield* new GraphqlIntrospectionError({
+        message: `Introspection returned ${json.errors.length} error(s)`,
+      });
+    }
+
+    if (!json?.data?.__schema) {
+      return yield* new GraphqlIntrospectionError({
+        message: "Introspection response missing __schema",
+      });
+    }
+
+    return json.data;
+  });
+
+const invocationResultFromGraphqlBody = (
+  status: number,
+  body: unknown,
+): InvocationResult => {
+  const gqlBody = body as { data?: unknown; errors?: unknown[] } | null;
+  const hasErrors = Array.isArray(gqlBody?.errors) && gqlBody.errors.length > 0;
+
+  return new InvocationResult({
+    status,
+    data: gqlBody?.data ?? null,
+    errors: hasErrors ? gqlBody!.errors : status >= 200 && status < 300 ? null : body,
+  });
+};
+
 // ---------------------------------------------------------------------------
 // Plugin factory
 // ---------------------------------------------------------------------------
 
 export interface GraphqlPluginOptions {
   readonly httpClientLayer?: Layer.Layer<HttpClient.HttpClient>;
+  readonly composioApiKey?: string;
   /** If provided, source add/remove is mirrored to executor.jsonc
    *  (best-effort — file errors are logged, not raised). */
   readonly configFile?: ConfigFileSink;
@@ -309,6 +440,8 @@ const toGraphqlConfigEntry = (
 export const graphqlPlugin = definePlugin(
   (options?: GraphqlPluginOptions) => {
     const httpClientLayer = options?.httpClientLayer ?? FetchHttpClient.layer;
+    const composioApiKey = options?.composioApiKey;
+    const COMPOSIO_PROVIDER_KEY = "graphql-composio" as const;
 
     return {
       id: "graphql" as const,
@@ -325,6 +458,91 @@ export const graphqlPlugin = definePlugin(
             return Object.keys(resolved).length > 0 ? resolved : undefined;
           });
 
+        const introspectViaComposio = (
+          endpoint: string,
+          headers: Record<string, string> | undefined,
+          auth: ComposioSourceConfig,
+        ) =>
+          Effect.gen(function* () {
+            if (!composioApiKey) {
+              return yield* new GraphqlComposioError({
+                message: "Composio API key is not configured",
+              });
+            }
+
+            const connection = yield* ctx.connections.get(auth.connectionId).pipe(
+              Effect.mapError(
+                (err) =>
+                  new GraphqlComposioError({
+                    message:
+                      "message" in err ? (err as { message: string }).message : String(err),
+                  }),
+              ),
+            );
+            if (!connection) {
+              return yield* new GraphqlComposioError({
+                message: `Composio connection "${auth.connectionId}" was not found`,
+              });
+            }
+            if (connection.provider !== COMPOSIO_PROVIDER_KEY) {
+              return yield* new GraphqlComposioError({
+                message:
+                  `Connection "${auth.connectionId}" is provider "${connection.provider}", expected "${COMPOSIO_PROVIDER_KEY}"`,
+              });
+            }
+
+            const connectedAccountId = connection.providerState?.connectedAccountId;
+            if (typeof connectedAccountId !== "string" || connectedAccountId.length === 0) {
+              return yield* new GraphqlComposioError({
+                message:
+                  `Composio connection "${auth.connectionId}" is missing connectedAccountId`,
+              });
+            }
+
+            const providerApp = connection.providerState?.app;
+            if (typeof providerApp === "string" && providerApp !== auth.app) {
+              return yield* new GraphqlComposioError({
+                message:
+                  `Composio connection app mismatch: source expects "${auth.app}" but connection is "${providerApp}"`,
+              });
+            }
+
+            const proxyResponse = yield* Effect.tryPromise({
+              try: () =>
+                executeComposioProxy({
+                  apiKey: composioApiKey,
+                  connectedAccountId,
+                  endpoint,
+                  method: "POST",
+                  body: { query: INTROSPECTION_QUERY },
+                  parameters: [
+                    ...Object.entries(headers ?? {}).map(([name, value]) => ({
+                      name,
+                      value,
+                      type: "header" as const,
+                    })),
+                  ],
+                }),
+              catch: (err) =>
+                new GraphqlComposioError({
+                  message:
+                    err instanceof ComposioClientError
+                      ? err.message
+                      : "Failed to execute Composio introspection proxy",
+                }),
+            });
+
+            if (proxyResponse.status !== 200) {
+              return yield* new GraphqlIntrospectionError({
+                message: `Introspection failed with status ${proxyResponse.status}`,
+              });
+            }
+
+            return yield* parseIntrospectionPayload(
+              proxyResponse.data ?? proxyResponse.error ?? proxyResponse.binaryData,
+            );
+          });
+
         const addSourceInternal = (config: GraphqlSourceConfig) =>
           ctx.transaction(
             Effect.gen(function* () {
@@ -335,10 +553,17 @@ export const graphqlPlugin = definePlugin(
                 );
               } else {
                 const resolved = yield* resolveConfigHeaders(config.headers);
-                introspectionResult = yield* introspect(
-                  config.endpoint,
-                  resolved,
-                ).pipe(Effect.provide(httpClientLayer));
+                introspectionResult =
+                  config.auth?.kind === "composio"
+                    ? yield* introspectViaComposio(
+                        config.endpoint,
+                        resolved,
+                        config.auth,
+                      )
+                    : yield* introspect(
+                        config.endpoint,
+                        resolved,
+                      ).pipe(Effect.provide(httpClientLayer));
               }
 
               const { result, definitions } = yield* extract(
@@ -361,6 +586,8 @@ export const graphqlPlugin = definePlugin(
                 name: displayName,
                 endpoint: config.endpoint,
                 headers: config.headers ?? {},
+                composio: config.composio,
+                auth: config.auth,
               };
 
               const storedOps: StoredOperation[] = prepared.map((p) => ({
@@ -411,7 +638,7 @@ export const graphqlPlugin = definePlugin(
                     )
                   : Effect.void,
               ),
-              Effect.map(({ toolCount }) => ({ toolCount })),
+              Effect.map(({ toolCount, namespace }) => ({ toolCount, namespace })),
             ),
 
           removeSource: (namespace, scope) =>
@@ -435,7 +662,198 @@ export const graphqlPlugin = definePlugin(
               name: input.name?.trim() || undefined,
               endpoint: input.endpoint,
               headers: input.headers,
+              composio: input.composio,
+              auth: input.auth,
             }),
+
+          startComposioConnect: (input) =>
+            Effect.gen(function* () {
+              if (!composioApiKey) {
+                return yield* new GraphqlComposioError({
+                  message: "Composio API key is not configured",
+                });
+              }
+
+              const tokenScope = input.scopeId;
+              const connectConfig =
+                "sourceId" in input
+                  ? yield* Effect.gen(function* () {
+                      const source = yield* ctx.storage.getSource(input.sourceId, tokenScope).pipe(
+                        Effect.mapError(
+                          (err) => new GraphqlComposioError({ message: err.message }),
+                        ),
+                      );
+                      if (!source) {
+                        return yield* new GraphqlComposioError({
+                          message: `Source "${input.sourceId}" not found`,
+                        });
+                      }
+                      if (!source.composio) {
+                        return yield* new GraphqlComposioError({
+                          message:
+                            `Source "${input.sourceId}" does not have Composio auth configured`,
+                        });
+                      }
+
+                      return {
+                        sourceId: input.sourceId,
+                        app: source.composio.app,
+                        authConfigId: source.composio.authConfigId,
+                        connectionId: source.composio.connectionId,
+                        displayName: source.name,
+                      } as const;
+                    })
+                  : {
+                      sourceId: null,
+                      app: input.app,
+                      authConfigId: input.authConfigId ?? null,
+                      connectionId: input.connectionId,
+                      displayName: input.displayName ?? input.app,
+                    };
+
+              const authConfigId =
+                connectConfig.authConfigId ??
+                (yield* Effect.tryPromise({
+                  try: () =>
+                    ensureComposioManagedAuthConfig(composioApiKey, connectConfig.app),
+                  catch: (err) =>
+                    new GraphqlComposioError({
+                      message:
+                        err instanceof ComposioClientError
+                          ? err.message
+                          : "Failed to resolve Composio auth config",
+                    }),
+                }));
+
+              const sessionId = randomUUID();
+              yield* ctx.storage.putComposioSession(
+                sessionId,
+                new GraphqlComposioSession({
+                  tokenScope,
+                  sourceId: connectConfig.sourceId,
+                  connectionId: connectConfig.connectionId,
+                  displayName: connectConfig.displayName,
+                  app: connectConfig.app,
+                  authConfigId,
+                }),
+              ).pipe(
+                Effect.mapError((err) => new GraphqlComposioError({ message: err.message })),
+              );
+
+              const link = yield* Effect.tryPromise({
+                try: () =>
+                  createComposioConnectLink({
+                    apiKey: composioApiKey,
+                    app: connectConfig.app,
+                    authConfigId,
+                    userId: tokenScope,
+                    callbackUrl: withQueryParam(input.callbackUrl, "state", sessionId),
+                    alias: composioAliasForAttempt(connectConfig.displayName, sessionId),
+                  }),
+                catch: (err) =>
+                  new GraphqlComposioError({
+                    message:
+                      err instanceof ComposioClientError
+                        ? err.message
+                        : "Failed to create Composio connect link",
+                  }),
+              });
+
+              return { redirectUrl: link.redirectUrl };
+            }),
+
+          completeComposioConnect: (input) =>
+            ctx.transaction(
+              Effect.gen(function* () {
+                const session = yield* ctx.storage.getComposioSession(input.state).pipe(
+                  Effect.mapError((err) => new GraphqlComposioError({ message: err.message })),
+                );
+                if (!session) {
+                  return yield* new GraphqlComposioError({
+                    message: "Composio session not found or has expired",
+                  });
+                }
+
+                yield* ctx.storage.deleteComposioSession(input.state).pipe(
+                  Effect.mapError((err) => new GraphqlComposioError({ message: err.message })),
+                );
+
+                if (!composioApiKey) {
+                  return yield* new GraphqlComposioError({
+                    message: "Composio API key is not configured",
+                  });
+                }
+
+                const account = yield* Effect.tryPromise({
+                  try: () =>
+                    getComposioConnectedAccount(composioApiKey, input.connectedAccountId),
+                  catch: (err) =>
+                    new GraphqlComposioError({
+                      message:
+                        err instanceof ComposioClientError
+                          ? err.message
+                          : "Failed to verify Composio connected account",
+                    }),
+                });
+
+                if (account.status !== "ACTIVE") {
+                  return yield* new GraphqlComposioError({
+                    message:
+                      `Composio connected account is not active yet (status: ${account.status})`,
+                  });
+                }
+                if (account.appName && account.appName !== session.app) {
+                  return yield* new GraphqlComposioError({
+                    message: `Connected account app mismatch: expected ${session.app}, got ${account.appName}`,
+                  });
+                }
+                if (
+                  session.authConfigId !== null &&
+                  account.authConfigId !== null &&
+                  account.authConfigId !== session.authConfigId
+                ) {
+                  return yield* new GraphqlComposioError({
+                    message:
+                      `Connected account auth config mismatch: expected ${session.authConfigId}, got ${account.authConfigId}`,
+                  });
+                }
+
+                yield* ctx.connections.create(
+                  new CreateConnectionInput({
+                    id: ConnectionId.make(session.connectionId),
+                    scope: ScopeId.make(session.tokenScope),
+                    provider: COMPOSIO_PROVIDER_KEY,
+                    kind: "user",
+                    identityLabel: session.displayName,
+                    accessToken: null,
+                    refreshToken: null,
+                    expiresAt: null,
+                    oauthScope: null,
+                    providerState: {
+                      connectedAccountId: input.connectedAccountId,
+                      app: session.app,
+                      authConfigId: session.authConfigId,
+                    },
+                  }),
+                ).pipe(
+                  Effect.mapError(
+                    (err) =>
+                      new GraphqlComposioError({
+                        message:
+                          "message" in err ? (err as { message: string }).message : String(err),
+                      }),
+                  ),
+                );
+
+                return { connectionId: session.connectionId };
+              }),
+            ).pipe(
+              Effect.mapError((err) =>
+                err instanceof GraphqlComposioError
+                  ? err
+                  : new GraphqlComposioError({ message: err.message }),
+              ),
+            ),
         } satisfies GraphqlPluginExtension;
       },
 
@@ -457,6 +875,8 @@ export const graphqlPlugin = definePlugin(
                   introspectionJson: { type: "string" },
                   namespace: { type: "string" },
                   headers: { type: "object" },
+                  composio: { type: "object" },
+                  auth: { type: "object" },
                 },
                 required: ["endpoint"],
               },
@@ -464,8 +884,9 @@ export const graphqlPlugin = definePlugin(
                 type: "object",
                 properties: {
                   toolCount: { type: "number" },
+                  namespace: { type: "string" },
                 },
-                required: ["toolCount"],
+                required: ["toolCount", "namespace"],
               },
               // Static-tool callers don't name a scope. Default to the
               // outermost scope in the executor's stack — for a single-
@@ -511,15 +932,100 @@ export const graphqlPlugin = definePlugin(
             ctx.secrets,
           );
 
-          const result = yield* invokeWithLayer(
+          if (source.auth?.kind === "composio") {
+            if (!composioApiKey) {
+              return yield* Effect.fail(
+                new Error(
+                  `Composio-backed auth is configured for source "${source.namespace}", but COMPOSIO_API_KEY is not configured.`,
+                ),
+              );
+            }
+
+            const connection = yield* ctx.connections.get(source.auth.connectionId).pipe(
+              Effect.mapError(
+                (err) =>
+                  new Error(
+                    `Composio connection resolution failed: ${
+                      "message" in err ? (err as { message: string }).message : String(err)
+                    }`,
+                  ),
+              ),
+            );
+            if (!connection) {
+              return yield* Effect.fail(
+                new Error(
+                  `Composio connection "${source.auth.connectionId}" was not found for source "${source.namespace}".`,
+                ),
+              );
+            }
+            if (connection.provider !== COMPOSIO_PROVIDER_KEY) {
+              return yield* Effect.fail(
+                new Error(
+                  `Connection "${source.auth.connectionId}" is provider "${connection.provider}", expected "${COMPOSIO_PROVIDER_KEY}".`,
+                ),
+              );
+            }
+
+            const connectedAccountId = connection.providerState?.connectedAccountId;
+            if (typeof connectedAccountId !== "string" || connectedAccountId.length === 0) {
+              return yield* Effect.fail(
+                new Error(
+                  `Composio connection "${source.auth.connectionId}" is missing connectedAccountId.`,
+                ),
+              );
+            }
+
+            const providerApp = connection.providerState?.app;
+            if (
+              typeof providerApp === "string" &&
+              providerApp !== source.auth.app
+            ) {
+              return yield* Effect.fail(
+                new Error(
+                  `Composio connection app mismatch: source expects "${source.auth.app}" but connection is "${providerApp}".`,
+                ),
+              );
+            }
+
+            const proxyResponse = yield* Effect.tryPromise({
+              try: () =>
+                executeComposioProxy({
+                  apiKey: composioApiKey,
+                  connectedAccountId,
+                  endpoint: source.endpoint,
+                  method: "POST",
+                  body: buildGraphqlRequestBody(
+                    op.binding,
+                    (args ?? {}) as Record<string, unknown>,
+                  ),
+                  parameters: Object.entries(resolvedHeaders).map(([name, value]) => ({
+                    name,
+                    value,
+                    type: "header" as const,
+                  })),
+                }),
+              catch: (err) =>
+                new GraphqlComposioError({
+                  message:
+                    err instanceof ComposioClientError
+                      ? `Composio proxy request failed: ${err.message}`
+                      : "Composio proxy request failed",
+                }),
+            });
+
+            return invocationResultFromGraphqlBody(
+              proxyResponse.status,
+              proxyResponse.data ?? proxyResponse.error ?? proxyResponse.binaryData,
+            );
+          }
+
+          return yield* invokeWithLayer(
             op.binding,
             (args ?? {}) as Record<string, unknown>,
             source.endpoint,
             resolvedHeaders,
             httpClientLayer,
           );
-
-          return result;
         }),
 
       resolveAnnotations: ({ ctx, sourceId, toolRows }) =>
@@ -582,6 +1088,12 @@ export const graphqlPlugin = definePlugin(
             namespace: name,
           });
         }),
+
+      connectionProviders: (): readonly ConnectionProvider[] => [
+        {
+          key: COMPOSIO_PROVIDER_KEY,
+        },
+      ],
     };
   },
 );

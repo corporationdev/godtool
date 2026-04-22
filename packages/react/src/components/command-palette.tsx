@@ -2,10 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useAtomValue, Result } from "@effect-atom/atom-react";
 import { PlusIcon } from "lucide-react";
-import { SourceFavicon } from "./source-favicon";
+import { ConnectedSourceIcon } from "./connected-source-icon";
 import { sourcesAtom } from "../api/atoms";
 import { useScope } from "../hooks/use-scope";
 import type { SourcePlugin } from "../plugins/source-plugin";
+import { sourcePluginKeyForKind } from "../plugins/source-kind";
 import {
   CommandDialog,
   CommandEmpty,
@@ -95,6 +96,12 @@ export function CommandPalette(props: { sourcePlugins: readonly SourcePlugin[] }
     return entries;
   }, [sourcePlugins]);
 
+  const pluginByKind = useMemo(() => {
+    const out = new Map<string, SourcePlugin>();
+    for (const plugin of sourcePlugins) out.set(plugin.key, plugin);
+    return out;
+  }, [sourcePlugins]);
+
   const close = useCallback(() => setOpen(false), []);
 
   const goToSource = useCallback(
@@ -144,7 +151,10 @@ export function CommandPalette(props: { sourcePlugins: readonly SourcePlugin[] }
                 value={`connected ${s.name} ${s.id} ${s.kind}`}
                 onSelect={() => goToSource(s.id)}
               >
-                <SourceFavicon url={s.url} />
+                <ConnectedSourceIcon
+                  source={s}
+                  plugin={pluginByKind.get(sourcePluginKeyForKind(s.kind))}
+                />
                 <span className="flex-1 truncate">{s.name}</span>
                 <CommandShortcut>{s.kind}</CommandShortcut>
               </CommandItem>

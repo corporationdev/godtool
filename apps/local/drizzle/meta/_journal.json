@@ -29,6 +29,20 @@
       "when": 1777085000000,
       "tag": "0003_allow_external_connections",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1777167000000,
+      "tag": "0004_graphql_composio",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1777167600000,
+      "tag": "0005_google_discovery_composio",
+      "breakpoints": true
     }
   ]
 }

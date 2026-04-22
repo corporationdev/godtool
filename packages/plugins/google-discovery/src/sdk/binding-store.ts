@@ -1,11 +1,12 @@
 // ---------------------------------------------------------------------------
 // Google Discovery plugin store — typed adapter over the plugin's own
 // schema. Replaces the old ScopedKv-backed binding store. Operates on
-// three tables:
+// four tables:
 //
 //   google_discovery_source         — per-namespace source config blob
 //   google_discovery_binding        — per-tool-id method binding
 //   google_discovery_oauth_session  — short-lived OAuth PKCE sessions
+//   google_discovery_composio_session — transient managed-auth sessions
 //
 // All JSON columns are round-tripped via Schema.encode/decode so `Option`
 // shapes inside GoogleDiscoveryStoredSourceData / GoogleDiscoveryMethodBinding
@@ -21,6 +22,7 @@ import {
 } from "@executor/sdk";
 
 import {
+  GoogleDiscoveryComposioSession,
   GoogleDiscoveryMethodBinding,
   GoogleDiscoveryOAuthSession,
   GoogleDiscoveryStoredSourceData,
@@ -64,6 +66,14 @@ export const googleDiscoverySchema = defineSchema({
       expires_at: { type: "date", required: true },
     },
   },
+  google_discovery_composio_session: {
+    fields: {
+      id: { type: "string", required: true },
+      scope_id: { type: "string", required: true, index: true },
+      session: { type: "json", required: true },
+      created_at: { type: "date", required: true },
+    },
+  },
 });
 
 export type GoogleDiscoverySchema = typeof googleDiscoverySchema;
@@ -94,6 +104,8 @@ const decodeBinding = Schema.decodeUnknownSync(GoogleDiscoveryMethodBinding);
 
 const encodeSession = Schema.encodeSync(GoogleDiscoveryOAuthSession);
 const decodeSession = Schema.decodeUnknownSync(GoogleDiscoveryOAuthSession);
+const encodeComposioSession = Schema.encodeSync(GoogleDiscoveryComposioSession);
+const decodeComposioSession = Schema.decodeUnknownSync(GoogleDiscoveryComposioSession);
 
 const decodeJson = (value: unknown): unknown => {
   if (value === null || value === undefined) return value;
@@ -184,6 +196,14 @@ export interface GoogleDiscoveryStore {
     sessionId: string,
   ) => Effect.Effect<GoogleDiscoveryOAuthSession | null, StorageFailure>;
   readonly deleteOAuthSession: (sessionId: string) => Effect.Effect<void, StorageFailure>;
+  readonly putComposioSession: (
+    sessionId: string,
+    session: GoogleDiscoveryComposioSession,
+  ) => Effect.Effect<void, StorageFailure>;
+  readonly getComposioSession: (
+    sessionId: string,
+  ) => Effect.Effect<GoogleDiscoveryComposioSession | null, StorageFailure>;
+  readonly deleteComposioSession: (sessionId: string) => Effect.Effect<void, StorageFailure>;
 }
 
 // ---------------------------------------------------------------------------
@@ -419,6 +439,46 @@ export const makeGoogleDiscoveryStore = (
       db
         .delete({
           model: "google_discovery_oauth_session",
+          where: [{ field: "id", value: sessionId }],
+        })
+        .pipe(Effect.asVoid),
+
+    putComposioSession: (sessionId, session) =>
+      Effect.gen(function* () {
+        yield* db.delete({
+          model: "google_discovery_composio_session",
+          where: [
+            { field: "id", value: sessionId },
+            { field: "scope_id", value: session.tokenScope },
+          ],
+        });
+        yield* db.create({
+          model: "google_discovery_composio_session",
+          data: {
+            id: sessionId,
+            scope_id: session.tokenScope,
+            session:
+              encodeComposioSession(session) as unknown as Record<string, unknown>,
+            created_at: new Date(),
+          },
+          forceAllowId: true,
+        });
+      }),
+
+    getComposioSession: (sessionId) =>
+      Effect.gen(function* () {
+        const row = yield* db.findOne({
+          model: "google_discovery_composio_session",
+          where: [{ field: "id", value: sessionId }],
+        });
+        if (!row) return null;
+        return decodeComposioSession(decodeJson(row.session));
+      }),
+
+    deleteComposioSession: (sessionId) =>
+      db
+        .delete({
+          model: "google_discovery_composio_session",
           where: [{ field: "id", value: sessionId }],
         })
         .pipe(Effect.asVoid),

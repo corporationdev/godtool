@@ -5,16 +5,13 @@ export interface ComposioConnectLinkInput {
   readonly apiKey: string;
   readonly app: string;
   readonly authConfigId: string | null;
-  /** Stable Composio user id — we use the executor scope id. */
   readonly userId: string;
   readonly callbackUrl: string;
-  /** Human-readable label shown in the Composio dashboard. */
   readonly alias?: string;
 }
 
 export interface ComposioConnectLinkResult {
   readonly redirectUrl: string;
-  /** Composio's id for the in-flight connected account. */
   readonly connectedAccountId: string;
 }
 
@@ -257,15 +254,6 @@ export async function getComposioConnectedAccount(
     authConfigId: data.auth_config?.id ?? null,
     displayName: data.alias ?? data.displayName ?? data.display_name ?? null,
   };
-}
-
-export async function deleteComposioConnectedAccount(
-  apiKey: string,
-  connectedAccountId: string,
-): Promise<void> {
-  await composioFetch(apiKey, `/connected_accounts/${connectedAccountId}`, {
-    method: "DELETE",
-  });
 }
 
 export async function executeComposioProxy(

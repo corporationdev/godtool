@@ -1,13 +1,20 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
 import { defineSchema, type StorageDeps, type StorageFailure } from "@executor/sdk";
 
-import { OperationBinding, type HeaderValue } from "./types";
+import {
+  ComposioSourceConfig,
+  GraphqlComposioSession,
+  GraphqlInvocationAuth,
+  OperationBinding,
+  type HeaderValue,
+} from "./types";
 
 // ---------------------------------------------------------------------------
-// Schema — two tables:
-//   - graphql_source: endpoint + headers + display name per source
+// Schema — three tables:
+//   - graphql_source: endpoint + headers + auth per source
 //   - graphql_operation: per-tool OperationBinding blob keyed by tool id
+//   - graphql_composio_session: transient session rows used during Composio onboarding
 // ---------------------------------------------------------------------------
 
 export const graphqlSchema = defineSchema({
@@ -18,6 +25,8 @@ export const graphqlSchema = defineSchema({
       name: { type: "string", required: true },
       endpoint: { type: "string", required: true },
       headers: { type: "json", required: false },
+      composio: { type: "json", required: false },
+      auth: { type: "json", required: false },
     },
   },
   graphql_operation: {
@@ -26,6 +35,14 @@ export const graphqlSchema = defineSchema({
       scope_id: { type: "string", required: true, index: true },
       source_id: { type: "string", required: true, index: true },
       binding: { type: "json", required: true },
+    },
+  },
+  graphql_composio_session: {
+    fields: {
+      id: { type: "string", required: true },
+      scope_id: { type: "string", required: true, index: true },
+      session: { type: "json", required: true },
+      created_at: { type: "date", required: true },
     },
   },
 });
@@ -45,7 +62,26 @@ export interface StoredGraphqlSource {
   readonly name: string;
   readonly endpoint: string;
   readonly headers: Record<string, HeaderValue>;
+  readonly composio?: ComposioSourceConfig;
+  readonly auth?: GraphqlInvocationAuth;
 }
+
+export class StoredGraphqlSourceSchema extends Schema.Class<StoredGraphqlSourceSchema>(
+  "StoredGraphqlSourceSchema",
+)({
+  namespace: Schema.String,
+  name: Schema.String,
+  endpoint: Schema.String,
+  headers: Schema.Record({ key: Schema.String, value: Schema.Union(
+    Schema.String,
+    Schema.Struct({
+      secretId: Schema.String,
+      prefix: Schema.optional(Schema.String),
+    }),
+  ) }),
+  composio: Schema.optional(ComposioSourceConfig),
+  auth: Schema.optional(GraphqlInvocationAuth),
+}) {}
 
 export interface StoredOperation {
   readonly toolId: string;
@@ -79,6 +115,15 @@ const encodeBinding = (binding: OperationBinding): BindingJson => ({
   variableNames: [...binding.variableNames],
 });
 
+const encodeComposioSourceConfig = Schema.encodeSync(ComposioSourceConfig);
+const decodeComposioSourceConfig = Schema.decodeUnknownSync(ComposioSourceConfig);
+
+const encodeInvocationAuth = Schema.encodeSync(GraphqlInvocationAuth);
+const decodeInvocationAuth = Schema.decodeUnknownSync(GraphqlInvocationAuth);
+
+const encodeComposioSession = Schema.encodeSync(GraphqlComposioSession);
+const decodeComposioSession = Schema.decodeUnknownSync(GraphqlComposioSession);
+
 const decodeHeaders = (value: unknown): Record<string, HeaderValue> => {
   if (value == null) return {};
   if (typeof value === "string") return JSON.parse(value) as Record<string, HeaderValue>;
@@ -109,7 +154,13 @@ export interface GraphqlStore {
   readonly updateSourceMeta: (
     namespace: string,
     scope: string,
-    patch: { readonly name?: string; readonly endpoint?: string; readonly headers?: Record<string, HeaderValue> },
+    patch: {
+      readonly name?: string;
+      readonly endpoint?: string;
+      readonly headers?: Record<string, HeaderValue>;
+      readonly composio?: ComposioSourceConfig | null;
+      readonly auth?: GraphqlInvocationAuth | null;
+    },
   ) => Effect.Effect<void, StorageFailure>;
 
   readonly getSource: (
@@ -133,6 +184,19 @@ export interface GraphqlStore {
     namespace: string,
     scope: string,
   ) => Effect.Effect<void, StorageFailure>;
+
+  readonly putComposioSession: (
+    id: string,
+    session: GraphqlComposioSession,
+  ) => Effect.Effect<void, StorageFailure>;
+
+  readonly getComposioSession: (
+    id: string,
+  ) => Effect.Effect<GraphqlComposioSession | null, StorageFailure>;
+
+  readonly deleteComposioSession: (
+    id: string,
+  ) => Effect.Effect<void, StorageFailure>;
 }
 
 // ---------------------------------------------------------------------------
@@ -148,6 +212,18 @@ export const makeDefaultGraphqlStore = ({
     name: row.name as string,
     endpoint: row.endpoint as string,
     headers: decodeHeaders(row.headers),
+    composio:
+      row.composio == null
+        ? undefined
+        : decodeComposioSourceConfig(
+            typeof row.composio === "string" ? JSON.parse(row.composio) : row.composio,
+          ),
+    auth:
+      row.auth == null
+        ? undefined
+        : decodeInvocationAuth(
+            typeof row.auth === "string" ? JSON.parse(row.auth) : row.auth,
+          ),
   });
 
   const rowToOperation = (row: Record<string, unknown>): StoredOperation => ({
@@ -186,6 +262,12 @@ export const makeDefaultGraphqlStore = ({
             name: input.name,
             endpoint: input.endpoint,
             headers: input.headers as unknown as Record<string, unknown>,
+            composio: input.composio
+              ? (encodeComposioSourceConfig(input.composio) as unknown as Record<string, unknown>)
+              : undefined,
+            auth: input.auth
+              ? (encodeInvocationAuth(input.auth) as unknown as Record<string, unknown>)
+              : undefined,
           },
           forceAllowId: true,
         });
@@ -218,6 +300,18 @@ export const makeDefaultGraphqlStore = ({
         if (patch.endpoint !== undefined) update.endpoint = patch.endpoint;
         if (patch.headers !== undefined) {
           update.headers = patch.headers as unknown as Record<string, unknown>;
+        }
+        if (patch.composio !== undefined) {
+          update.composio =
+            patch.composio === null
+              ? null
+              : (encodeComposioSourceConfig(patch.composio) as unknown as Record<string, unknown>);
+        }
+        if (patch.auth !== undefined) {
+          update.auth =
+            patch.auth === null
+              ? null
+              : (encodeInvocationAuth(patch.auth) as unknown as Record<string, unknown>);
         }
         if (Object.keys(update).length === 0) return;
         yield* db.update({
@@ -269,5 +363,39 @@ export const makeDefaultGraphqlStore = ({
         .pipe(Effect.map((rows) => rows.map(rowToOperation))),
 
     removeSource: (namespace, scope) => deleteSource(namespace, scope),
+
+    putComposioSession: (id, session) =>
+      db.create({
+        model: "graphql_composio_session",
+        data: {
+          id,
+          scope_id: session.tokenScope,
+          session: encodeComposioSession(session) as unknown as Record<string, unknown>,
+          created_at: new Date(),
+        },
+        forceAllowId: true,
+      }),
+
+    getComposioSession: (id) =>
+      db
+        .findOne({
+          model: "graphql_composio_session",
+          where: [{ field: "id", value: id }],
+        })
+        .pipe(
+          Effect.map((row) =>
+            row
+              ? decodeComposioSession(
+                  typeof row.session === "string" ? JSON.parse(row.session) : row.session,
+                )
+              : null,
+          ),
+        ),
+
+    deleteComposioSession: (id) =>
+      db.delete({
+        model: "graphql_composio_session",
+        where: [{ field: "id", value: id }],
+      }),
   };
 };

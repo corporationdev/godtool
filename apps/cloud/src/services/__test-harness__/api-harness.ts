@@ -1,7 +1,7 @@
 // Shared HTTP test harness for node-pool integration tests.
 //
 // Stands up the real ProtectedCloudApi against a real DbService and
-// every real plugin (openapi / mcp / graphql / workos-vault), with
+// every real plugin (openapi / mcp / google-discovery / graphql / workos-vault), with
 // two test-only swaps:
 //
 //   - `OrgAuthLive` is replaced with `FakeOrgAuthLive`, which reads
@@ -44,6 +44,7 @@ import {
 } from "@executor/storage-postgres";
 import { openApiPlugin } from "@executor/plugin-openapi";
 import { mcpPlugin } from "@executor/plugin-mcp";
+import { googleDiscoveryPlugin } from "@executor/plugin-google-discovery";
 import { graphqlPlugin } from "@executor/plugin-graphql";
 import {
   workosVaultPlugin,
@@ -54,6 +55,7 @@ import {
 } from "@executor/plugin-workos-vault";
 import { OpenApiExtensionService } from "@executor/plugin-openapi/api";
 import { McpExtensionService } from "@executor/plugin-mcp/api";
+import { GoogleDiscoveryExtensionService } from "@executor/plugin-google-discovery/api";
 import { GraphqlExtensionService } from "@executor/plugin-graphql/api";
 
 import { AuthContext, OrgAuth } from "../../auth/middleware";
@@ -187,6 +189,7 @@ const createTestScopedExecutor = (
     const plugins = [
       openApiPlugin(),
       mcpPlugin({ dangerouslyAllowStdioMCP: false }),
+      googleDiscoveryPlugin({ composioApiKey: "composio-test-key" }),
       graphqlPlugin(),
       workosVaultPlugin({ client: fakeVault }),
     ] as const;
@@ -262,6 +265,7 @@ const buildAppForScope = (userId: string, orgId: string, orgName: string) =>
       Layer.succeed(ExecutionEngineService, engine),
       Layer.succeed(OpenApiExtensionService, executor.openapi),
       Layer.succeed(McpExtensionService, executor.mcp),
+      Layer.succeed(GoogleDiscoveryExtensionService, executor.googleDiscovery),
       Layer.succeed(GraphqlExtensionService, executor.graphql),
     );
     return assumeTestOrgAuthProvided(

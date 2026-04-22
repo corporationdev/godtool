@@ -188,12 +188,24 @@ export const google_discovery_oauth_session = sqliteTable("google_discovery_oaut
   index("google_discovery_oauth_session_scope_id_idx").on(table.scope_id),
 ]);
 
+export const google_discovery_composio_session = sqliteTable("google_discovery_composio_session", {
+  id: text('id').notNull(),
+  scope_id: text('scope_id').notNull(),
+  session: text('session', { mode: "json" }).notNull(),
+  created_at: integer('created_at', { mode: 'timestamp_ms' }).notNull()
+}, (table) => [
+  primaryKey({ columns: [table.scope_id, table.id] }),
+  index("google_discovery_composio_session_scope_id_idx").on(table.scope_id),
+]);
+
 export const graphql_source = sqliteTable("graphql_source", {
   id: text('id').notNull(),
   scope_id: text('scope_id').notNull(),
   name: text('name').notNull(),
   endpoint: text('endpoint').notNull(),
-  headers: text('headers', { mode: "json" })
+  headers: text('headers', { mode: "json" }),
+  composio: text('composio', { mode: "json" }),
+  auth: text('auth', { mode: "json" })
 }, (table) => [
   primaryKey({ columns: [table.scope_id, table.id] }),
   index("graphql_source_scope_id_idx").on(table.scope_id),
@@ -208,6 +220,16 @@ export const graphql_operation = sqliteTable("graphql_operation", {
   primaryKey({ columns: [table.scope_id, table.id] }),
   index("graphql_operation_scope_id_idx").on(table.scope_id),
   index("graphql_operation_source_id_idx").on(table.source_id),
+]);
+
+export const graphql_composio_session = sqliteTable("graphql_composio_session", {
+  id: text('id').notNull(),
+  scope_id: text('scope_id').notNull(),
+  session: text('session', { mode: "json" }).notNull(),
+  created_at: integer('created_at', { mode: 'timestamp_ms' }).notNull()
+}, (table) => [
+  primaryKey({ columns: [table.scope_id, table.id] }),
+  index("graphql_composio_session_scope_id_idx").on(table.scope_id),
 ]);
 
 export const blob = sqliteTable("blob", {

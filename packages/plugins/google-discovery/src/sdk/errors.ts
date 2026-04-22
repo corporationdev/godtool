@@ -37,6 +37,14 @@ export class GoogleDiscoveryOAuthError extends Schema.TaggedError<GoogleDiscover
   HttpApiSchema.annotations({ status: 400 }),
 ) {}
 
+export class GoogleDiscoveryComposioError extends Schema.TaggedError<GoogleDiscoveryComposioError>()(
+  "GoogleDiscoveryComposioError",
+  {
+    message: Schema.String,
+  },
+  HttpApiSchema.annotations({ status: 400 }),
+) {}
+
 export class GoogleDiscoverySourceError extends Schema.TaggedError<GoogleDiscoverySourceError>()(
   "GoogleDiscoverySourceError",
   {

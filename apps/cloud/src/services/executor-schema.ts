@@ -166,12 +166,58 @@ export const mcp_oauth_session = pgTable("mcp_oauth_session", {
   index("mcp_oauth_session_scope_id_idx").on(table.scope_id),
 ]);
 
+export const google_discovery_source = pgTable("google_discovery_source", {
+  id: text('id').notNull(),
+  scope_id: text('scope_id').notNull(),
+  name: text('name').notNull(),
+  config: jsonb('config').notNull(),
+  created_at: timestamp('created_at').notNull(),
+  updated_at: timestamp('updated_at').notNull()
+}, (table) => [
+  primaryKey({ columns: [table.scope_id, table.id] }),
+  index("google_discovery_source_scope_id_idx").on(table.scope_id),
+]);
+
+export const google_discovery_binding = pgTable("google_discovery_binding", {
+  id: text('id').notNull(),
+  scope_id: text('scope_id').notNull(),
+  source_id: text('source_id').notNull(),
+  binding: jsonb('binding').notNull(),
+  created_at: timestamp('created_at').notNull()
+}, (table) => [
+  primaryKey({ columns: [table.scope_id, table.id] }),
+  index("google_discovery_binding_scope_id_idx").on(table.scope_id),
+  index("google_discovery_binding_source_id_idx").on(table.source_id),
+]);
+
+export const google_discovery_oauth_session = pgTable("google_discovery_oauth_session", {
+  id: text('id').notNull(),
+  scope_id: text('scope_id').notNull(),
+  session: jsonb('session').notNull(),
+  expires_at: timestamp('expires_at').notNull()
+}, (table) => [
+  primaryKey({ columns: [table.scope_id, table.id] }),
+  index("google_discovery_oauth_session_scope_id_idx").on(table.scope_id),
+]);
+
+export const google_discovery_composio_session = pgTable("google_discovery_composio_session", {
+  id: text('id').notNull(),
+  scope_id: text('scope_id').notNull(),
+  session: jsonb('session').notNull(),
+  created_at: timestamp('created_at').notNull()
+}, (table) => [
+  primaryKey({ columns: [table.scope_id, table.id] }),
+  index("google_discovery_composio_session_scope_id_idx").on(table.scope_id),
+]);
+
 export const graphql_source = pgTable("graphql_source", {
   id: text('id').notNull(),
   scope_id: text('scope_id').notNull(),
   name: text('name').notNull(),
   endpoint: text('endpoint').notNull(),
-  headers: jsonb('headers')
+  headers: jsonb('headers'),
+  composio: jsonb('composio'),
+  auth: jsonb('auth')
 }, (table) => [
   primaryKey({ columns: [table.scope_id, table.id] }),
   index("graphql_source_scope_id_idx").on(table.scope_id),
@@ -186,6 +232,16 @@ export const graphql_operation = pgTable("graphql_operation", {
   primaryKey({ columns: [table.scope_id, table.id] }),
   index("graphql_operation_scope_id_idx").on(table.scope_id),
   index("graphql_operation_source_id_idx").on(table.source_id),
+]);
+
+export const graphql_composio_session = pgTable("graphql_composio_session", {
+  id: text('id').notNull(),
+  scope_id: text('scope_id').notNull(),
+  session: jsonb('session').notNull(),
+  created_at: timestamp('created_at').notNull()
+}, (table) => [
+  primaryKey({ columns: [table.scope_id, table.id] }),
+  index("graphql_composio_session_scope_id_idx").on(table.scope_id),
 ]);
 
 export const workos_vault_metadata = pgTable("workos_vault_metadata", {

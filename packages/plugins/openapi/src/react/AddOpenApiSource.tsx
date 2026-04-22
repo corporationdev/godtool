@@ -50,6 +50,7 @@ import {
   startComposioConnect,
   startOpenApiOAuth,
 } from "./atoms";
+import { openApiComposioCallbackUrl } from "./composio-callback";
 import type { SpecPreview, HeaderPreset, OAuth2Preset } from "../sdk/preview";
 import { openApiPresets } from "../sdk/presets";
 import {
@@ -290,10 +291,9 @@ export default function AddOpenApiSource(props: {
     typeof window !== "undefined"
       ? `${window.location.origin}${OPENAPI_OAUTH_CALLBACK_PATH}`
       : OPENAPI_OAUTH_CALLBACK_PATH;
-  const composioCallbackBaseUrl =
-    typeof window !== "undefined"
-      ? `${window.location.origin}${OPENAPI_COMPOSIO_CALLBACK_PATH}`
-      : OPENAPI_COMPOSIO_CALLBACK_PATH;
+  const composioCallbackBaseUrl = openApiComposioCallbackUrl(
+    OPENAPI_COMPOSIO_CALLBACK_PATH,
+  );
   const selectedOAuth2Preset: OAuth2Preset | null =
     strategy.kind === "oauth2" ? (oauth2Presets[strategy.presetIndex] ?? null) : null;
   const namespaceSlug =

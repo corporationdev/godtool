@@ -7,7 +7,7 @@ import { GraphqlIntrospectionError } from "./errors";
 // Introspection query — standard GraphQL introspection
 // ---------------------------------------------------------------------------
 
-const INTROSPECTION_QUERY = `
+export const INTROSPECTION_QUERY = `
   query IntrospectionQuery {
     __schema {
       queryType { name }

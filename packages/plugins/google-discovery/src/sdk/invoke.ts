@@ -1,9 +1,10 @@
-import { Effect, Layer, Option } from "effect";
+import { Effect, Option } from "effect";
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "@effect/platform";
 
 import type { PluginCtx, StorageFailure } from "@executor/sdk";
 
 import {
+  GoogleDiscoveryComposioError,
   GoogleDiscoveryInvocationError,
   GoogleDiscoveryOAuthError,
 } from "./errors";
@@ -13,6 +14,10 @@ import {
   type GoogleDiscoveryParameter,
   type GoogleDiscoveryStoredSourceData,
 } from "./types";
+import {
+  ComposioClientError,
+  executeComposioProxy,
+} from "../composio/client";
 
 const SAFE_METHODS = new Set(["get", "head", "options"]);
 
@@ -186,10 +191,11 @@ export const invokeGoogleDiscoveryTool = (input: {
   /** Resolved owning scope of the tool row. */
   toolScope: string;
   args: unknown;
-  httpClientLayer?: Layer.Layer<HttpClient.HttpClient>;
+  composioApiKey?: string;
 }): Effect.Effect<
   GoogleDiscoveryInvocationResult,
   | GoogleDiscoveryInvocationError
+  | GoogleDiscoveryComposioError
   | GoogleDiscoveryOAuthError
   | StorageFailure
 > =>
@@ -213,6 +219,112 @@ export const invokeGoogleDiscoveryTool = (input: {
       );
     }
     const source = stored.config;
+    const args = (input.args ?? {}) as Record<string, unknown>;
+
+    if (source.auth.kind === "composio") {
+      if (!input.composioApiKey) {
+        return yield* new GoogleDiscoveryComposioError({
+          message: "Composio API key is not configured",
+        });
+      }
+      const composioApiKey = input.composioApiKey;
+
+      const connection = yield* input.ctx.connections.get(source.auth.connectionId).pipe(
+        Effect.mapError(
+          (err) =>
+            new GoogleDiscoveryComposioError({
+              message:
+                "message" in err ? (err as { message: string }).message : String(err),
+            }),
+        ),
+      );
+      if (!connection) {
+        return yield* new GoogleDiscoveryComposioError({
+          message: `Composio connection "${source.auth.connectionId}" was not found`,
+        });
+      }
+      if (connection.provider !== "google-discovery-composio") {
+        return yield* new GoogleDiscoveryComposioError({
+          message:
+            `Connection "${source.auth.connectionId}" is provider "${connection.provider}", expected "google-discovery-composio"`,
+        });
+      }
+
+      const connectedAccountId = connection.providerState?.connectedAccountId;
+      if (typeof connectedAccountId !== "string" || connectedAccountId.length === 0) {
+        return yield* new GoogleDiscoveryComposioError({
+          message:
+            `Composio connection "${source.auth.connectionId}" is missing connectedAccountId`,
+        });
+      }
+
+      const providerApp = connection.providerState?.app;
+      if (typeof providerApp === "string" && providerApp !== source.auth.app) {
+        return yield* new GoogleDiscoveryComposioError({
+          message:
+            `Composio connection app mismatch: source expects "${source.auth.app}" but connection is "${providerApp}"`,
+        });
+      }
+
+      const resolvedPath = replacePathParameters({
+        pathTemplate: entry.binding.pathTemplate,
+        args,
+        parameters: entry.binding.parameters,
+      });
+      const requestUrl = new URL(resolvedPath.replace(/^\//, ""), resolveBaseUrl(source));
+      const parameters: Array<{ name: string; value: string; type: "header" | "query" }> = [];
+      for (const parameter of entry.binding.parameters) {
+        if (parameter.location === "path") continue;
+        const values = stringValuesFromParameter(args[parameter.name], parameter.repeated);
+        if (values.length === 0) {
+          if (parameter.required) {
+            return yield* Effect.fail(
+              new GoogleDiscoveryInvocationError({
+                message: `Missing required ${parameter.location} parameter: ${parameter.name}`,
+                statusCode: Option.none(),
+              }),
+            );
+          }
+          continue;
+        }
+        const type = parameter.location;
+        for (const value of values) {
+          parameters.push({ name: parameter.name, value, type });
+        }
+      }
+
+      const response = yield* Effect.tryPromise({
+        try: () =>
+          executeComposioProxy({
+            apiKey: composioApiKey,
+            connectedAccountId,
+            endpoint: requestUrl.toString(),
+            method: entry.binding.method.toUpperCase() as
+              | "GET"
+              | "POST"
+              | "PUT"
+              | "DELETE"
+              | "PATCH"
+              | "HEAD",
+            body: entry.binding.hasBody ? args.body : undefined,
+            parameters,
+          }),
+        catch: (err) =>
+          new GoogleDiscoveryComposioError({
+            message:
+              err instanceof ComposioClientError
+                ? err.message
+                : "Failed to execute Composio proxy request",
+          }),
+      });
+
+      return new GoogleDiscoveryInvocationResult({
+        status: response.status,
+        headers: response.headers,
+        data: response.data,
+        error: response.error,
+      });
+    }
 
     const authHeader =
       source.auth.kind === "oauth2"
@@ -231,15 +343,13 @@ export const invokeGoogleDiscoveryTool = (input: {
             )}`
         : undefined;
 
-    const layer = input.httpClientLayer ?? FetchHttpClient.layer;
-
     return yield* performRequest({
       method: entry.binding.method,
       pathTemplate: entry.binding.pathTemplate,
       parameters: entry.binding.parameters,
       hasBody: entry.binding.hasBody,
       source,
-      args: (input.args ?? {}) as Record<string, unknown>,
+      args,
       authorizationHeader: authHeader,
-    }).pipe(Effect.provide(layer));
+    }).pipe(Effect.provide(FetchHttpClient.layer));
   });

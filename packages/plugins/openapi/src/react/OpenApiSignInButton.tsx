@@ -18,6 +18,7 @@ import {
   OPENAPI_OAUTH_CHANNEL,
   OPENAPI_OAUTH_POPUP_NAME,
 } from "./AddOpenApiSource";
+import { openApiComposioCallbackUrl } from "./composio-callback";
 import { OAuth2Auth } from "../sdk/types";
 
 const OPENAPI_COMPOSIO_CHANNEL = "executor:openapi-composio-result";
@@ -71,10 +72,9 @@ export default function OpenApiSignInButton(props: { sourceId: string }) {
       ? `${window.location.origin}${OPENAPI_OAUTH_CALLBACK_PATH}`
       : OPENAPI_OAUTH_CALLBACK_PATH;
 
-  const composioCallbackBaseUrl =
-    typeof window !== "undefined"
-      ? `${window.location.origin}${OPENAPI_COMPOSIO_CALLBACK_PATH}`
-      : OPENAPI_COMPOSIO_CALLBACK_PATH;
+  const composioCallbackBaseUrl = openApiComposioCallbackUrl(
+    OPENAPI_COMPOSIO_CALLBACK_PATH,
+  );
 
   const handleComposioConnect = useCallback(async () => {
     cleanupRef.current?.();

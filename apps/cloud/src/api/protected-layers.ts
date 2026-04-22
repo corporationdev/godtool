@@ -14,6 +14,10 @@ import {
 import { CoreHandlers } from "@executor/api/server";
 import { OpenApiGroup, OpenApiHandlers } from "@executor/plugin-openapi/api";
 import { McpGroup, McpHandlers } from "@executor/plugin-mcp/api";
+import {
+  GoogleDiscoveryGroup,
+  GoogleDiscoveryHandlers,
+} from "@executor/plugin-google-discovery/api";
 import { GraphqlGroup, GraphqlHandlers } from "@executor/plugin-graphql/api";
 
 import { OrgAuth } from "../auth/middleware";
@@ -28,6 +32,7 @@ import { ErrorCaptureLive } from "../observability";
 
 export const ProtectedCloudApi = CoreExecutorApi.add(OpenApiGroup)
   .add(McpGroup)
+  .add(GoogleDiscoveryGroup)
   .add(GraphqlGroup)
   .add(FilesApi)
   .addError(InternalError)
@@ -55,6 +60,7 @@ export const ProtectedCloudApiHandlers = Layer.mergeAll(
   CoreHandlers,
   OpenApiHandlers,
   McpHandlers,
+  GoogleDiscoveryHandlers,
   GraphqlHandlers,
   FilesHandlers,
 );

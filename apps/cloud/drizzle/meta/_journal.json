@@ -15,6 +15,20 @@
       "when": 1776852500000,
       "tag": "0001_connection_expires_bigint",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1777167000000,
+      "tag": "0002_graphql_composio",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1777167600000,
+      "tag": "0003_google_discovery",
+      "breakpoints": true
     }
   ]
 }

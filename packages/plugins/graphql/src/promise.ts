@@ -5,4 +5,8 @@ export type {
   GraphqlSourceConfig,
   GraphqlUpdateSourceInput,
   HeaderValue,
+  StartComposioConnectInput,
+  StartComposioConnectResponse,
+  CompleteComposioConnectInput,
+  CompleteComposioConnectResponse,
 } from "./sdk/plugin";
