@@ -37,6 +37,15 @@ export const openApiPresets: readonly OpenApiPreset[] = [
     composio: { app: "github" },
   },
   {
+    id: "notion",
+    name: "Notion",
+    summary: "Pages, databases, blocks, search, and comments.",
+    url: "https://raw.githubusercontent.com/makenotion/notion-mcp-server/main/scripts/notion-openapi.json",
+    icon: "https://www.notion.so/front-static/favicon.ico",
+    featured: true,
+    composio: { app: "notion" },
+  },
+  {
     id: "vercel",
     name: "Vercel",
     summary: "Deployments, domains, projects, and edge config.",

@@ -73,7 +73,7 @@ export const connection = pgTable("connection", {
   identity_label: text('identity_label'),
   access_token_secret_id: text('access_token_secret_id'),
   refresh_token_secret_id: text('refresh_token_secret_id'),
-  expires_at: integer('expires_at'),
+  expires_at: bigint('expires_at', { mode: 'number' }),
   scope: text('scope'),
   provider_state: jsonb('provider_state'),
   created_at: timestamp('created_at').notNull(),
@@ -198,4 +198,3 @@ export const workos_vault_metadata = pgTable("workos_vault_metadata", {
   primaryKey({ columns: [table.scope_id, table.id] }),
   index("workos_vault_metadata_scope_id_idx").on(table.scope_id),
 ]);
-
