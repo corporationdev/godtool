@@ -1,0 +1,62 @@
+name: Deploy Production
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  ENV_TIER: prod
+
+concurrency:
+  group: production
+  cancel-in-progress: false
+
+jobs:
+  migrate-database:
+    name: Migrate Database
+    runs-on: ubuntu-latest
+    environment: Production
+
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Inject secrets
+        uses: ./.github/actions/inject-secrets
+        with:
+          env-tier: ${{ env.ENV_TIER }}
+          op-service-account-token: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+
+      - name: Run production migrations
+        run: bun run db:migrate:prod:ci
+
+  deploy:
+    name: Deploy Production
+    runs-on: ubuntu-latest
+    environment: Production
+    needs:
+      - migrate-database
+
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Inject secrets
+        uses: ./.github/actions/inject-secrets
+        with:
+          env-tier: ${{ env.ENV_TIER }}
+          op-service-account-token: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+
+      - name: Deploy production
+        run: bun run deploy:prod

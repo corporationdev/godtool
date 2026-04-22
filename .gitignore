@@ -53,6 +53,7 @@ apps/cloud/.dev-db/
 .tanstack/
 .env*
 !.env.example
+!.env.op
 
 # local user config
 executor.jsonc
@@ -65,3 +66,4 @@ executor.jsonc
 
 .mcp.json
 .codex/
+.alchemy/

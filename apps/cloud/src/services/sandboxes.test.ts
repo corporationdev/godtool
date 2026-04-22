@@ -1,10 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { Effect } from "effect";
-import { eq } from "drizzle-orm";
 
 import { DbService } from "./db";
 import { makeSandboxesService, type SandboxProvider } from "./sandboxes";
-import { sandboxes } from "./schema";
 import { makeUserStore } from "./user-store";
 
 const program = <A, E>(body: Effect.Effect<A, E, DbService>) =>
@@ -115,7 +113,7 @@ describe("sandboxes service", () => {
       },
     };
 
-    const errorMessage = await program(
+    const result = await program(
       Effect.gen(function* () {
         const { db } = yield* DbService;
         yield* Effect.promise(() =>
@@ -126,27 +124,18 @@ describe("sandboxes service", () => {
           Effect.catchAll(() => Effect.void),
         );
         yield* Effect.promise(() =>
-          db
-            .update(sandboxes)
-            .set({
-              error: "sandbox is broken",
-              status: "error",
-              updatedAt: new Date(),
-            })
-            .where(eq(sandboxes.organizationId, orgId)),
+          db.execute(
+            `update sandboxes set status = 'error', error = 'sandbox is broken' where organization_id = '${orgId}'`,
+          ),
         );
-        return yield* Effect.promise(async () => {
-          try {
-            await service.ensureSandbox(orgId);
-            return null;
-          } catch (error) {
-            return error instanceof Error ? error.message : String(error);
-          }
-        });
+        return yield* Effect.promise(() => service.ensureSandbox(orgId)).pipe(Effect.either);
       }),
     );
 
-    expect(errorMessage).toContain("sandbox is broken");
+    expect(result._tag).toBe("Left");
+    if (result._tag === "Left") {
+      expect(String(result.left)).toContain("sandbox is broken");
+    }
     expect(calls).toEqual({ create: 1, wake: 0 });
   });
 });

@@ -1,0 +1,107 @@
+import alchemy from "alchemy";
+import {
+  Assets,
+  type Bindings,
+  DurableObjectNamespace,
+  Hyperdrive,
+  Worker,
+  WorkerLoader,
+} from "alchemy/cloudflare";
+import { CloudflareStateStore } from "alchemy/state";
+
+const requireEnv = (name: string): string => {
+  const value = process.env[name]?.trim();
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  return value;
+};
+
+const optionalEnv = (name: string): string | undefined => {
+  const value = process.env[name]?.trim();
+  return value ? value : undefined;
+};
+
+const addOptionalStringBinding = (
+  bindings: Record<string, unknown>,
+  name: string,
+) => {
+  const value = optionalEnv(name);
+  if (value) {
+    bindings[name] = value;
+  }
+};
+
+const addOptionalSecretBinding = (
+  bindings: Record<string, unknown>,
+  name: string,
+) => {
+  const value = optionalEnv(name);
+  if (value) {
+    bindings[name] = alchemy.secret(value);
+  }
+};
+
+const siteUrl = new URL(requireEnv("VITE_PUBLIC_SITE_URL"));
+
+const app = await alchemy("godtool-cloud", {
+  adopt: true,
+  stateStore: process.env.CI
+    ? (scope) => new CloudflareStateStore(scope, { forceUpdate: true })
+    : undefined,
+});
+
+const hyperdrive = await Hyperdrive("cloud-db", {
+  name: "executor-cloud-db",
+  origin: requireEnv("DATABASE_URL"),
+});
+
+const assets = await Assets({
+  path: "./dist/client",
+});
+
+const mcpSession = DurableObjectNamespace("mcp-session", {
+  className: "McpSessionDO",
+});
+
+const bindings: Bindings = {
+  ASSETS: assets,
+  HYPERDRIVE: hyperdrive,
+  MCP_SESSION: mcpSession,
+  LOADER: WorkerLoader(),
+  WORKOS_API_KEY: alchemy.secret(requireEnv("WORKOS_API_KEY")),
+  WORKOS_CLIENT_ID: requireEnv("WORKOS_CLIENT_ID"),
+  WORKOS_COOKIE_PASSWORD: alchemy.secret(requireEnv("WORKOS_COOKIE_PASSWORD")),
+  VITE_PUBLIC_SITE_URL: siteUrl.origin,
+  MCP_AUTHKIT_DOMAIN: requireEnv("MCP_AUTHKIT_DOMAIN"),
+  MCP_RESOURCE_ORIGIN: requireEnv("MCP_RESOURCE_ORIGIN"),
+};
+
+addOptionalSecretBinding(bindings, "AUTUMN_SECRET_KEY");
+addOptionalSecretBinding(bindings, "SENTRY_DSN");
+addOptionalSecretBinding(bindings, "AXIOM_TOKEN");
+
+addOptionalStringBinding(bindings, "VITE_PUBLIC_SENTRY_DSN");
+addOptionalStringBinding(bindings, "AXIOM_DATASET");
+addOptionalStringBinding(bindings, "AXIOM_TRACES_URL");
+addOptionalStringBinding(bindings, "AXIOM_TRACES_SAMPLE_RATIO");
+addOptionalStringBinding(bindings, "EXECUTOR_MCP_DEBUG");
+
+export const cloud = await Worker("cloud", {
+  name: "executor-cloud",
+  cwd: ".",
+  entrypoint: "./dist/server/index.js",
+  noBundle: true,
+  compatibilityDate: "2025-04-01",
+  compatibilityFlags: ["nodejs_compat"],
+  observability: {
+    enabled: true,
+  },
+  limits: {
+    cpu_ms: 300000,
+  },
+  domains: [siteUrl.hostname],
+  bindings,
+});
+
+await app.finalize();
