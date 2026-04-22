@@ -202,7 +202,7 @@ function UserFooter() {
                     url={auth.user.avatarUrl}
                     name={auth.user.name}
                     email={auth.user.email}
-                    size="sm"
+                    size="md"
                   />
                   <div className="grid flex-1 text-left text-sm leading-tight">
                     <span className="truncate font-medium">
@@ -245,7 +245,7 @@ function UserFooter() {
                 <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
                   Signed in as
                 </DropdownMenuLabel>
-                <DropdownMenuItem disabled className="gap-2 text-xs opacity-100">
+                <DropdownMenuItem className="gap-2 text-xs pointer-events-none">
                   <UserAvatar url={auth.user.avatarUrl} name={auth.user.name} email={auth.user.email} />
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-medium text-foreground">
