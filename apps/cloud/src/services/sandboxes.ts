@@ -431,13 +431,14 @@ const waitForExecuteRuntimeHealth = async (
 
 const ensureExecuteRuntimeStarted = async (
   sandbox: SandboxHandle,
+  forceRestart: boolean,
   options?: SandboxesServiceOptions,
 ): Promise<{
   readonly healthStatus: number;
   readonly runtimeStatus: "started" | "reused";
 }> => {
   const health = await fetchExecuteRuntimeHealth(sandbox);
-  if (health.ok) {
+  if (health.ok && !forceRestart) {
     return {
       healthStatus: health.status,
       runtimeStatus: "reused",
@@ -571,7 +572,11 @@ export const makeSandboxesService = (
     try {
       const sandbox = await sandboxHandleProvider.getSandboxHandle(ensuredSandbox.externalId);
       const install = await ensureExecuteRuntimeInstalled(sandbox);
-      const runtimeState = await ensureExecuteRuntimeStarted(sandbox, runtimeOptions);
+      const runtimeState = await ensureExecuteRuntimeStarted(
+        sandbox,
+        !install.cacheHit,
+        runtimeOptions,
+      );
       return {
         health: {
           ok: true,

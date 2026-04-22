@@ -222,6 +222,42 @@ describe("sandboxes service", () => {
     expect(handle.versionWrites).toBe(2);
   });
 
+  it("restarts a healthy runtime when the installed version changes", async () => {
+    const orgId = `org_${crypto.randomUUID()}`;
+    const providerCalls = { create: 0, wake: 0 };
+    const handleCalls = { getHandle: 0 };
+    const handle = new FakeSandboxHandle();
+    handle.onExec = () => {
+      handle.healthy = true;
+    };
+
+    const ensured = await program(
+      Effect.gen(function* () {
+        const { db } = yield* DbService;
+        yield* Effect.promise(() =>
+          makeUserStore(db).upsertOrganization({ id: orgId, name: "UpgradeHealthy" }),
+        );
+        const service = makeSandboxesService(
+          db,
+          makeProvider(providerCalls),
+          makeHandleProvider(handle, handleCalls),
+        );
+        yield* Effect.promise(() => service.ensureExecuteRuntimeRunning(orgId));
+        handle.files.set(EXECUTE_RUNTIME_VERSION_PATH_FOR_TESTS, "old-runtime-version");
+        return yield* Effect.promise(() => service.ensureExecuteRuntimeRunning(orgId));
+      }),
+    );
+
+    expect(providerCalls).toEqual({ create: 1, wake: 1 });
+    expect(handleCalls).toEqual({ getHandle: 2 });
+    expect(ensured.install.cacheHit).toBe(false);
+    expect(ensured.runtime.status).toBe("started");
+    expect(handle.execCalls).toBe(2);
+    expect(handle.stopCalls).toBe(2);
+    expect(handle.serverWrites).toBe(2);
+    expect(handle.versionWrites).toBe(2);
+  });
+
   it("marks the sandbox broken if the runtime never becomes healthy", async () => {
     const orgId = `org_${crypto.randomUUID()}`;
     const providerCalls = { create: 0, wake: 0 };
