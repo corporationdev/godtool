@@ -53,6 +53,15 @@ export const openApiPresets: readonly OpenApiPreset[] = [
     featured: true,
   },
   {
+    id: "convex",
+    name: "Convex",
+    summary: "Projects, deployments, teams, and platform management.",
+    url: "https://api.convex.dev/v1/openapi.json",
+    icon: "https://www.convex.dev/favicon.ico",
+    featured: true,
+    composio: { app: "convex" },
+  },
+  {
     id: "neon",
     name: "Neon",
     summary: "Serverless Postgres — projects, branches, and endpoints.",
@@ -75,6 +84,16 @@ export const openApiPresets: readonly OpenApiPreset[] = [
     url: "https://raw.githubusercontent.com/getsentry/sentry-api-schema/main/openapi-derefed.json",
     icon: "https://sentry-brand.storage.googleapis.com/sentry-glyph-black.png",
     featured: true,
+    composio: { app: "sentry" },
+  },
+  {
+    id: "supabase",
+    name: "Supabase",
+    summary: "Projects, databases, branches, auth, and platform management.",
+    url: "https://api.supabase.com/api/v1-json",
+    icon: "https://supabase.com/favicon/favicon.ico",
+    featured: true,
+    composio: { app: "supabase" },
   },
   {
     id: "exa",
@@ -120,6 +139,7 @@ export const openApiPresets: readonly OpenApiPreset[] = [
     summary: "Droplets, Kubernetes, databases, and networking.",
     url: "https://raw.githubusercontent.com/digitalocean/openapi/main/specification/DigitalOcean-public.v2.yaml",
     icon: "https://assets.digitalocean.com/favicon.ico",
+    composio: { app: "digital_ocean" },
   },
   {
     id: "petstore",
@@ -148,6 +168,5 @@ export const openApiPresets: readonly OpenApiPreset[] = [
     summary: "Tracks, albums, playlists, library, and playback.",
     url: "https://raw.githubusercontent.com/sonallux/spotify-web-api/refs/heads/main/official-spotify-open-api.yml",
     icon: "https://spotify.com/favicon.ico",
-    composio: { app: "spotify" },
   },
 ];

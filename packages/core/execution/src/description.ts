@@ -31,7 +31,7 @@ export const buildExecuteDescription = (executor: Executor): Effect.Effect<strin
 const formatDescription = (sources: readonly Source[]): string => {
   const lines: string[] = [
     "Execute TypeScript in a sandboxed runtime with access to configured API tools.",
-    "Always read `/workspace/SYSTEM.md` in your first execution.",
+    "Always read `/workspace/SYSTEM.md` in your first execution. Bun shell `$` is already available in scope, so do not import it.",
     "",
     "## Workflow",
     "",

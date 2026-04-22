@@ -245,7 +245,7 @@ const buildHeaderPresets = (
 ): HeaderPreset[] => {
   const schemeMap = new Map(schemes.map((s) => [s.name, s]));
 
-  return strategies.flatMap((strategy) => {
+  const drafts = strategies.flatMap((strategy) => {
     const resolved = strategy.schemes
       .map((name) => schemeMap.get(name))
       .filter((s): s is SecurityScheme => s !== undefined);
@@ -277,11 +277,32 @@ const buildHeaderPresets = (
       }
     }
 
+    const label = labelParts.join(" + ");
+    const schemeNames = resolved.map((scheme) => scheme.name);
+
     if (Object.keys(headers).length === 0 && resolved.length > 0) {
-      return [new HeaderPreset({ label: labelParts.join(" + "), headers: {}, secretHeaders: [] })];
+      return [{ label, schemeNames, headers: {}, secretHeaders: [] }];
     }
 
-    return [new HeaderPreset({ label: labelParts.join(" + "), headers, secretHeaders })];
+    return [{ label, schemeNames, headers, secretHeaders }];
+  });
+
+  const labelCounts = new Map<string, number>();
+  for (const draft of drafts) {
+    labelCounts.set(draft.label, (labelCounts.get(draft.label) ?? 0) + 1);
+  }
+
+  return drafts.map((draft) => {
+    const duplicateCount = labelCounts.get(draft.label) ?? 0;
+    const suffix = draft.schemeNames.join(" + ");
+    const label =
+      duplicateCount > 1 && suffix.length > 0 ? `${draft.label} · ${suffix}` : draft.label;
+
+    return new HeaderPreset({
+      label,
+      headers: draft.headers,
+      secretHeaders: draft.secretHeaders,
+    });
   });
 };
 

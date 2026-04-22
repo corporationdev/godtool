@@ -27,6 +27,7 @@ export const googleDiscoveryPresets: readonly GoogleDiscoveryPreset[] = [
     url: gd("calendar", "v3"),
     icon: "https://fonts.gstatic.com/s/i/productlogos/calendar_2020q4/v8/192px.svg",
     featured: true,
+    composio: { app: "googlecalendar" },
   },
   {
     id: "google-gmail",
@@ -44,6 +45,7 @@ export const googleDiscoveryPresets: readonly GoogleDiscoveryPreset[] = [
     url: gd("sheets", "v4"),
     icon: "https://fonts.gstatic.com/s/i/productlogos/sheets_2020q4/v8/192px.svg",
     featured: true,
+    composio: { app: "googlesheets" },
   },
   {
     id: "google-drive",
@@ -52,6 +54,7 @@ export const googleDiscoveryPresets: readonly GoogleDiscoveryPreset[] = [
     url: gd("drive", "v3"),
     icon: "https://fonts.gstatic.com/s/i/productlogos/drive_2020q4/v8/192px.svg",
     featured: true,
+    composio: { app: "googledrive" },
   },
   {
     id: "google-docs",
@@ -60,6 +63,7 @@ export const googleDiscoveryPresets: readonly GoogleDiscoveryPreset[] = [
     url: gd("docs", "v1"),
     icon: "https://fonts.gstatic.com/s/i/productlogos/docs_2020q4/v12/192px.svg",
     featured: true,
+    composio: { app: "googledocs" },
   },
 
   // ── Non-featured (shown in collapsed "more" section) ────────────────
@@ -69,6 +73,7 @@ export const googleDiscoveryPresets: readonly GoogleDiscoveryPreset[] = [
     summary: "Presentations, slides, page elements, and deck updates.",
     url: gd("slides", "v1"),
     icon: "https://fonts.gstatic.com/s/i/productlogos/slides_2020q4/v12/192px.svg",
+    composio: { app: "googleslides" },
   },
   {
     id: "google-forms",
@@ -83,6 +88,7 @@ export const googleDiscoveryPresets: readonly GoogleDiscoveryPreset[] = [
     summary: "Task lists, task items, notes, and due dates.",
     url: gd("tasks", "v1"),
     icon: "https://fonts.gstatic.com/s/i/productlogos/tasks/v5/192px.svg",
+    composio: { app: "googletasks" },
   },
   {
     id: "google-people",
@@ -111,6 +117,7 @@ export const googleDiscoveryPresets: readonly GoogleDiscoveryPreset[] = [
     summary: "Channels, playlists, videos, comments, and uploads.",
     url: gd("youtube", "v3"),
     icon: "https://fonts.gstatic.com/s/i/productlogos/youtube/v9/192px.svg",
+    composio: { app: "youtube" },
   },
   {
     id: "google-search-console",
@@ -118,6 +125,7 @@ export const googleDiscoveryPresets: readonly GoogleDiscoveryPreset[] = [
     summary: "Sites, sitemaps, URL inspection, and search performance.",
     url: gd("searchconsole", "v1"),
     icon: GOOGLE_DISCOVERY_FALLBACK_ICON,
+    composio: { app: "google_search_console" },
   },
   {
     id: "google-classroom",
@@ -125,6 +133,7 @@ export const googleDiscoveryPresets: readonly GoogleDiscoveryPreset[] = [
     summary: "Courses, rosters, coursework, and grading.",
     url: gd("classroom", "v1"),
     icon: "https://fonts.gstatic.com/s/i/productlogos/classroom/v7/192px.svg",
+    composio: { app: "google_classroom" },
   },
   {
     id: "google-admin-directory",
@@ -153,6 +162,7 @@ export const googleDiscoveryPresets: readonly GoogleDiscoveryPreset[] = [
     summary: "Datasets, tables, jobs, and analytical queries.",
     url: gd("bigquery", "v2"),
     icon: "https://fonts.gstatic.com/s/i/productlogos/google_cloud/v6/192px.svg",
+    composio: { app: "googlebigquery" },
   },
   {
     id: "google-cloud-resource-manager",

@@ -4,7 +4,7 @@ import { FetchHttpClient } from "@effect/platform";
 
 import { createExecutor, makeTestConfig } from "../packages/core/sdk/src/index";
 import { openApiPlugin } from "../packages/plugins/openapi/src/sdk/plugin";
-import { parse } from "../packages/plugins/openapi/src/sdk/parse";
+import { parse, resolveSpecText } from "../packages/plugins/openapi/src/sdk/parse";
 import { mcpPlugin } from "../packages/plugins/mcp/src/sdk/plugin";
 import { graphqlPlugin } from "../packages/plugins/graphql/src/sdk/plugin";
 import { introspect } from "../packages/plugins/graphql/src/sdk/introspect";
@@ -37,10 +37,11 @@ describe("openapi presets parse as valid specs", () => {
       preset.name,
       () =>
         Effect.gen(function* () {
-          const doc = yield* parse(preset.url);
+          const specText = yield* resolveSpecText(preset.url);
+          const doc = yield* parse(specText);
           expect(doc).toBeDefined();
           expect(doc.openapi).toBeDefined();
-        }),
+        }).pipe(Effect.provide(FetchHttpClient.layer)),
       { timeout: 30_000 },
     );
   }

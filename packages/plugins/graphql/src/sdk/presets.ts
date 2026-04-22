@@ -21,6 +21,7 @@ export const graphqlPresets: readonly GraphqlPreset[] = [
     url: "https://api.github.com/graphql",
     icon: "https://github.com/favicon.ico",
     featured: true,
+    composio: { app: "github" },
   },
   {
     id: "gitlab",
@@ -29,6 +30,7 @@ export const graphqlPresets: readonly GraphqlPreset[] = [
     url: "https://gitlab.com/api/graphql",
     icon: "https://gitlab.com/favicon.ico",
     featured: true,
+    composio: { app: "gitlab" },
   },
   {
     id: "linear",
@@ -45,6 +47,7 @@ export const graphqlPresets: readonly GraphqlPreset[] = [
     summary: "Boards, items, columns, and workspace automation.",
     url: "https://api.monday.com/v2",
     icon: "https://monday.com/favicon.ico",
+    composio: { app: "monday" },
   },
   {
     id: "anilist",

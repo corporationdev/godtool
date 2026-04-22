@@ -73,7 +73,7 @@ describe("buildExecuteDescription", () => {
           "Execute TypeScript in a sandboxed runtime",
         );
         expect(description).toContain(
-          "Always read `/workspace/SYSTEM.md` in your first execution.",
+          "Always read `/workspace/SYSTEM.md` in your first execution. Bun shell `$` is already available in scope, so do not import it.",
         );
         // The namespaces section header.
         expect(description).toContain("## Available namespaces");
@@ -107,7 +107,7 @@ describe("buildExecuteDescription", () => {
           "Execute TypeScript in a sandboxed runtime",
         );
         expect(description).toContain(
-          "Always read `/workspace/SYSTEM.md` in your first execution.",
+          "Always read `/workspace/SYSTEM.md` in your first execution. Bun shell `$` is already available in scope, so do not import it.",
         );
         expect(description).not.toContain("## Available namespaces");
       }),
