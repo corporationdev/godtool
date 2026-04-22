@@ -72,6 +72,7 @@ describe("buildExecuteDescription", () => {
         expect(description).toContain(
           "Execute TypeScript in a sandboxed runtime",
         );
+        expect(description).toContain("Read `/workspace/SYSTEM.md` first.");
         // The namespaces section header.
         expect(description).toContain("## Available namespaces");
         // Each source renders with its ACTUAL id (not pluginId / name / UUID).
@@ -103,6 +104,7 @@ describe("buildExecuteDescription", () => {
         expect(description).toContain(
           "Execute TypeScript in a sandboxed runtime",
         );
+        expect(description).toContain("Read `/workspace/SYSTEM.md` first.");
         expect(description).not.toContain("## Available namespaces");
       }),
   );

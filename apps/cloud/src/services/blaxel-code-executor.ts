@@ -13,6 +13,7 @@ import type { DrizzleDb } from "./db";
 
 export const INTERNAL_TOOL_CALL_PATH_PREFIX = "/mcp/internal/tool-call/";
 export const SANDBOX_TOOL_CALL_TOKEN_HEADER = "x-executor-callback-token";
+const SANDBOX_WORKSPACE_ROOT = "/workspace";
 
 const DEFAULT_TIMEOUT_MS = 5 * 60_000;
 
@@ -73,6 +74,19 @@ const readResponseText = async (response: {
 const buildCallbackUrl = (origin: string, sessionId: string): string =>
   new URL(`${INTERNAL_TOOL_CALL_PATH_PREFIX}${encodeURIComponent(sessionId)}`, origin).toString();
 
+const scaffoldModules = import.meta.glob("./sandbox-scaffold/**/*", {
+  eager: true,
+  import: "default",
+  query: "?raw",
+}) as Record<string, string>;
+
+const sandboxScaffoldFiles = Object.entries(scaffoldModules)
+  .map(([sourcePath, content]) => ({
+    path: sourcePath.replace("./sandbox-scaffold/", ""),
+    content,
+  }))
+  .sort((a, b) => a.path.localeCompare(b.path));
+
 export const buildExecutorModule = (args: {
   readonly callbackToken: string;
   readonly callbackUrl: string;
@@ -84,10 +98,14 @@ export const buildExecutorModule = (args: {
 
   return [
     'import { $ } from "bun";',
+    'import { mkdir } from "node:fs/promises";',
+    'import { dirname, join } from "node:path";',
     "",
     `const __callbackUrl = ${JSON.stringify(args.callbackUrl)};`,
     `const __callbackToken = ${JSON.stringify(args.callbackToken)};`,
     `const __runId = ${JSON.stringify(args.runId)};`,
+    `const __workspaceRoot = ${JSON.stringify(SANDBOX_WORKSPACE_ROOT)};`,
+    `const __scaffoldFiles = ${JSON.stringify(sandboxScaffoldFiles)};`,
     "",
     "export default async function execute() {",
     "  const __logs = [];",
@@ -162,7 +180,16 @@ export const buildExecutorModule = (args: {
     "    },",
     "  });",
     "  const tools = __makeToolsProxy();",
+    "  const __ensureScaffold = async () => {",
+    "    for (const file of __scaffoldFiles) {",
+    "      const targetPath = join(__workspaceRoot, file.path);",
+    "      await mkdir(dirname(targetPath), { recursive: true });",
+    "      if (await Bun.file(targetPath).exists()) continue;",
+    "      await Bun.write(targetPath, file.content);",
+    "    }",
+    "  };",
     "  try {",
+    "    await __ensureScaffold();",
     "    const result = await Promise.race([",
     "      (async () => {",
     body,
