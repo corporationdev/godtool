@@ -11,7 +11,10 @@ import type { DrizzleDb } from "./db";
 const DEFAULT_BLAXEL_MEMORY_MB = 4096;
 const DEFAULT_BLAXEL_REGION = "us-pdx-1";
 const BLAXEL_PROVIDER = "blaxel" as const;
-const EXECUTE_RUNTIME_DIRECTORY = "/workspace/runtime/execute";
+const SANDBOX_WORKSPACE_DIRECTORY = "/workspace";
+const INTERNAL_RUNTIME_ROOT_DIRECTORY = "/root/.godtool";
+const INTERNAL_RUNTIME_DIRECTORY = `${INTERNAL_RUNTIME_ROOT_DIRECTORY}/runtime`;
+const EXECUTE_RUNTIME_DIRECTORY = `${INTERNAL_RUNTIME_DIRECTORY}/execute`;
 const EXECUTE_RUNTIME_SERVER_PATH = `${EXECUTE_RUNTIME_DIRECTORY}/server.js`;
 const EXECUTE_RUNTIME_VERSION_PATH = `${EXECUTE_RUNTIME_DIRECTORY}/version.txt`;
 const EXECUTE_RUNTIME_PROCESS_NAME = "godtool-execute-runtime";
@@ -29,8 +32,6 @@ const MAX_PROCESS_LOG_CHARS = 12_000;
 const MAX_SANDBOX_NAME_LENGTH = 49;
 const SANDBOX_NAME_HASH_LENGTH = 8;
 const SANDBOX_NAME_PREFIX = "godtool-org";
-const WORKSPACE_RUNTIME_DIRECTORY = "/workspace/runtime";
-
 export const EXECUTE_RUNTIME_PORT = 4789;
 export const EXECUTE_RUNTIME_PROCESS_NAME_FOR_TESTS = EXECUTE_RUNTIME_PROCESS_NAME;
 export const EXECUTE_RUNTIME_SERVER_PATH_FOR_TESTS = EXECUTE_RUNTIME_SERVER_PATH;
@@ -426,6 +427,16 @@ const ensureDirectoryExists = async (sandbox: SandboxHandle, path: string) => {
   }
 };
 
+const ensureDirectoryTreeExists = async (sandbox: SandboxHandle, path: string) => {
+  const segments = path.split("/").filter((segment) => segment.length > 0);
+  let currentPath = "";
+
+  for (const segment of segments) {
+    currentPath = `${currentPath}/${segment}`;
+    await ensureDirectoryExists(sandbox, currentPath);
+  }
+};
+
 export const makeSandboxStore = (db: DrizzleDb) => {
   const getByOrganizationId = async (organizationId: string) => {
     const rows = await db.select().from(sandboxes).where(eq(sandboxes.organizationId, organizationId));
@@ -533,8 +544,9 @@ export const ensureExecuteRuntimeInstalled = async (
     // Runtime not installed yet or marker missing.
   }
 
-  await ensureDirectoryExists(sandbox, WORKSPACE_RUNTIME_DIRECTORY);
-  await ensureDirectoryExists(sandbox, EXECUTE_RUNTIME_DIRECTORY);
+  await ensureDirectoryTreeExists(sandbox, INTERNAL_RUNTIME_ROOT_DIRECTORY);
+  await ensureDirectoryTreeExists(sandbox, INTERNAL_RUNTIME_DIRECTORY);
+  await ensureDirectoryTreeExists(sandbox, EXECUTE_RUNTIME_DIRECTORY);
   await sandbox.fs.write(EXECUTE_RUNTIME_SERVER_PATH, assets.server);
   await sandbox.fs.write(EXECUTE_RUNTIME_VERSION_PATH, runtimeVersion);
 
@@ -682,7 +694,7 @@ const ensureCodeServerRunning = async (
       "--disable-telemetry",
       "--config",
       quoteShellArgument(CODE_SERVER_CONFIG_PATH),
-      quoteShellArgument("/workspace"),
+      quoteShellArgument(SANDBOX_WORKSPACE_DIRECTORY),
     ].join(" "),
     env: {
       PORT: String(CODE_SERVER_PORT),
@@ -691,7 +703,7 @@ const ensureCodeServerRunning = async (
     name: CODE_SERVER_PROCESS_NAME,
     restartOnFailure: true,
     waitForCompletion: false,
-    workingDir: "/workspace",
+    workingDir: SANDBOX_WORKSPACE_DIRECTORY,
   });
 
   await waitForCodeServerHealth(sandbox, options);
@@ -761,7 +773,7 @@ const ensureExecuteRuntimeStarted = async (
     name: EXECUTE_RUNTIME_PROCESS_NAME,
     restartOnFailure: true,
     waitForCompletion: false,
-    workingDir: "/workspace",
+    workingDir: SANDBOX_WORKSPACE_DIRECTORY,
   });
 
   const ready = await waitForExecuteRuntimeHealth(sandbox, options);

@@ -25,6 +25,10 @@ const program = <A, E>(body: Effect.Effect<A, E, DbService>) =>
 class FakeSandboxHandle implements SandboxHandle {
   readonly files = new Map<string, string>();
   readonly directories = new Set<string>();
+  lastCodeServerExecCommand: string | null = null;
+  lastExecuteExecCommand: string | null = null;
+  lastCodeServerWorkingDir: string | null = null;
+  lastExecuteWorkingDir: string | null = null;
   codeServerConfigWrites = 0;
   codeServerExecCalls = 0;
   codeServerHealthChecks = 0;
@@ -92,15 +96,19 @@ class FakeSandboxHandle implements SandboxHandle {
   };
 
   readonly process = {
-    exec: async (options: { readonly name: string }) => {
+    exec: async (options: { readonly command: string; readonly name: string; readonly workingDir?: string }) => {
       if (options.name === EXECUTE_RUNTIME_PROCESS_NAME_FOR_TESTS) {
         this.executeExecCalls += 1;
+        this.lastExecuteExecCommand = options.command;
+        this.lastExecuteWorkingDir = options.workingDir ?? null;
         await this.onExecuteExec?.();
         return;
       }
 
       if (options.name === CODE_SERVER_PROCESS_NAME_FOR_TESTS) {
         this.codeServerExecCalls += 1;
+        this.lastCodeServerExecCommand = options.command;
+        this.lastCodeServerWorkingDir = options.workingDir ?? null;
         await this.onCodeServerExec?.();
         return;
       }
@@ -238,6 +246,9 @@ describe("sandboxes service", () => {
     expect(ensured.runtime.status).toBe("started");
     expect(ensured.health).toEqual({ ok: true, status: 200 });
     expect(handle.executeExecCalls).toBe(1);
+    expect(handle.lastExecuteExecCommand).toContain("'/root/.godtool/runtime/execute/server.js'");
+    expect(handle.lastExecuteExecCommand).not.toContain("/workspace/runtime");
+    expect(handle.lastExecuteWorkingDir).toBe("/workspace");
     expect(handle.serverWrites).toBe(1);
     expect(handle.versionWrites).toBe(1);
     expect(handle.files.get(EXECUTE_RUNTIME_VERSION_PATH_FOR_TESTS)).toBe(getExecuteRuntimeVersion());
@@ -559,6 +570,8 @@ describe("sandboxes service", () => {
     expect(handle.codeServerConfigWrites).toBe(1);
     expect(handle.previewCreates).toBe(1);
     expect(handle.previewTokenCreates).toBe(1);
+    expect(handle.lastCodeServerExecCommand).toContain("'/workspace'");
+    expect(handle.lastCodeServerWorkingDir).toBe("/workspace");
     expect(session.sandboxStatus).toBe("created");
     expect(session.sandboxId).toBe(`sbx_${orgId}`);
     expect(session.url).toContain("https://preview.example.com");
