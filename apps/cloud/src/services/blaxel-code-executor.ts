@@ -10,10 +10,10 @@ import {
 } from "@executor/codemode-core";
 
 import type { DrizzleDb } from "./db";
+import { SANDBOX_SCAFFOLD_ROOT_DIRECTORY, sandboxScaffoldFiles } from "./sandbox-scaffold";
 
 export const INTERNAL_TOOL_CALL_PATH_PREFIX = "/mcp/internal/tool-call/";
 export const SANDBOX_TOOL_CALL_TOKEN_HEADER = "x-executor-callback-token";
-const SANDBOX_WORKSPACE_ROOT = "/workspace";
 
 const DEFAULT_TIMEOUT_MS = 5 * 60_000;
 
@@ -74,19 +74,6 @@ const readResponseText = async (response: {
 const buildCallbackUrl = (origin: string, sessionId: string): string =>
   new URL(`${INTERNAL_TOOL_CALL_PATH_PREFIX}${encodeURIComponent(sessionId)}`, origin).toString();
 
-const scaffoldModules = import.meta.glob("./sandbox-scaffold/**/*", {
-  eager: true,
-  import: "default",
-  query: "?raw",
-}) as Record<string, string>;
-
-const sandboxScaffoldFiles = Object.entries(scaffoldModules)
-  .map(([sourcePath, content]) => ({
-    path: sourcePath.replace("./sandbox-scaffold/", ""),
-    content,
-  }))
-  .sort((a, b) => a.path.localeCompare(b.path));
-
 export const buildExecutorModule = (args: {
   readonly callbackToken: string;
   readonly callbackUrl: string;
@@ -104,7 +91,7 @@ export const buildExecutorModule = (args: {
     `const __callbackUrl = ${JSON.stringify(args.callbackUrl)};`,
     `const __callbackToken = ${JSON.stringify(args.callbackToken)};`,
     `const __runId = ${JSON.stringify(args.runId)};`,
-    `const __workspaceRoot = ${JSON.stringify(SANDBOX_WORKSPACE_ROOT)};`,
+    `const __workspaceRoot = ${JSON.stringify(SANDBOX_SCAFFOLD_ROOT_DIRECTORY)};`,
     `const __scaffoldFiles = ${JSON.stringify(sandboxScaffoldFiles)};`,
     "",
     "export default async function execute() {",

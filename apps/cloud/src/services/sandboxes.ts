@@ -5,13 +5,17 @@ import { env } from "cloudflare:workers";
 import { eq } from "drizzle-orm";
 
 import { EXECUTE_RUNTIME_ASSETS } from "./execute-runtime.generated";
+import {
+  SANDBOX_SCAFFOLD_ROOT_DIRECTORY,
+  sandboxScaffoldFiles,
+} from "./sandbox-scaffold";
 import { sandboxes } from "./schema";
 import type { DrizzleDb } from "./db";
 
 const DEFAULT_BLAXEL_MEMORY_MB = 4096;
 const DEFAULT_BLAXEL_REGION = "us-pdx-1";
 const BLAXEL_PROVIDER = "blaxel" as const;
-const SANDBOX_WORKSPACE_DIRECTORY = "/workspace";
+const SANDBOX_WORKSPACE_DIRECTORY = SANDBOX_SCAFFOLD_ROOT_DIRECTORY;
 const INTERNAL_RUNTIME_ROOT_DIRECTORY = "/root/.godtool";
 const INTERNAL_RUNTIME_DIRECTORY = `${INTERNAL_RUNTIME_ROOT_DIRECTORY}/runtime`;
 const EXECUTE_RUNTIME_DIRECTORY = `${INTERNAL_RUNTIME_DIRECTORY}/execute`;
@@ -502,6 +506,34 @@ const ensureDirectoryTreeExists = async (sandbox: SandboxHandle, path: string) =
   for (const segment of segments) {
     currentPath = `${currentPath}/${segment}`;
     await ensureDirectoryExists(sandbox, currentPath);
+  }
+};
+
+const ensureFileExists = async (
+  sandbox: SandboxHandle,
+  path: string,
+  content: string,
+): Promise<void> => {
+  try {
+    await sandbox.fs.read(path);
+    return;
+  } catch {
+    await sandbox.fs.write(path, content);
+  }
+};
+
+const ensureWorkspaceScaffold = async (sandbox: SandboxHandle): Promise<void> => {
+  await ensureDirectoryTreeExists(sandbox, SANDBOX_WORKSPACE_DIRECTORY);
+
+  for (const file of sandboxScaffoldFiles) {
+    const targetPath = `${SANDBOX_WORKSPACE_DIRECTORY}/${file.path}`;
+    const targetDirectory = targetPath.slice(0, Math.max(0, targetPath.lastIndexOf("/")));
+
+    if (targetDirectory.length > 0) {
+      await ensureDirectoryTreeExists(sandbox, targetDirectory);
+    }
+
+    await ensureFileExists(sandbox, targetPath, file.content);
   }
 };
 
@@ -1011,7 +1043,13 @@ export const makeSandboxesService = (
       throw new Error(`Failed to create sandbox row for organization "${organizationId}".`);
     }
 
-    return await ensureProvisioned(row);
+    const ensuredSandbox = await ensureProvisioned(row);
+
+    return await withUnavailableSandboxRecovery(organizationId, ensuredSandbox, async (sandboxRef) => {
+      const sandbox = await sandboxHandleProvider.getSandboxHandle(sandboxRef.externalId);
+      await ensureWorkspaceScaffold(sandbox);
+      return sandboxRef;
+    });
   };
 
   const ensureCodeServerSession = async (organizationId: string): Promise<CodeServerSession> => {

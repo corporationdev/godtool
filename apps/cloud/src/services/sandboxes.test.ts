@@ -240,7 +240,7 @@ describe("sandboxes service", () => {
     );
 
     expect(providerCalls).toEqual({ create: 1, wake: 0 });
-    expect(handleCalls).toEqual({ getHandle: 1 });
+    expect(handleCalls).toEqual({ getHandle: 2 });
     expect(ensured.sandbox.status).toBe("created");
     expect(ensured.install.cacheHit).toBe(false);
     expect(ensured.runtime.status).toBe("started");
@@ -252,6 +252,37 @@ describe("sandboxes service", () => {
     expect(handle.serverWrites).toBe(1);
     expect(handle.versionWrites).toBe(1);
     expect(handle.files.get(EXECUTE_RUNTIME_VERSION_PATH_FOR_TESTS)).toBe(getExecuteRuntimeVersion());
+    expect(handle.files.get("/workspace/SYSTEM.md")).toContain("# System");
+    expect(handle.files.get("/workspace/MEMORY.md")?.trim()).toBe("");
+  });
+
+  it("backfills missing scaffold files for reused sandboxes without overwriting existing ones", async () => {
+    const orgId = `org_${crypto.randomUUID()}`;
+    const providerCalls = { create: 0, wake: 0 };
+    const handleCalls = { getHandle: 0 };
+    const handle = new FakeSandboxHandle();
+    handle.files.set("/workspace/MEMORY.md", "existing memory");
+
+    await program(
+      Effect.gen(function* () {
+        const { db } = yield* DbService;
+        yield* Effect.promise(() =>
+          makeUserStore(db).upsertOrganization({ id: orgId, name: "Backfill" }),
+        );
+        const service = makeSandboxesService(
+          db,
+          makeProvider(providerCalls),
+          makeHandleProvider(handle, handleCalls),
+        );
+        yield* Effect.promise(() => service.ensureSandbox(orgId));
+        yield* Effect.promise(() => service.ensureSandbox(orgId));
+      }),
+    );
+
+    expect(providerCalls).toEqual({ create: 1, wake: 1 });
+    expect(handleCalls).toEqual({ getHandle: 2 });
+    expect(handle.files.get("/workspace/SYSTEM.md")).toContain("# System");
+    expect(handle.files.get("/workspace/MEMORY.md")).toBe("existing memory");
   });
 
   it("reuses a healthy runtime without reinstalling or restarting it", async () => {
@@ -280,7 +311,7 @@ describe("sandboxes service", () => {
     );
 
     expect(providerCalls).toEqual({ create: 1, wake: 1 });
-    expect(handleCalls).toEqual({ getHandle: 2 });
+    expect(handleCalls).toEqual({ getHandle: 4 });
     expect(ensured.sandbox.status).toBe("reused");
     expect(ensured.install.cacheHit).toBe(true);
     expect(ensured.runtime.status).toBe("reused");
@@ -317,7 +348,7 @@ describe("sandboxes service", () => {
     );
 
     expect(providerCalls).toEqual({ create: 1, wake: 1 });
-    expect(handleCalls).toEqual({ getHandle: 2 });
+    expect(handleCalls).toEqual({ getHandle: 4 });
     expect(ensured.install.cacheHit).toBe(false);
     expect(ensured.runtime.status).toBe("started");
     expect(handle.executeExecCalls).toBe(2);
@@ -352,7 +383,7 @@ describe("sandboxes service", () => {
     );
 
     expect(providerCalls).toEqual({ create: 1, wake: 1 });
-    expect(handleCalls).toEqual({ getHandle: 2 });
+    expect(handleCalls).toEqual({ getHandle: 4 });
     expect(ensured.install.cacheHit).toBe(false);
     expect(ensured.runtime.status).toBe("started");
     expect(handle.executeExecCalls).toBe(2);
@@ -397,7 +428,7 @@ describe("sandboxes service", () => {
     );
 
     expect(providerCalls).toEqual({ create: 1, wake: 0 });
-    expect(handleCalls).toEqual({ getHandle: 1 });
+    expect(handleCalls).toEqual({ getHandle: 2 });
     expect(String(result.ensured)).toContain("boot failed forever");
     expect(result.row?.status).toBe("error");
     expect(result.row?.error).toContain("boot failed forever");
@@ -455,7 +486,7 @@ describe("sandboxes service", () => {
     expect(result.rowAfterRecovery?.status).toBe("ready");
     expect(result.rowAfterRecovery?.error).toBeNull();
     expect(providerCalls).toEqual({ create: 1, wake: 1 });
-    expect(handleCalls).toEqual({ getHandle: 2 });
+    expect(handleCalls).toEqual({ getHandle: 4 });
   });
 
   it("reprovisions a newly created sandbox when its handle is unavailable", async () => {
@@ -512,7 +543,7 @@ describe("sandboxes service", () => {
     );
 
     expect(createCalls).toBe(2);
-    expect(handleCalls).toEqual([unavailableId, recoveredId]);
+    expect(handleCalls).toEqual([unavailableId, recoveredId, recoveredId]);
     expect(result.session.sandboxId).toBe(recoveredId);
     expect(result.session.sandboxStatus).toBe("created");
     expect(result.row?.externalId).toBe(recoveredId);
@@ -630,7 +661,7 @@ describe("sandboxes service", () => {
 
     expect(String(result)).toContain("sandbox is broken");
     expect(providerCalls).toEqual({ create: 1, wake: 0 });
-    expect(handleCalls).toEqual({ getHandle: 0 });
+    expect(handleCalls).toEqual({ getHandle: 1 });
   });
 
   it("recovers previously poisoned retryable error rows", async () => {
@@ -669,7 +700,7 @@ describe("sandboxes service", () => {
     expect(result.row?.status).toBe("ready");
     expect(result.row?.error).toBeNull();
     expect(providerCalls).toEqual({ create: 1, wake: 1 });
-    expect(handleCalls).toEqual({ getHandle: 1 });
+    expect(handleCalls).toEqual({ getHandle: 3 });
   });
 
   it("starts code-server on demand and returns a tokenized preview url", async () => {
@@ -698,7 +729,7 @@ describe("sandboxes service", () => {
     );
 
     expect(providerCalls).toEqual({ create: 1, wake: 0 });
-    expect(handleCalls).toEqual({ getHandle: 1 });
+    expect(handleCalls).toEqual({ getHandle: 2 });
     expect(handle.codeServerExecCalls).toBe(1);
     expect(handle.codeServerConfigWrites).toBe(1);
     expect(handle.previewCreates).toBe(1);
@@ -737,7 +768,7 @@ describe("sandboxes service", () => {
     );
 
     expect(providerCalls).toEqual({ create: 1, wake: 1 });
-    expect(handleCalls).toEqual({ getHandle: 2 });
+    expect(handleCalls).toEqual({ getHandle: 4 });
     expect(handle.codeServerExecCalls).toBe(1);
     expect(handle.previewCreates).toBe(2);
     expect(handle.previewTokenCreates).toBe(2);
@@ -777,7 +808,7 @@ describe("sandboxes service", () => {
     );
 
     expect(providerCalls).toEqual({ create: 1, wake: 0 });
-    expect(handleCalls).toEqual({ getHandle: 1 });
+    expect(handleCalls).toEqual({ getHandle: 2 });
     expect(handle.codeServerExecCalls).toBe(1);
     expect(result.session.sandboxId).toBe(`sbx_${orgId}`);
     expect(result.row?.status).toBe("ready");
@@ -820,7 +851,7 @@ describe("sandboxes service", () => {
     );
 
     expect(providerCalls).toEqual({ create: 1, wake: 0 });
-    expect(handleCalls).toEqual({ getHandle: 1 });
+    expect(handleCalls).toEqual({ getHandle: 2 });
     expect(String(result.sessionError)).toContain("code-server failed forever");
     expect(result.row?.status).toBe("error");
     expect(result.row?.error).toContain("code-server failed forever");
@@ -905,7 +936,7 @@ describe("sandboxes service", () => {
     );
 
     expect(providerCalls).toEqual({ create: 1, wake: 0 });
-    expect(handleCalls).toEqual({ getHandle: 1 });
+    expect(handleCalls).toEqual({ getHandle: 2 });
     expect(handle.executeExecCalls).toBe(1);
     expect(result.ensured.runtime.status).toBe("started");
     expect(result.row?.status).toBe("ready");
