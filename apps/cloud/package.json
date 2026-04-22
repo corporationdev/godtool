@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun run dev:prepare && concurrently -n db,vite,tunnel -c blue,green,magenta \"bun run dev:db\" \"bun run dev:vite\" \"bun run dev:tunnel\"",
+    "dev": "concurrently -n db,vite,tunnel -c blue,green,magenta \"bun run dev:db\" \"bun run dev:vite\" \"bun run dev:tunnel\"",
     "dev:prepare": "bun ../../scripts/secrets-inject.ts --dev",
     "dev:db": "bun run scripts/dev-db.ts",
     "dev:vite": "CLOUDFLARE_INCLUDE_PROCESS_ENV=true bun --env-file=.env vite dev --host 127.0.0.1 --port 3001",

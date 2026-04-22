@@ -8,7 +8,8 @@ const productionSubdomain = "app";
 const rootDomain = "godtool.dev";
 const serverSubdomainPrefix = "server-";
 const localCloudUrl = "http://localhost:3001";
-const sharedAuthkitDomain = "https://reverent-value-48.authkit.app";
+const productionAuthkitDomain = "https://reverent-value-48.authkit.app";
+const stagingAuthkitDomain = "https://balanced-mirage-25-staging.authkit.app";
 const maxDnsLabelLength = 63;
 const previewStagePrefixRegex = /^(preview-|pr-)/;
 
@@ -51,12 +52,7 @@ export interface RuntimeContext {
 function assertSupportedRuntimeStage(stage: string): Exclude<StageKind, "test" | "unknown"> {
   const stageKind = getStageKind(stage);
 
-  if (
-    stageKind !== "dev" &&
-    stageKind !== "sandbox" &&
-    stageKind !== "preview" &&
-    stageKind !== "production"
-  ) {
+  if (stageKind !== "dev" && stageKind !== "preview" && stageKind !== "production") {
     throw new Error(`Unsupported stage "${stage}" for runtime resolution.`);
   }
 
@@ -66,7 +62,7 @@ function assertSupportedRuntimeStage(stage: string): Exclude<StageKind, "test" |
 export function getStageAppHostname(stage: string): string | null {
   const stageKind = getStageKind(stage);
 
-  if (stageKind === "dev" || stageKind === "sandbox") {
+  if (stageKind === "dev") {
     return null;
   }
   if (stageKind === "preview" || stageKind === "test") {
@@ -91,7 +87,7 @@ export function getStageAppUrl(stage: string): string {
 export function getStageServerHostname(stage: string): string {
   const stageKind = getStageKind(stage);
 
-  if (stageKind === "dev" || stageKind === "sandbox") {
+  if (stageKind === "dev") {
     return `${getSingleLabelSubdomain(serverSubdomainPrefix, stage)}.${rootDomain}`;
   }
 
@@ -108,9 +104,13 @@ export function getStageServerUrl(stage: string): string {
 }
 
 export function getStageAuthkitDomain(stage: string): string {
-  assertSupportedRuntimeStage(stage);
+  const stageKind = assertSupportedRuntimeStage(stage);
 
-  return sharedAuthkitDomain;
+  if (stageKind === "production") {
+    return productionAuthkitDomain;
+  }
+
+  return stagingAuthkitDomain;
 }
 
 export function getStageBlaxelWorkspace(stage: string): string {

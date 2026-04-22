@@ -25,24 +25,19 @@ const stageVariableRegex = /\$\{STAGE\}/g;
 const argv = process.argv.slice(2);
 
 if (argv.includes("--help") || argv.includes("-h")) {
-  console.log("Usage: bun secrets:inject [--dev|--sandbox|--stage <stage>]");
+  console.log("Usage: bun secrets:inject [--dev|--stage <stage>]");
   process.exit(0);
 }
 
 const useDev = argv.includes("--dev");
-const useSandbox = argv.includes("--sandbox");
 const stageFlagIndex = argv.indexOf("--stage");
 const explicitStage = stageFlagIndex >= 0 ? argv[stageFlagIndex + 1] : undefined;
-
-if (useDev && useSandbox) {
-  throw new Error("Use only one mode flag: --dev or --sandbox");
-}
 
 if (stageFlagIndex >= 0 && !explicitStage) {
   throw new Error("Missing value for --stage");
 }
 
-if ((useDev || useSandbox) && explicitStage) {
+if (useDev && explicitStage) {
   throw new Error("Use either --stage or a local mode flag, not both");
 }
 
@@ -50,7 +45,7 @@ if (!existsSync(templatePath)) {
   throw new Error(`Missing ${templatePath}. Add the project secret template first.`);
 }
 
-const stageMode: StageMode = useSandbox ? "sandbox" : "dev";
+const stageMode: StageMode = "dev";
 const stage = explicitStage ?? resolveStage(stageMode);
 const envTier = deriveEnvTier(stage);
 const runtime = resolveRuntimeContext(stage);
@@ -190,7 +185,7 @@ function shouldPreserveExistingValue(
   key: string,
   stageKind: (typeof runtime)["stageKind"],
 ): boolean {
-  return key === "DATABASE_URL" && (stageKind === "dev" || stageKind === "sandbox");
+  return key === "DATABASE_URL" && stageKind === "dev";
 }
 
 function getRuntimeOverrides(stageKind: (typeof runtime)["stageKind"]): Record<string, string> {

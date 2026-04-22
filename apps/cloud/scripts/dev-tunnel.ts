@@ -14,9 +14,9 @@ config({ path: resolve(import.meta.dirname, "../.env"), override: false });
 const stage = requireEnv("STAGE");
 const runtime = resolveRuntimeContext(stage);
 
-if (runtime.stageKind !== "dev" && runtime.stageKind !== "sandbox") {
+if (runtime.stageKind !== "dev") {
   throw new Error(
-    `Local tunnels only run for dev or sandbox stages, received "${stage}" (${runtime.stageKind}).`,
+    `Local tunnels only run for dev stages, received "${stage}" (${runtime.stageKind}).`,
   );
 }
 

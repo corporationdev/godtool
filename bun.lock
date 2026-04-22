@@ -57,7 +57,6 @@
         "@effect/opentelemetry": "^0.63.0",
         "@effect/platform": "catalog:",
         "@executor/api": "workspace:*",
-        "@executor/codemode-core": "workspace:*",
         "@executor/env": "workspace:*",
         "@executor/execution": "workspace:*",
         "@executor/host-mcp": "workspace:*",

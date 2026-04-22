@@ -7,7 +7,7 @@ import {
   getStageKind as getStageKindFromStageKind,
 } from "./stage-kind";
 
-export type StageMode = "dev" | "sandbox";
+export type StageMode = "dev";
 
 const leadingDashesRegex = /^-+/;
 const maxStageLength = 63;
@@ -38,10 +38,6 @@ function getUserSlug(): string {
 }
 
 export function resolveStage(mode: StageMode): string {
-  if (mode === "sandbox") {
-    return "sandbox";
-  }
-
   const userSlug = getUserSlug();
   const suffix = shortHash(`${userSlug}:${hostname()}`);
   return trimStage(`dev-${userSlug}-${suffix}`);

@@ -1,10 +1,7 @@
 export type EnvTier = "dev" | "preview" | "prod";
-export type StageKind = "dev" | "sandbox" | "test" | "preview" | "production" | "unknown";
+export type StageKind = "dev" | "test" | "preview" | "production" | "unknown";
 
 export function getStageKind(stage: string): StageKind {
-  if (stage === "sandbox" || stage.startsWith("sandbox-")) {
-    return "sandbox";
-  }
   if (stage === "dev" || stage.startsWith("dev-")) {
     return "dev";
   }

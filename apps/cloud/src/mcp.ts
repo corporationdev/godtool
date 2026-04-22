@@ -19,8 +19,8 @@ import { HttpApp, HttpServerRequest, HttpServerResponse } from "@effect/platform
 import * as Sentry from "@sentry/cloudflare";
 import { Context, Effect, Layer, Option, Schema } from "effect";
 import { createRemoteJWKSet, jwtVerify } from "jose";
+import { WorkOS } from "@workos-inc/node/worker";
 
-import { WorkOSAuth } from "./auth/workos";
 import { TelemetryLive } from "./services/telemetry";
 
 // ---------------------------------------------------------------------------
@@ -91,55 +91,66 @@ export class McpAuth extends Context.Tag("@executor/cloud/McpAuth")<
 
 export const McpAuthLive = Layer.effect(
   McpAuth,
-  Effect.gen(function* () {
-    const workos = yield* WorkOSAuth;
+  Effect.succeed({
+    verifyBearer: (request: Request) =>
+      Effect.gen(function* () {
+        const authHeader = request.headers.get("authorization");
+        if (!authHeader?.startsWith(BEARER_PREFIX)) return null;
 
-    return {
-      verifyBearer: (request: Request) =>
-        Effect.gen(function* () {
-          const authHeader = request.headers.get("authorization");
-          if (!authHeader?.startsWith(BEARER_PREFIX)) return null;
+        const verified = yield* Effect.tryPromise(() =>
+          jwtVerify(authHeader.slice(BEARER_PREFIX.length), jwks, {
+            issuer: AUTHKIT_DOMAIN,
+          }),
+        ).pipe(Effect.option);
 
-          const verified = yield* Effect.tryPromise(() =>
-            jwtVerify(authHeader.slice(BEARER_PREFIX.length), jwks, {
-              issuer: AUTHKIT_DOMAIN,
-            }),
-          ).pipe(Effect.option);
+        if (Option.isNone(verified)) return null;
 
-          if (Option.isNone(verified)) return null;
+        const { payload } = verified.value;
+        if (!payload.sub) return null;
 
-          const { payload } = verified.value;
-          if (!payload.sub) return null;
-
-          const organizationIdFromToken = (payload.org_id as string | undefined) ?? null;
-          if (organizationIdFromToken) {
-            return {
-              accountId: payload.sub,
-              organizationId: organizationIdFromToken,
-              organizationSource: "token" as const,
-            };
-          }
-
-          // Remote MCP OAuth tokens can be org-less even when the same user
-          // has active memberships. Mirror the web auth callback behavior and
-          // hydrate a default org from memberships so approval in Claude can
-          // still establish an MCP session.
-          const memberships = yield* workos.listUserMemberships(payload.sub).pipe(
-            Effect.orElseSucceed(() => ({ data: [] })),
-          );
-          const membership =
-            memberships.data.find((candidate) => candidate.status === "active") ??
-            memberships.data[0];
-
+        const organizationIdFromToken = (payload.org_id as string | undefined) ?? null;
+        if (organizationIdFromToken) {
           return {
             accountId: payload.sub,
-            organizationId: membership?.organizationId ?? null,
-            organizationSource: membership ? "membership" : "none",
+            organizationId: organizationIdFromToken,
+            organizationSource: "token" as const,
           };
-        }),
-    };
+        }
+
+        // Remote MCP OAuth tokens can be org-less even when the same user
+        // has active memberships. Mirror the web auth callback behavior and
+        // hydrate a default org from memberships so approval in Claude can
+        // still establish an MCP session.
+        const memberships = yield* listUserMemberships(payload.sub).pipe(
+          Effect.orElseSucceed(() => ({ data: [] })),
+        );
+        const membership =
+          memberships.data.find((candidate) => candidate.status === "active") ??
+          memberships.data[0];
+
+        return {
+          accountId: payload.sub,
+          organizationId: membership?.organizationId ?? null,
+          organizationSource: membership ? "membership" : "none",
+        };
+      }),
   }),
 );
+
+const listUserMemberships = (userId: string) =>
+  Effect.tryPromise(async () => {
+    const apiKey = env.WORKOS_API_KEY;
+    const clientId = env.WORKOS_CLIENT_ID;
+    if (!apiKey || !clientId) {
+      throw new Error("WORKOS_API_KEY and WORKOS_CLIENT_ID are required for MCP auth");
+    }
+
+    const workos = new WorkOS({ apiKey, clientId });
+    return workos.userManagement.listOrganizationMemberships({
+      userId,
+      statuses: ["active", "pending"],
+    });
+  });
 
 // ---------------------------------------------------------------------------
 // Client fingerprint capture
@@ -655,7 +666,7 @@ export const mcpApp: Effect.Effect<
 );
 
 const rawMcpFetch = HttpApp.toWebHandler(
-  mcpApp.pipe(Effect.provide(Layer.mergeAll(WorkOSAuth.Default, McpAuthLive, TelemetryLive))),
+  mcpApp.pipe(Effect.provide(Layer.mergeAll(McpAuthLive, TelemetryLive))),
 );
 
 /**
