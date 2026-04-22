@@ -1,10 +1,7 @@
 import { Link, Outlet, useLocation } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { useAtomValue, useAtomSet, Result } from "@effect-atom/atom-react";
-import { useSourcesWithPending } from "@executor/react/api/optimistic";
-import { useScope } from "@executor/react/api/scope-context";
 import { Button } from "@executor/react/components/button";
-import { Skeleton } from "@executor/react/components/skeleton";
 import {
   Dialog,
   DialogClose,
@@ -25,7 +22,6 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@executor/react/components/dropdown-menu";
-import { SourceFavicon } from "@executor/react/components/source-favicon";
 import { CommandPalette } from "@executor/react/components/command-palette";
 import { openApiSourcePlugin } from "@executor/plugin-openapi/react";
 import { mcpSourcePlugin } from "@executor/plugin-mcp/react";
@@ -60,63 +56,6 @@ function NavItem(props: { to: string; label: string; active: boolean; onNavigate
       {props.label}
     </Link>
   );
-}
-
-// ── SourceList ───────────────────────────────────────────────────────────
-
-function SourceList(props: { pathname: string; onNavigate?: () => void }) {
-  const scopeId = useScope();
-  const sources = useSourcesWithPending(scopeId);
-
-  return Result.match(sources, {
-    onInitial: () => (
-      <div className="flex flex-col gap-1 px-2.5 py-1">
-        {[80, 65, 72, 58, 68].map((w, i) => (
-          <div key={i} className="flex items-center gap-2 rounded-md py-1.5">
-            <Skeleton className="size-3.5 shrink-0 rounded" />
-            <Skeleton className="h-3" style={{ width: `${w}%` }} />
-          </div>
-        ))}
-      </div>
-    ),
-    onFailure: () => (
-      <div className="px-2.5 py-2 text-xs text-muted-foreground">No sources yet</div>
-    ),
-    onSuccess: ({ value }) =>
-      value.length === 0 ? (
-        <div className="px-2.5 py-2 text-sm leading-relaxed text-muted-foreground">
-          No sources yet
-        </div>
-      ) : (
-        <div className="flex flex-col gap-px">
-          {value.map((s) => {
-            const detailPath = `/sources/${s.id}`;
-            const active =
-              props.pathname === detailPath || props.pathname.startsWith(`${detailPath}/`);
-            return (
-              <Link
-                key={s.id}
-                to="/sources/$namespace"
-                params={{ namespace: s.id }}
-                onClick={props.onNavigate}
-                className={[
-                  "group flex items-center gap-2 rounded-md px-2.5 py-1.5 text-xs transition-colors",
-                  active
-                    ? "bg-sidebar-active text-foreground font-medium"
-                    : "text-sidebar-foreground hover:bg-sidebar-active/60 hover:text-foreground",
-                ].join(" ")}
-              >
-                <SourceFavicon url={s.url} />
-                <span className="flex-1 truncate">{s.name}</span>
-                <span className="rounded bg-secondary/50 px-1 py-px text-xs font-medium text-muted-foreground">
-                  {s.kind}
-                </span>
-              </Link>
-            );
-          })}
-        </div>
-      ),
-  });
 }
 
 // ── UserFooter ──────────────────────────────────────────────────────────
@@ -370,7 +309,7 @@ function SidebarContent(props: { pathname: string; onNavigate?: () => void; show
       {props.showBrand !== false && (
         <div className="flex h-12 shrink-0 items-center border-b border-sidebar-border px-4">
           <Link to="/" className="flex items-center gap-1.5">
-            <span className="font-display text-base tracking-tight text-foreground">executor</span>
+            <span className="font-display text-base tracking-tight text-foreground">GOD TOOL</span>
           </Link>
         </div>
       )}
@@ -382,12 +321,6 @@ function SidebarContent(props: { pathname: string; onNavigate?: () => void; show
         <NavItem to="/secrets" label="Secrets" active={isSecrets} onNavigate={props.onNavigate} />
         <NavItem to="/org" label="Organization" active={isOrg} onNavigate={props.onNavigate} />
         <NavItem to="/billing" label="Billing" active={isBilling} onNavigate={props.onNavigate} />
-
-        <div className="mt-5 mb-1 px-2.5 text-xs font-medium uppercase tracking-widest text-muted-foreground">
-          <span>Sources</span>
-        </div>
-
-        <SourceList pathname={props.pathname} onNavigate={props.onNavigate} />
       </nav>
 
       <UserFooter />
@@ -439,7 +372,7 @@ export function Shell() {
             <div className="flex h-12 shrink-0 items-center justify-between border-b border-sidebar-border px-4">
               <Link to="/" className="flex items-center gap-1.5">
                 <span className="font-display text-base tracking-tight text-foreground">
-                  executor
+                  GOD TOOL
                 </span>
               </Link>
               <Button
@@ -491,7 +424,7 @@ export function Shell() {
             </svg>
           </Button>
           <Link to="/" className="flex items-center gap-1.5">
-            <span className="font-display text-base tracking-tight text-foreground">executor</span>
+            <span className="font-display text-base tracking-tight text-foreground">GOD TOOL</span>
           </Link>
           <div className="w-8 shrink-0" />
         </div>
