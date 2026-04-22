@@ -18,6 +18,12 @@ declare global {
       // Billing
       AUTUMN_SECRET_KEY?: string;
 
+      // Blaxel sandboxes
+      BLAXEL_API_KEY?: string;
+      BLAXEL_WORKSPACE?: string;
+      BLAXEL_REGION?: string;
+      BLAXEL_TEMPLATE_IMAGE?: string;
+
       // MCP
       MCP_SESSION_REQUEST_SCOPED_RUNTIME?: string;
       EXECUTOR_MCP_DEBUG?: string;

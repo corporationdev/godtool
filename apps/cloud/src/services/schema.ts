@@ -46,3 +46,15 @@ export const memberships = pgTable(
     pk: primaryKey({ columns: [t.accountId, t.organizationId] }),
   }),
 );
+
+export const sandboxes = pgTable("sandboxes", {
+  organizationId: text("organization_id")
+    .primaryKey()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  provider: text("provider").notNull(),
+  externalId: text("external_id"),
+  status: text("status").notNull(),
+  error: text("error"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
