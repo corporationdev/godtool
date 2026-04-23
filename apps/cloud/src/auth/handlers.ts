@@ -91,8 +91,20 @@ export const CloudAuthPublicHandlers = HttpApiBuilder.group(
 export const CloudSessionAuthHandlers = HttpApiBuilder.group(
   NonProtectedApi,
   "cloudAuth",
-  (handlers) =>
-    handlers
+  (handlers) => {
+    const logoutResponse = () =>
+      Effect.gen(function* () {
+        const workos = yield* WorkOSAuth;
+        const session = yield* SessionContext;
+
+        deleteCookie("wos-session", { path: "/" });
+
+        return HttpServerResponse.redirect(workos.getLogoutUrl(session.sessionId), {
+          status: 302,
+        });
+      });
+
+    return handlers
       .handle("me", () =>
         Effect.gen(function* () {
           const session = yield* SessionContext;
@@ -111,10 +123,8 @@ export const CloudSessionAuthHandlers = HttpApiBuilder.group(
           };
         }),
       )
-      .handleRaw("logout", () => {
-        deleteCookie("wos-session", { path: "/" });
-        return Effect.succeed(HttpServerResponse.redirect("/", { status: 302 }));
-      })
+      .handleRaw("logoutPage", logoutResponse)
+      .handleRaw("logout", logoutResponse)
       .handle("organizations", () =>
         Effect.gen(function* () {
           const workos = yield* WorkOSAuth;
@@ -191,5 +201,6 @@ export const CloudSessionAuthHandlers = HttpApiBuilder.group(
           setCookie("wos-session", refreshed, COOKIE_OPTIONS);
           return { id: org.id, name: org.name };
         }),
-      ),
+      );
+  },
 );

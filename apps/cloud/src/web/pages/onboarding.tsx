@@ -48,16 +48,9 @@ export const OnboardingPage = () => {
 
         <div className="flex items-center justify-between gap-3">
           {/* oxlint-disable-next-line react/forbid-elements */}
-          <button
-            type="button"
-            className="text-xs text-muted-foreground hover:text-foreground"
-            onClick={async () => {
-              await fetch(AUTH_PATHS.logout, { method: "POST" });
-              window.location.href = "/";
-            }}
-          >
+          <a href={AUTH_PATHS.logout} className="text-xs text-muted-foreground hover:text-foreground">
             Sign out
-          </button>
+          </a>
           <Button
             size="sm"
             onClick={() => void form.submit()}

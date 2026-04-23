@@ -85,6 +85,12 @@ const make = Effect.gen(function* () {
         clientId,
       }),
 
+    getLogoutUrl: (sessionId: string, returnTo?: string) =>
+      workos.userManagement.getLogoutUrl({
+        sessionId,
+        returnTo,
+      }),
+
     authenticateWithCode: (code: string) =>
       use((wos) =>
         wos.userManagement.authenticateWithCode({

@@ -199,14 +199,11 @@ function UserFooter() {
                   )}
                 </div>
               </DropdownMenuItem>
-              <DropdownMenuItem
-                className="text-xs text-destructive focus:text-destructive"
-                onClick={async () => {
-                  await fetch(AUTH_PATHS.logout, { method: "POST" });
-                  window.location.href = "/";
-                }}
-              >
-                Sign out
+              <DropdownMenuItem asChild variant="destructive" className="text-xs">
+                {/* oxlint-disable-next-line react/forbid-elements */}
+                <a href={AUTH_PATHS.logout} className="w-full">
+                  Sign out
+                </a>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

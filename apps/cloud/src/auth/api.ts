@@ -72,6 +72,7 @@ export class CloudAuthApi extends HttpApiGroup.make("cloudAuth")
       .addError(UserStoreError)
       .addError(WorkOSError),
   )
+  .add(HttpApiEndpoint.get("logoutPage")`/auth/logout`)
   .add(HttpApiEndpoint.post("logout")`/auth/logout`)
   .add(
     HttpApiEndpoint.get("organizations")`/auth/organizations`
