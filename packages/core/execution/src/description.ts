@@ -5,8 +5,9 @@ import type { Executor, Source } from "@executor/sdk";
  * Builds a tool description dynamically.
  *
  * Structure:
- *   1. Workflow (top — critical, least likely to be truncated)
- *   2. Available namespaces (bottom)
+ *   1. Required startup step (top — highest priority)
+ *   2. Workflow
+ *   3. Available namespaces (bottom)
  */
 export const buildExecuteDescription = (executor: Executor): Effect.Effect<string> =>
   Effect.gen(function* () {
@@ -30,20 +31,32 @@ export const buildExecuteDescription = (executor: Executor): Effect.Effect<strin
 
 const formatDescription = (sources: readonly Source[]): string => {
   const lines: string[] = [
+    "## REQUIRED FIRST STEP",
+    "",
+    "Before any task-specific work, your first execution must read both `/workspace/SYSTEM.md` and `/workspace/MEMORY.md`.",
+    "",
+    "```ts",
+    'const systemMd = await Bun.file("/workspace/SYSTEM.md").text();',
+    'const memoryMd = await Bun.file("/workspace/MEMORY.md").text();',
+    "```",
+    "",
+    "Do not call `tools.search()`, `tools.describe.tool()`, or any task tool until you have read both files.",
+    "",
     "Execute TypeScript in a sandboxed runtime with access to configured API tools.",
-    "Always read `/workspace/SYSTEM.md` in your first execution. Bun shell `$` is already available in scope, so do not import it.",
     "",
     "## Workflow",
     "",
-    '1. `const matches = await tools.search({ query: "<intent + key nouns>", limit: 12 });`',
-    '2. `const path = matches[0]?.path; if (!path) return "No matching tools found.";`',
-    "3. `const details = await tools.describe.tool({ path });`",
-    "4. Use `details.inputTypeScript` / `details.outputTypeScript` and `details.typeScriptDefinitions` for compact shapes.",
-    "5. Use `tools.executor.sources.list()` when you need configured source inventory.",
-    "6. Call the tool: `const result = await tools.<path>(input);`",
+    '1. `const systemMd = await Bun.file("/workspace/SYSTEM.md").text(); const memoryMd = await Bun.file("/workspace/MEMORY.md").text();`',
+    '2. `const matches = await tools.search({ query: "<intent + key nouns>", limit: 12 });`',
+    '3. `const path = matches[0]?.path; if (!path) return "No matching tools found.";`',
+    "4. `const details = await tools.describe.tool({ path });`",
+    "5. Use `details.inputTypeScript` / `details.outputTypeScript` and `details.typeScriptDefinitions` for compact shapes.",
+    "6. Use `tools.executor.sources.list()` when you need configured source inventory.",
+    "7. Call the tool: `const result = await tools.<path>(input);`",
     "",
     "## Rules",
     "",
+    "- Bun shell `$` is already available in scope, so do not import it.",
     "- `tools.search()` returns ranked matches, best-first. Use short intent phrases like `github issues`, `repo details`, or `create calendar event`.",
     '- When you already know the namespace, narrow with `tools.search({ namespace: "github", query: "issues" })`.',
     "- Use `tools.executor.sources.list()` to inspect configured sources and their tool counts. Returns `[{ id, toolCount, ... }]`.",

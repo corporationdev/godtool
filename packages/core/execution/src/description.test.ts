@@ -57,7 +57,7 @@ const slackPlugin = definePlugin(() => ({
 
 describe("buildExecuteDescription", () => {
   it.effect(
-    "renders real source ids as namespaces (sorted) through the real executor flow",
+    "renders the required startup block before the workflow and lists namespaces",
     () =>
       Effect.gen(function* () {
         // Intentionally register in non-alphabetical order — the formatter
@@ -69,12 +69,36 @@ describe("buildExecuteDescription", () => {
         const description = yield* buildExecuteDescription(executor);
 
         // Stable anchor from the workflow preamble.
+        expect(description).toContain("## REQUIRED FIRST STEP");
+        expect(description).toContain(
+          "Before any task-specific work, your first execution must read both `/workspace/SYSTEM.md` and `/workspace/MEMORY.md`.",
+        );
+        expect(description).toContain(
+          'const systemMd = await Bun.file("/workspace/SYSTEM.md").text();',
+        );
+        expect(description).toContain(
+          'const memoryMd = await Bun.file("/workspace/MEMORY.md").text();',
+        );
+        expect(description).toContain(
+          "Do not call `tools.search()`, `tools.describe.tool()`, or any task tool until you have read both files.",
+        );
         expect(description).toContain(
           "Execute TypeScript in a sandboxed runtime",
         );
         expect(description).toContain(
-          "Always read `/workspace/SYSTEM.md` in your first execution. Bun shell `$` is already available in scope, so do not import it.",
+          "## Workflow",
         );
+        expect(description).toContain(
+          '1. `const systemMd = await Bun.file("/workspace/SYSTEM.md").text(); const memoryMd = await Bun.file("/workspace/MEMORY.md").text();`',
+        );
+        expect(description).toContain(
+          "Bun shell `$` is already available in scope, so do not import it.",
+        );
+        const requiredIdx = description.indexOf("## REQUIRED FIRST STEP");
+        const workflowIdx = description.indexOf("## Workflow");
+        expect(requiredIdx).toBeGreaterThan(-1);
+        expect(workflowIdx).toBeGreaterThan(-1);
+        expect(requiredIdx).toBeLessThan(workflowIdx);
         // The namespaces section header.
         expect(description).toContain("## Available namespaces");
         // Each source renders with its ACTUAL id (not pluginId / name / UUID).
@@ -104,10 +128,10 @@ describe("buildExecuteDescription", () => {
         const description = yield* buildExecuteDescription(executor);
 
         expect(description).toContain(
-          "Execute TypeScript in a sandboxed runtime",
+          "## REQUIRED FIRST STEP",
         );
         expect(description).toContain(
-          "Always read `/workspace/SYSTEM.md` in your first execution. Bun shell `$` is already available in scope, so do not import it.",
+          "Before any task-specific work, your first execution must read both `/workspace/SYSTEM.md` and `/workspace/MEMORY.md`.",
         );
         expect(description).not.toContain("## Available namespaces");
       }),
