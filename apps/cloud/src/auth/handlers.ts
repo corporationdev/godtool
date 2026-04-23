@@ -99,9 +99,13 @@ export const CloudSessionAuthHandlers = HttpApiBuilder.group(
 
         deleteCookie("wos-session", { path: "/" });
 
-        return HttpServerResponse.redirect(workos.getLogoutUrl(session.sessionId), {
-          status: 302,
-        });
+        const origin = env.VITE_PUBLIC_SITE_URL ?? "";
+        const returnTo = new URL("/login", origin).toString();
+
+        return HttpServerResponse.redirect(
+          workos.getLogoutUrl(session.sessionId, returnTo),
+          { status: 302 },
+        );
       });
 
     return handlers
