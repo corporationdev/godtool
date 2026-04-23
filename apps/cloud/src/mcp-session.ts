@@ -597,7 +597,6 @@ export class McpSessionDO extends DurableObject {
       );
     }
 
-    const transport = this.transport;
     const self = this;
     return Effect.gen(function* () {
       self.lastActivityMs = Date.now();
