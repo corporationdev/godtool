@@ -57,7 +57,7 @@ const slackPlugin = definePlugin(() => ({
 
 describe("buildExecuteDescription", () => {
   it.effect(
-    "renders the required startup block before the workflow and lists namespaces",
+    "renders the shared workflow plus the persistent workspace addendum and lists namespaces",
     () =>
       Effect.gen(function* () {
         // Intentionally register in non-alphabetical order — the formatter
@@ -66,10 +66,22 @@ describe("buildExecuteDescription", () => {
           makeTestConfig({ plugins: [slackPlugin(), githubPlugin()] as const }),
         );
 
-        const description = yield* buildExecuteDescription(executor);
+        const description = yield* buildExecuteDescription(executor, {
+          runtimeKind: "blaxel-sandbox",
+        });
 
-        // Stable anchor from the workflow preamble.
-        expect(description).toContain("## REQUIRED FIRST STEP");
+        expect(description).toContain(
+          "Execute TypeScript in a sandboxed runtime with access to configured API tools.",
+        );
+        expect(description).toContain("## Workflow");
+        expect(description).toContain(
+          '1. `const matches = await tools.search({ query: "<intent + key nouns>", limit: 12 });`',
+        );
+        expect(description).toContain("## Rules");
+        expect(description).toContain(
+          "- `tools.search()` returns ranked matches, best-first. Use short intent phrases like `github issues`, `repo details`, or `create calendar event`.",
+        );
+        expect(description).toContain("## Persistent workspace");
         expect(description).toContain(
           "Before any task-specific work, your first execution must read both `/workspace/SYSTEM.md` and `/workspace/MEMORY.md`.",
         );
@@ -83,22 +95,19 @@ describe("buildExecuteDescription", () => {
           "Do not call `tools.search()`, `tools.describe.tool()`, or any task tool until you have read both files.",
         );
         expect(description).toContain(
-          "Execute TypeScript in a sandboxed runtime",
-        );
-        expect(description).toContain(
-          "## Workflow",
-        );
-        expect(description).toContain(
-          '1. `const systemMd = await Bun.file("/workspace/SYSTEM.md").text(); const memoryMd = await Bun.file("/workspace/MEMORY.md").text();`',
-        );
-        expect(description).toContain(
           "Bun shell `$` is already available in scope, so do not import it.",
         );
-        const requiredIdx = description.indexOf("## REQUIRED FIRST STEP");
+        expect(description).toContain(
+          "`/workspace` persists across executions for this organization. Use it for durable notes or reusable files when helpful.",
+        );
         const workflowIdx = description.indexOf("## Workflow");
-        expect(requiredIdx).toBeGreaterThan(-1);
+        const rulesIdx = description.indexOf("## Rules");
+        const workspaceIdx = description.indexOf("## Persistent workspace");
         expect(workflowIdx).toBeGreaterThan(-1);
-        expect(requiredIdx).toBeLessThan(workflowIdx);
+        expect(rulesIdx).toBeGreaterThan(-1);
+        expect(workspaceIdx).toBeGreaterThan(-1);
+        expect(workflowIdx).toBeLessThan(rulesIdx);
+        expect(rulesIdx).toBeLessThan(workspaceIdx);
         // The namespaces section header.
         expect(description).toContain("## Available namespaces");
         // Each source renders with its ACTUAL id (not pluginId / name / UUID).
@@ -118,6 +127,40 @@ describe("buildExecuteDescription", () => {
   );
 
   it.effect(
+    "renders only the shared instructions for the stateless worker runtime",
+    () =>
+      Effect.gen(function* () {
+        const executor = yield* createExecutor(
+          makeTestConfig({ plugins: [githubPlugin()] as const }),
+        );
+
+        const description = yield* buildExecuteDescription(executor, {
+          runtimeKind: "dynamic-worker",
+        });
+
+        expect(description).toContain(
+          "Execute TypeScript in a sandboxed runtime with access to configured API tools.",
+        );
+        expect(description).toContain(
+          '1. `const matches = await tools.search({ query: "<intent + key nouns>", limit: 12 });`',
+        );
+        expect(description).toContain("## Rules");
+        expect(description).not.toContain("## Persistent workspace");
+        expect(description).not.toContain(
+          'const systemMd = await Bun.file("/workspace/SYSTEM.md").text();',
+        );
+        expect(description).not.toContain(
+          'const memoryMd = await Bun.file("/workspace/MEMORY.md").text();',
+        );
+        expect(description).not.toContain(
+          "Do not call `tools.search()`, `tools.describe.tool()`, or any task tool until you have read both files.",
+        );
+        expect(description).not.toContain("Bun shell `$` is already available in scope");
+        expect(description).not.toContain("`/workspace` persists across executions");
+      }),
+  );
+
+  it.effect(
     "omits the Available namespaces section when no plugins register sources",
     () =>
       Effect.gen(function* () {
@@ -125,11 +168,11 @@ describe("buildExecuteDescription", () => {
           makeTestConfig({ plugins: [] as const }),
         );
 
-        const description = yield* buildExecuteDescription(executor);
+        const description = yield* buildExecuteDescription(executor, {
+          runtimeKind: "blaxel-sandbox",
+        });
 
-        expect(description).toContain(
-          "## REQUIRED FIRST STEP",
-        );
+        expect(description).toContain("## Persistent workspace");
         expect(description).toContain(
           "Before any task-specific work, your first execution must read both `/workspace/SYSTEM.md` and `/workspace/MEMORY.md`.",
         );

@@ -294,7 +294,9 @@ export class McpSessionDO extends DurableObject {
           sessionMeta.organizationId,
           sessionMeta.organizationName,
         );
-        const description = yield* buildExecuteDescription(executor);
+        const description = yield* buildExecuteDescription(executor, {
+          runtimeKind: "dynamic-worker",
+        });
         const mcpServer = yield* createExecutorMcpServer({
           engine,
           description,
@@ -340,7 +342,9 @@ export class McpSessionDO extends DurableObject {
         createExecutionEngine({ executor, codeExecutor }),
         (orgId) => Effect.runFork(autumn.trackExecution(orgId)),
       );
-      const description = yield* buildExecuteDescription(executor);
+      const description = yield* buildExecuteDescription(executor, {
+        runtimeKind: "blaxel-sandbox",
+      });
       const mcpServer = yield* createExecutorMcpServer({
         engine,
         description,
