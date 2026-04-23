@@ -7,6 +7,7 @@ declare module "@useautumn/sdk" {
   // Features
   export const domainVerification: Feature;
   export const executions: Feature;
+  export const persistentSandbox: Feature;
 
   // Plans
   export const free: Plan;

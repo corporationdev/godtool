@@ -21,6 +21,7 @@ export class AutumnError extends Data.TaggedError("AutumnError")<{
 
 export type IAutumnService = Readonly<{
   use: <A>(fn: (client: Autumn) => Promise<A>) => Effect.Effect<A, AutumnError, never>;
+  hasPersistentSandbox: (organizationId: string) => Effect.Effect<boolean, never, never>;
   /**
    * Fire-and-forget-safe execution usage tracker. Errors are caught and
    * logged; the returned Effect never fails. Callers typically
@@ -43,6 +44,7 @@ const make = Effect.sync(() => {
     );
     return {
       use: () => notConfigured,
+      hasPersistentSandbox: () => Effect.succeed(false),
       trackExecution: () => Effect.void,
     } satisfies IAutumnService;
   }
@@ -54,6 +56,18 @@ const make = Effect.sync(() => {
       try: () => fn(client),
       catch: (cause) => new AutumnError({ cause }),
     }).pipe(Effect.withSpan(`autumn.${fn.name ?? "use"}`));
+
+  const hasPersistentSandbox = (organizationId: string) =>
+    use((c) =>
+      c.check({
+        customerId: organizationId,
+        featureId: "persistent-sandbox",
+      }),
+    ).pipe(
+      Effect.map((result) => result.allowed),
+      Effect.catchAll(() => Effect.succeed(false)),
+      Effect.withSpan("autumn.hasPersistentSandbox"),
+    );
 
   const trackExecution = (organizationId: string) =>
     Effect.gen(function* () {
@@ -72,7 +86,7 @@ const make = Effect.sync(() => {
       }
     }).pipe(Effect.withSpan("autumn.trackExecution"));
 
-  return { use, trackExecution } satisfies IAutumnService;
+  return { use, hasPersistentSandbox, trackExecution } satisfies IAutumnService;
 });
 
 export class AutumnService extends Context.Tag("@executor/cloud/AutumnService")<

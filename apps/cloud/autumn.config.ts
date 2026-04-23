@@ -13,6 +13,12 @@ export const domainVerification = feature({
   type: "boolean",
 });
 
+export const persistentSandbox = feature({
+  id: "persistent-sandbox",
+  name: "Persistent Sandbox",
+  type: "boolean",
+});
+
 export const free = plan({
   id: "free",
   name: "Free",
@@ -38,6 +44,9 @@ export const pro = plan({
       featureId: executions.id,
       included: 100000,
       reset: { interval: "month" },
+    }),
+    item({
+      featureId: persistentSandbox.id,
     }),
   ],
 });

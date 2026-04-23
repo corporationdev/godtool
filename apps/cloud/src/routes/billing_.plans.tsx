@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useAtomSet } from "@effect-atom/atom-react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCustomer, useListPlans } from "autumn-js/react";
 import { Button } from "@executor/react/components/button";
 import { Badge } from "@executor/react/components/badge";
+import { ensurePersistentSandbox } from "../web/files";
 
 type Plan = NonNullable<ReturnType<typeof useListPlans>["data"]>[number];
 
@@ -41,13 +43,38 @@ const ACTION_LABELS: Record<string, string> = {
 };
 
 function PlansPage() {
-  const { attach, openCustomerPortal, isLoading: customerLoading } = useCustomer();
+  const {
+    data: customer,
+    attach,
+    openCustomerPortal,
+    isLoading: customerLoading,
+  } = useCustomer();
   const { data: plans, isLoading: plansLoading, isFetching } = useListPlans();
+  const provisionSandbox = useAtomSet(ensurePersistentSandbox, { mode: "promise" });
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
+  const hasProvisionedSandbox = useRef(false);
 
   const isLoading = customerLoading || plansLoading;
 
   const visiblePlans = (plans ?? ([] as Plan[])).filter((p: Plan) => p.id === "free" || p.id === "pro");
+
+  const hasActivePro =
+    customer?.subscriptions?.some(
+      (subscription) =>
+        subscription.planId === "pro" &&
+        (subscription.status === "active" ||
+          subscription.status === "trialing" ||
+          subscription.status === "past_due"),
+    ) ?? false;
+
+  useEffect(() => {
+    if (!hasActivePro || hasProvisionedSandbox.current) {
+      return;
+    }
+
+    hasProvisionedSandbox.current = true;
+    void provisionSandbox({});
+  }, [hasActivePro, provisionSandbox]);
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
