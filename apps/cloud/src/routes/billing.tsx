@@ -10,8 +10,8 @@ export const Route = createFileRoute("/billing")({
 });
 
 const PLAN_TAGLINES: Record<string, string> = {
-  free: "For trying things out",
-  pro: "For teams that need more than the free tier",
+  free: "For stateless execution",
+  pro: "For a persistent sandbox environment",
 };
 
 function BillingPage() {

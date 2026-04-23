@@ -15,19 +15,18 @@ const PLAN_META: Record<
   { tagline: string; inherits?: string; features: string[] }
 > = {
   free: {
-    tagline: "For trying things out",
+    tagline: "For stateless execution",
     features: [
       "5,000 included executions each month",
-      "Standard execution timeout",
+      "Stateless execution",
       "Connect sources and explore the product",
     ],
   },
   pro: {
-    tagline: "For teams that need more than the free tier",
+    tagline: "For a persistent sandbox environment",
     features: [
-      "100,000 included executions each month",
-      "5 minute execution timeout",
-      "Join by team domain",
+      "Unlimited executions",
+      "Persistent sandbox environment",
       "Unlimited sources",
     ],
   },
