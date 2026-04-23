@@ -1,5 +1,6 @@
 import { Link, Outlet, useLocation } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { usePostHog } from "posthog-js/react";
 import { useAtomRefresh } from "@effect-atom/atom-react";
 import { sourcesAtom, toolsAtom } from "@executor/react/api/atoms";
 import { useScope, useScopeInfo } from "@executor/react/api/scope-context";
@@ -129,13 +130,18 @@ function useLatestVersion(currentVersion: string) {
 function UpdateCard(props: { latestVersion: string; channel: UpdateChannel }) {
   const command = `npm i -g executor@${props.channel}`;
   const [copied, setCopied] = useState(false);
+  const posthog = usePostHog();
 
   const handleCopy = useCallback(() => {
     void navigator.clipboard.writeText(command).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
+      posthog.capture("update_command_copied", {
+        channel: props.channel,
+        latest_version: props.latestVersion,
+      });
     });
-  }, [command]);
+  }, [command, posthog, props.channel, props.latestVersion]);
 
   return (
     <div className="mx-2 mb-2 rounded-xl border border-primary/25 bg-primary/[0.06] p-3">

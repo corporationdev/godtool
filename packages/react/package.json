@@ -46,6 +46,7 @@
     "streamdown": "^2.5.0",
     "tailwind-merge": "^3.3.0",
     "tldts": "^7.0.28",
+    "posthog-js": "^1",
     "vaul": "^1.1.2"
   },
   "devDependencies": {

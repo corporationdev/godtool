@@ -1,5 +1,6 @@
 import { Suspense, useState, useCallback, useMemo } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
+import { usePostHog } from "posthog-js/react";
 import { Result, useAtomSet } from "@effect-atom/atom-react";
 import { detectSource } from "../api/atoms";
 import { useSourcesWithPending } from "../api/optimistic";
@@ -39,6 +40,7 @@ export function SourcesPage(props: { sourcePlugins: readonly SourcePlugin[] }) {
   const sources = useSourcesWithPending(scopeId);
   const doDetect = useAtomSet(detectSource, { mode: "promise" });
   const navigate = useNavigate();
+  const posthog = usePostHog();
 
   const handleDetect = useCallback(async () => {
     const trimmed = url.trim();
@@ -52,25 +54,37 @@ export function SourcesPage(props: { sourcePlugins: readonly SourcePlugin[] }) {
       });
       if (results.length === 0) {
         setError("Could not detect a source type from this URL. Try adding manually.");
+        posthog.capture("source_detect_failed", { url: trimmed, reason: "no_results" });
         setDetecting(false);
         return;
       }
       const pluginKey = sourcePluginKeyForKind(results[0].kind);
       if (pluginKey) {
+        posthog.capture("source_url_detected", {
+          url: trimmed,
+          plugin_key: pluginKey,
+          kind: results[0].kind,
+        });
         void navigate({
           to: "/sources/add/$pluginKey",
           params: { pluginKey },
           search: { url: trimmed, namespace: results[0].namespace },
         });
       } else {
+        posthog.capture("source_detect_failed", {
+          url: trimmed,
+          reason: "no_plugin",
+          kind: results[0].kind,
+        });
         setError(`Detected source type "${results[0].kind}" but no plugin is available for it.`);
       }
     } catch {
+      posthog.capture("source_detect_failed", { url: trimmed, reason: "error" });
       setError("Detection failed. Try adding a source manually.");
     } finally {
       setDetecting(false);
     }
-  }, [url, doDetect, navigate, scopeId]);
+  }, [url, doDetect, navigate, scopeId, posthog]);
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">

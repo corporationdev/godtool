@@ -1,5 +1,6 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { usePostHog } from "posthog-js/react";
 import { useAtomValue, useAtomSet, useAtomRefresh, Result } from "@effect-atom/atom-react";
 import {
   sourceToolsAtom,
@@ -31,6 +32,7 @@ export function SourceDetailPage(props: {
   const doRemove = useAtomSet(removeSource, { mode: "promise" });
   const doRefresh = useAtomSet(refreshSource, { mode: "promise" });
   const navigate = useNavigate();
+  const posthog = usePostHog();
 
   // HMR: refresh source tools when the backend is hot-reloaded
   useEffect(() => {
@@ -84,6 +86,11 @@ export function SourceDetailPage(props: {
         path: { scopeId, sourceId: namespace },
         reactivityKeys: sourceWriteKeys,
       });
+      posthog.capture("source_deleted", {
+        source_id: namespace,
+        kind: sourceData?.kind,
+        tool_count: sourceTools.length,
+      });
       void navigate({ to: "/" });
     } catch {
       setDeleting(false);
@@ -97,6 +104,10 @@ export function SourceDetailPage(props: {
       await doRefresh({
         path: { scopeId, sourceId: namespace },
         reactivityKeys: sourceWriteKeys,
+      });
+      posthog.capture("source_refreshed", {
+        source_id: namespace,
+        kind: sourceData?.kind,
       });
     } finally {
       setRefreshing(false);
@@ -212,7 +223,16 @@ export function SourceDetailPage(props: {
                 <ToolTree
                   tools={sourceTools}
                   selectedToolId={selectedToolId}
-                  onSelect={setSelectedToolId}
+                  onSelect={(toolId) => {
+                    setSelectedToolId(toolId);
+                    if (toolId) {
+                      posthog.capture("tool_selected", {
+                        tool_id: toolId,
+                        source_id: namespace,
+                        kind: sourceData?.kind,
+                      });
+                    }
+                  }}
                 />
               </div>
 
