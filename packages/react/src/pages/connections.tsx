@@ -1,5 +1,6 @@
 import { useAtomValue, useAtomSet, Result } from "@effect-atom/atom-react";
 import { ConnectionId } from "@executor/sdk";
+import { usePostHog } from "posthog-js/react";
 
 import { connectionsAtom, removeConnection } from "../api/atoms";
 import { connectionWriteKeys } from "../api/reactivity-keys";
@@ -108,13 +109,15 @@ export function ConnectionsPage() {
   const scopeId = useScope();
   const connections = useAtomValue(connectionsAtom(scopeId));
   const doRemove = useAtomSet(removeConnection, { mode: "promise" });
+  const posthog = usePostHog();
 
-  const handleRemove = async (connectionId: string) => {
+  const handleRemove = async (connectionId: string, provider: string, kind: string) => {
     try {
       await doRemove({
         path: { scopeId, connectionId: ConnectionId.make(connectionId) },
         reactivityKeys: connectionWriteKeys,
       });
+      posthog.capture("connection_removed", { provider, kind });
     } catch {
       // TODO: toast
     }
@@ -174,7 +177,7 @@ export function ConnectionsPage() {
                         identityLabel: c.identityLabel,
                         kind: c.kind,
                       }}
-                      onRemove={() => handleRemove(c.id)}
+                      onRemove={() => handleRemove(c.id, c.provider, c.kind)}
                     />
                   ))
                 )}

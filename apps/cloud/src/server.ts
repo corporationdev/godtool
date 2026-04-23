@@ -84,9 +84,28 @@ export const McpSessionDO = Sentry.instrumentDurableObjectWithSentry(
 const rawFetch = handler.fetch;
 const instrumentedHandler = instrument({ fetch: rawFetch }, otelConfig);
 
+const shouldUseFetchInstrumentation = (env: Env): boolean => {
+  if (!env.AXIOM_TOKEN) return false;
+
+  // In local cloud dev (`VITE_PUBLIC_SITE_URL = http://localhost:3001`) the
+  // fetch handler and MCP Durable Object can share enough runtime state that
+  // otel-cf-workers' WorkerTracer is later invoked outside the request-local
+  // `setConfig(...)` context it expects. When that happens, any subsequent
+  // span start crashes with:
+  //   "Config is undefined. This is a bug in the instrumentation logic"
+  //
+  // That breaks MCP session bootstrap even though auth succeeded. Fall back
+  // to the raw handler in local dev/debug; the DO keeps its own telemetry via
+  // `DoTelemetryLive`, and this avoids the broken WorkerTracer path entirely.
+  if (env.EXECUTOR_MCP_DEBUG === "true") return false;
+  if (env.VITE_PUBLIC_SITE_URL?.startsWith("http://localhost")) return false;
+
+  return true;
+};
+
 const dispatchHandler = {
   fetch: (request: Request, env: Env, ctx: unknown) => {
-    const fn = env.AXIOM_TOKEN ? instrumentedHandler.fetch! : rawFetch;
+    const fn = shouldUseFetchInstrumentation(env) ? instrumentedHandler.fetch! : rawFetch;
     return (fn as (req: Request, env: Env, ctx: unknown) => Response | Promise<Response>)(
       request,
       env,

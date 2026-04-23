@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
+import { usePostHog } from "posthog-js/react";
 import type { SourcePlugin } from "../plugins/source-plugin";
 
 // ---------------------------------------------------------------------------
@@ -15,6 +16,7 @@ export function SourcesAddPage(props: {
 }) {
   const { pluginKey, url, preset, namespace, sourcePlugins } = props;
   const navigate = useNavigate();
+  const posthog = usePostHog();
 
   const plugin = sourcePlugins.find((p) => p.key === pluginKey);
 
@@ -53,6 +55,12 @@ export function SourcesAddPage(props: {
             initialNamespace={namespace}
             onComplete={(sourceId) => {
               if (sourceId) {
+                posthog.capture("source_added", {
+                  plugin_key: pluginKey,
+                  source_id: sourceId,
+                  via_preset: !!preset,
+                  via_url: !!url,
+                });
                 void navigate({
                   to: "/sources/$namespace",
                   params: { namespace: sourceId },

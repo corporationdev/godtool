@@ -126,6 +126,8 @@ type ActiveSandboxRun = {
   readonly toolInvoker: SandboxToolInvoker;
 };
 
+type McpRuntimeKind = "dynamic-worker" | "blaxel-sandbox";
+
 const formatSandboxToolCallError = (cause: Cause.Cause<unknown>) => {
   const failure = Array.from(Cause.failures(cause))[0];
   if (failure !== undefined) {
@@ -206,6 +208,14 @@ const resolveSessionMeta = Effect.fn("McpSessionDO.resolveSessionMeta")(function
 
 const requestScopedRuntimeEnabled = env.MCP_SESSION_REQUEST_SCOPED_RUNTIME === "true";
 
+const resolveMcpRuntimeKind = Effect.fn("McpSessionDO.resolveMcpRuntimeKind")(function* (
+  organizationId: string,
+) {
+  const autumn = yield* AutumnService;
+  const hasPersistentSandbox = yield* autumn.hasPersistentSandbox(organizationId);
+  return hasPersistentSandbox ? ("blaxel-sandbox" as const) : ("dynamic-worker" as const);
+});
+
 // ---------------------------------------------------------------------------
 // Durable Object
 // ---------------------------------------------------------------------------
@@ -217,6 +227,7 @@ export class McpSessionDO extends DurableObject {
   private lastActivityMs = 0;
   private dbHandle: DbHandle | null = null;
   private sessionMeta: SessionMeta | null = null;
+  private runtimeKind: McpRuntimeKind | null = null;
   private readonly activeSandboxRuns = new Map<string, ActiveSandboxRun>();
   // Updated at the start of each `handleRequest` so the host-mcp server's
   // `parentSpan` getter — invoked by the MCP SDK's deferred tool callbacks
@@ -273,13 +284,19 @@ export class McpSessionDO extends DurableObject {
   ) {
     const self = this;
     return Effect.gen(function* () {
-      if (requestScopedRuntimeEnabled) {
+      const runtimeKind: McpRuntimeKind = requestScopedRuntimeEnabled
+        ? "dynamic-worker"
+        : yield* resolveMcpRuntimeKind(sessionMeta.organizationId);
+
+      if (runtimeKind === "dynamic-worker") {
         const { executor, engine } = yield* makeExecutionStack(
           sessionMeta.userId,
           sessionMeta.organizationId,
           sessionMeta.organizationName,
         );
-        const description = yield* buildExecuteDescription(executor);
+        const description = yield* buildExecuteDescription(executor, {
+          runtimeKind: "dynamic-worker",
+        });
         const mcpServer = yield* createExecutorMcpServer({
           engine,
           description,
@@ -294,7 +311,7 @@ export class McpSessionDO extends DurableObject {
         yield* Effect.promise(() => mcpServer.connect(transport)).pipe(
           Effect.withSpan("McpSessionDO.transport.connect"),
         );
-        return { mcpServer, transport };
+        return { mcpServer, transport, runtimeKind };
       }
 
       const executor = yield* createScopedExecutor(
@@ -325,7 +342,9 @@ export class McpSessionDO extends DurableObject {
         createExecutionEngine({ executor, codeExecutor }),
         (orgId) => Effect.runFork(autumn.trackExecution(orgId)),
       );
-      const description = yield* buildExecuteDescription(executor);
+      const description = yield* buildExecuteDescription(executor, {
+        runtimeKind: "blaxel-sandbox",
+      });
       const mcpServer = yield* createExecutorMcpServer({
         engine,
         description,
@@ -340,7 +359,7 @@ export class McpSessionDO extends DurableObject {
       yield* Effect.promise(() => mcpServer.connect(transport)).pipe(
         Effect.withSpan("McpSessionDO.transport.connect"),
       );
-      return { mcpServer, transport };
+      return { mcpServer, transport, runtimeKind };
     }).pipe(
       Effect.withSpan("McpSessionDO.createRuntime"),
       Effect.provide(makeSessionServices(options.dbHandle)),
@@ -406,6 +425,7 @@ export class McpSessionDO extends DurableObject {
         });
         self.mcpServer = runtime.mcpServer;
         self.transport = runtime.transport;
+        self.runtimeKind = runtime.runtimeKind;
       }
 
       self.initialized = true;
@@ -577,11 +597,37 @@ export class McpSessionDO extends DurableObject {
       );
     }
 
-    this.lastActivityMs = Date.now();
-    const transport = this.transport;
     const self = this;
     return Effect.gen(function* () {
-      const response = yield* Effect.promise(() => transport.handleRequest(request)).pipe(
+      self.lastActivityMs = Date.now();
+      const sessionMeta = yield* self.loadSessionMeta();
+      if (!sessionMeta || !self.dbHandle) {
+        return jsonRpcError(404, -32001, "Session timed out due to inactivity — please reconnect");
+      }
+
+      const desiredRuntimeKind = yield* resolveMcpRuntimeKind(sessionMeta.organizationId).pipe(
+        Effect.provide(makeSessionServices(self.dbHandle)),
+      );
+
+      if (desiredRuntimeKind !== self.runtimeKind) {
+        yield* Effect.promise(() => self.closeConnectedRuntime()).pipe(
+          Effect.withSpan("mcp.session.runtime.switch.close"),
+        );
+        const runtime = yield* self.createConnectedRuntime(sessionMeta, {
+          dbHandle: self.dbHandle,
+          enableJsonResponse: true,
+        });
+        self.mcpServer = runtime.mcpServer;
+        self.transport = runtime.transport;
+        self.runtimeKind = runtime.runtimeKind;
+      }
+
+      const activeTransport = self.transport;
+      if (!activeTransport) {
+        return jsonRpcError(404, -32001, "Session timed out due to inactivity — please reconnect");
+      }
+
+      const response = yield* Effect.promise(() => activeTransport.handleRequest(request)).pipe(
         Effect.withSpan("McpSessionDO.transport.handleRequest", {
           attributes: {
             "mcp.request.method": request.method,
@@ -774,6 +820,16 @@ export class McpSessionDO extends DurableObject {
 
   private async cleanup(): Promise<void> {
     this.activeSandboxRuns.clear();
+    await this.closeConnectedRuntime();
+    if (this.dbHandle) {
+      await this.dbHandle.end();
+      this.dbHandle = null;
+    }
+    await Effect.runPromise(this.clearSessionState());
+  }
+
+  private async closeConnectedRuntime(): Promise<void> {
+    this.activeSandboxRuns.clear();
     if (this.transport) {
       await this.transport.close().catch(() => undefined);
       this.transport = null;
@@ -782,10 +838,6 @@ export class McpSessionDO extends DurableObject {
       await this.mcpServer.close().catch(() => undefined);
       this.mcpServer = null;
     }
-    if (this.dbHandle) {
-      await this.dbHandle.end();
-      this.dbHandle = null;
-    }
-    await Effect.runPromise(this.clearSessionState());
+    this.runtimeKind = null;
   }
 }

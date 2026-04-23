@@ -11,15 +11,31 @@ import { FilesApi } from "./api";
 const ExecutorApiWithFiles = addGroup(FilesApi);
 
 export const FilesHandlers = HttpApiBuilder.group(ExecutorApiWithFiles, "files", (handlers) =>
-  handlers.handle("createSession", () =>
-    capture(
-      Effect.gen(function* () {
-        const auth = yield* AuthContext;
-        const { db } = yield* DbService;
-        return yield* Effect.promise(() =>
-          makeSandboxesService(db).ensureCodeServerSession(auth.organizationId),
-        );
-      }),
+  handlers
+    .handle("createSession", () =>
+      capture(
+        Effect.gen(function* () {
+          const auth = yield* AuthContext;
+          const { db } = yield* DbService;
+          return yield* Effect.promise(() =>
+            makeSandboxesService(db).ensureCodeServerSession(auth.organizationId),
+          );
+        }),
+      ),
+    )
+    .handle("ensureSandbox", () =>
+      capture(
+        Effect.gen(function* () {
+          const auth = yield* AuthContext;
+          const { db } = yield* DbService;
+          const ensured = yield* Effect.promise(() =>
+            makeSandboxesService(db).ensureSandbox(auth.organizationId),
+          );
+          return {
+            sandboxId: ensured.externalId,
+            sandboxStatus: ensured.status,
+          };
+        }),
+      ),
     ),
-  ),
 );

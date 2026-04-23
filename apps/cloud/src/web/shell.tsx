@@ -1,7 +1,7 @@
 import { Link, Outlet, useLocation } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { useAtomValue, useAtomSet, Result } from "@effect-atom/atom-react";
-import { ChevronsUpDown, Database, Files, KeyRound, Link2 } from "lucide-react";
+import { ChevronsUpDown, CreditCard, Database, Files, KeyRound, Link2 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -48,6 +48,7 @@ const navItems = [
   { to: "/", label: "Sources", icon: Database },
   { to: "/files", label: "Files", icon: Files },
   { to: "/connections", label: "Connections", icon: Link2 },
+  { to: "/billing", label: "Billing", icon: CreditCard },
   { to: "/secrets", label: "Secrets", icon: KeyRound },
 ] as const;
 
