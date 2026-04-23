@@ -14,24 +14,21 @@ const PLAN_META: Record<
   string,
   { tagline: string; inherits?: string; features: string[] }
 > = {
-  hobby: {
-    tagline: "For individuals and small teams",
+  free: {
+    tagline: "For trying things out",
     features: [
-      "50,000 included executions per seat",
-      "Up to 5 seats",
-      "60s execution timeout",
-      "Unlimited sources",
-      "$0.30 per 1,000 extra executions",
+      "5,000 included executions each month",
+      "Standard execution timeout",
+      "Connect sources and explore the product",
     ],
   },
-  professional: {
-    tagline: "For teams that need more",
-    inherits: "Hobby",
+  pro: {
+    tagline: "For teams that need more than the free tier",
     features: [
-      "100,000 included executions per seat",
-      "Unlimited seats",
+      "100,000 included executions each month",
       "5 minute execution timeout",
       "Join by team domain",
+      "Unlimited sources",
     ],
   },
 };
@@ -44,29 +41,6 @@ const ACTION_LABELS: Record<string, string> = {
   purchase: "Purchase",
 };
 
-const ENTERPRISE_FEATURES = [
-  "Self-hosted or dedicated cloud deployment",
-  "SSO / SAML & SCIM provisioning",
-  "Audit logs for every tool call",
-  "Dedicated support & onboarding",
-  "Security reviews, DPA & SOC 2 on request",
-];
-
-const ENTERPRISE_MAILTO = `mailto:rhys@executor.sh?subject=${encodeURIComponent(
-  "Executor Enterprise inquiry",
-)}&body=${encodeURIComponent(
-  [
-    "Hi,",
-    "",
-    "We're interested in Executor Enterprise.",
-    "",
-    "Company:",
-    "Team size:",
-    "Use case:",
-    "Requirements (SSO, self-hosted, compliance, etc.):",
-  ].join("\n"),
-)}`;
-
 function PlansPage() {
   const { attach, openCustomerPortal, isLoading: customerLoading } = useCustomer();
   const { data: plans, isLoading: plansLoading, isFetching } = useListPlans();
@@ -74,9 +48,7 @@ function PlansPage() {
 
   const isLoading = customerLoading || plansLoading;
 
-  const paidPlans = (plans ?? ([] as Plan[])).filter(
-    (p: Plan) => p.id === "hobby" || p.id === "professional",
-  );
+  const visiblePlans = (plans ?? ([] as Plan[])).filter((p: Plan) => p.id === "free" || p.id === "pro");
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
@@ -114,11 +86,11 @@ function PlansPage() {
         ) : (
           <div
             className={[
-              "grid gap-4 grid-cols-1 md:grid-cols-3 transition-opacity",
+              "grid gap-4 grid-cols-1 transition-opacity md:grid-cols-2",
               isFetching ? "opacity-50 pointer-events-none" : "",
             ].join(" ")}
           >
-            {paidPlans.map((plan: Plan) => {
+            {visiblePlans.map((plan: Plan) => {
               const meta = PLAN_META[plan.id];
               if (!meta) return null;
 
@@ -166,13 +138,19 @@ function PlansPage() {
                   <p className="mt-1 text-sm text-muted-foreground">{meta.tagline}</p>
 
                   <div className="mt-4 flex items-baseline gap-1.5">
-                    <span className="text-2xl font-semibold text-foreground tabular-nums">
-                      ${plan.price?.amount ?? 0}
-                    </span>
-                    {plan.price?.interval && (
-                      <span className="text-sm text-muted-foreground">
-                        USD / seat / {plan.price.interval}
-                      </span>
+                    {plan.price?.amount ? (
+                      <>
+                        <span className="text-2xl font-semibold text-foreground tabular-nums">
+                          ${plan.price.amount}
+                        </span>
+                        {plan.price.interval && (
+                          <span className="text-sm text-muted-foreground">
+                            USD / {plan.price.interval}
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-2xl font-semibold text-foreground">Free</span>
                     )}
                   </div>
 
@@ -211,17 +189,9 @@ function PlansPage() {
                     )}
                   </div>
 
-                  {meta.inherits && (
-                    <p className="mt-5 text-xs font-medium text-foreground">
-                      Everything in {meta.inherits}, plus
-                    </p>
-                  )}
                   <ul
                     role="list"
-                    className={[
-                      "space-y-2",
-                      meta.inherits ? "mt-2" : "mt-5",
-                    ].join(" ")}
+                    className="mt-5 space-y-2"
                   >
                     {meta.features.map((f) => (
                       <li
@@ -248,59 +218,6 @@ function PlansPage() {
                 </div>
               );
             })}
-
-            <div className="flex flex-col rounded-xl border border-border p-5">
-              <div className="flex items-center justify-between">
-                <p className="text-base font-semibold text-foreground leading-none">
-                  Enterprise
-                </p>
-              </div>
-              <p className="mt-1 text-sm text-muted-foreground">
-                For orgs with custom needs
-              </p>
-
-              <div className="mt-4 flex items-baseline gap-1.5">
-                <span className="text-2xl font-semibold text-foreground tabular-nums">
-                  Custom
-                </span>
-              </div>
-
-              <div className="mt-4">
-                <a
-                  href={ENTERPRISE_MAILTO}
-                  className="flex h-9 w-full items-center justify-center rounded-md border border-border bg-background text-sm font-medium text-foreground transition-colors hover:bg-muted"
-                >
-                  Contact us
-                </a>
-              </div>
-
-              <p className="mt-5 text-xs font-medium text-foreground">
-                Everything in Professional, plus
-              </p>
-              <ul role="list" className="mt-2 space-y-2">
-                {ENTERPRISE_FEATURES.map((f) => (
-                  <li
-                    key={f}
-                    className="flex items-start gap-2 text-xs text-muted-foreground"
-                  >
-                    <svg
-                      viewBox="0 0 16 16"
-                      fill="none"
-                      className="mt-px size-3.5 shrink-0 text-primary/60"
-                    >
-                      <path
-                        d="M3.5 8.5L6.5 11.5L12.5 5"
-                        stroke="currentColor"
-                        strokeWidth="1.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                    <span>{f}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
           </div>
         )}
       </div>

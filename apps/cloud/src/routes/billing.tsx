@@ -11,8 +11,7 @@ export const Route = createFileRoute("/billing")({
 
 const PLAN_TAGLINES: Record<string, string> = {
   free: "For trying things out",
-  hobby: "For individuals and small teams",
-  professional: "For teams that need more",
+  pro: "For teams that need more than the free tier",
 };
 
 function BillingPage() {
