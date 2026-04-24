@@ -45,7 +45,11 @@ import Layout from '../layouts/Layout.astro'
       <div class="rise-d4 mb-4" id="detect-bar">
         <div class="relative">
           <div class="flex items-center gap-3 bg-surface-raised border border-rule rounded-xl px-5 py-3.5 focus-within:border-teal/30 transition-colors">
-            <svg class="w-4 h-4 text-ink-faint shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m9.414-5.874a4.5 4.5 0 00-6.364 0l-4.5 4.5a4.5 4.5 0 001.242 7.244" /></svg>
+            <svg class="w-4 h-4 text-ink-faint shrink-0" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 17H7A5 5 0 0 1 7 7h2" />
+              <path d="M15 7h2a5 5 0 1 1 0 10h-2" />
+              <path d="M8 12h8" />
+            </svg>
             <input
               id="detect-input"
               type="url"
@@ -581,7 +585,7 @@ import Layout from '../layouts/Layout.astro'
             </div>
           </div>
 
-          <p class="text-[13px] text-ink-faint mt-auto">Better, but a poor permission model that pushes users to dangerously-skip-permissions — or requires a VM.</p>
+          <p class="text-[13px] text-ink-faint mt-auto">Better, but a poor permission model that pushes users to dangerously-skip-permissions.</p>
         </div>
 
         <!-- Era 3: Godtool -->
@@ -608,6 +612,7 @@ import Layout from '../layouts/Layout.astro'
                 <span class="text-[9px] font-mono text-teal/80 border border-teal/25 rounded px-1.5 py-0.5">auth</span>
                 <span class="text-[9px] font-mono text-teal/80 border border-teal/25 rounded px-1.5 py-0.5">policies</span>
                 <span class="text-[9px] font-mono text-teal/80 border border-teal/25 rounded px-1.5 py-0.5">catalog</span>
+                <span class="text-[9px] font-mono text-teal/80 border border-teal/25 rounded px-1.5 py-0.5">filesystem</span>
               </div>
             </div>
             <svg class="w-full h-8 text-teal/70" viewBox="0 0 200 32" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -686,7 +691,7 @@ import Layout from '../layouts/Layout.astro'
     <div class="relative max-w-[1200px] mx-auto px-6 sm:px-10">
       <div class="reveal max-w-2xl mx-auto text-center">
         <h2 class="font-display text-[clamp(2rem,5vw,4rem)] leading-[1.05] tracking-tight mb-8">
-          Try the future of <span class="italic text-teal">tool calling.</span>
+          Try the future of <span class="italic text-teal">agents.</span>
         </h2>
 
         <div class="flex flex-wrap items-center justify-center gap-4">
