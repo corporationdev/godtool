@@ -2,8 +2,11 @@ import { defineConfig } from "tsup";
 
 export default defineConfig({
   entry: {
-    index: "src/promise.ts",
-    core: "src/sdk/index.ts",
+    index: "src/sdk/index.ts",
+    promise: "src/promise.ts",
+    api: "src/api/index.ts",
+    react: "src/react/index.ts",
+    presets: "src/sdk/presets.ts",
   },
   format: ["esm"],
   dts: false,

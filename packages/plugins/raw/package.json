@@ -27,14 +27,32 @@
     "exports": {
       ".": {
         "import": {
-          "types": "./dist/promise.d.ts",
+          "types": "./dist/sdk/index.d.ts",
           "default": "./dist/index.js"
         }
       },
-      "./core": {
+      "./promise": {
         "import": {
-          "types": "./dist/sdk/index.d.ts",
-          "default": "./dist/core.js"
+          "types": "./dist/promise.d.ts",
+          "default": "./dist/promise.js"
+        }
+      },
+      "./api": {
+        "import": {
+          "types": "./dist/api/index.d.ts",
+          "default": "./dist/api.js"
+        }
+      },
+      "./react": {
+        "import": {
+          "types": "./dist/react/index.d.ts",
+          "default": "./dist/react.js"
+        }
+      },
+      "./presets": {
+        "import": {
+          "types": "./dist/sdk/presets.d.ts",
+          "default": "./dist/presets.js"
         }
       }
     }
