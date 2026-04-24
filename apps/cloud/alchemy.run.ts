@@ -44,7 +44,6 @@ const stage = requireEnv("STAGE");
 const runtime = resolveRuntimeContext(stage);
 const siteUrl = new URL(runtime.appUrl);
 const serverUrl = new URL(runtime.serverUrl);
-const hyperdriveResourceId = `cloud-db-${stage}`;
 const hyperdriveName = stage;
 
 const app = await alchemy("godtool-cloud", {
@@ -55,9 +54,10 @@ const app = await alchemy("godtool-cloud", {
   stage,
 });
 
-const hyperdrive = await Hyperdrive(hyperdriveResourceId, {
-  // Keep each stage on its own Hyperdrive resource so preview/prod deploys
-  // never contend over a shared UUID in Alchemy state.
+const hyperdrive = await Hyperdrive("cloud-db", {
+  // Keep the logical Alchemy id stable and only scope the physical
+  // Hyperdrive name by stage so deploys do not treat routine updates as a
+  // resource replacement.
   name: hyperdriveName,
   origin: requireEnv("DATABASE_URL"),
 });
