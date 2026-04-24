@@ -200,7 +200,13 @@ function PlansPage() {
                         disabled={loadingPlan !== null}
                         onClick={async () => {
                           setLoadingPlan(plan.id);
-                          await attach({ planId: plan.id, redirectMode: "always" });
+                          await attach({
+                            planId: plan.id,
+                            redirectMode: "always",
+                            checkoutSessionParams: {
+                              allow_promotion_codes: true,
+                            },
+                          });
                           setLoadingPlan(null);
                         }}
                         className={[
