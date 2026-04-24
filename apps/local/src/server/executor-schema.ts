@@ -232,6 +232,31 @@ export const graphql_composio_session = sqliteTable("graphql_composio_session", 
   index("graphql_composio_session_scope_id_idx").on(table.scope_id),
 ]);
 
+export const raw_source = sqliteTable("raw_source", {
+  id: text('id').notNull(),
+  scope_id: text('scope_id').notNull(),
+  name: text('name').notNull(),
+  base_url: text('base_url').notNull(),
+  headers: text('headers', { mode: "json" }),
+  composio: text('composio', { mode: "json" }),
+  auth: text('auth', { mode: "json" }),
+  created_at: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  updated_at: integer('updated_at', { mode: 'timestamp_ms' }).notNull()
+}, (table) => [
+  primaryKey({ columns: [table.scope_id, table.id] }),
+  index("raw_source_scope_id_idx").on(table.scope_id),
+]);
+
+export const raw_composio_session = sqliteTable("raw_composio_session", {
+  id: text('id').notNull(),
+  scope_id: text('scope_id').notNull(),
+  session: text('session', { mode: "json" }).notNull(),
+  created_at: integer('created_at', { mode: 'timestamp_ms' }).notNull()
+}, (table) => [
+  primaryKey({ columns: [table.scope_id, table.id] }),
+  index("raw_composio_session_scope_id_idx").on(table.scope_id),
+]);
+
 export const blob = sqliteTable("blob", {
   namespace: text('namespace').notNull(),
   key: text('key').notNull(),

@@ -32,6 +32,7 @@ import { openApiSourcePlugin } from "@executor/plugin-openapi/react";
 import { mcpSourcePlugin } from "@executor/plugin-mcp/react";
 import { googleDiscoverySourcePlugin } from "@executor/plugin-google-discovery/react";
 import { graphqlSourcePlugin } from "@executor/plugin-graphql/react";
+import { rawSourcePlugin } from "@executor/plugin-raw/react";
 import { AUTH_PATHS } from "../auth/api";
 import { organizationsAtom, switchOrganization, useAuth } from "./auth";
 
@@ -40,6 +41,7 @@ const sourcePlugins = [
   mcpSourcePlugin,
   googleDiscoverySourcePlugin,
   graphqlSourcePlugin,
+  rawSourcePlugin,
 ];
 
 // ── Nav items ─────────────────────────────────────────────────────────────

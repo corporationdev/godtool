@@ -12,12 +12,14 @@ import { createMcpSourcePlugin } from "@executor/plugin-mcp/react";
 const mcpSourcePlugin = createMcpSourcePlugin({ allowStdio: true });
 import { googleDiscoverySourcePlugin } from "@executor/plugin-google-discovery/react";
 import { graphqlSourcePlugin } from "@executor/plugin-graphql/react";
+import { rawSourcePlugin } from "@executor/plugin-raw/react";
 
 const sourcePlugins = [
   openApiSourcePlugin,
   mcpSourcePlugin,
   googleDiscoverySourcePlugin,
   graphqlSourcePlugin,
+  rawSourcePlugin,
 ];
 
 // ── Env ─────────────────────────────────────────────────────────────────

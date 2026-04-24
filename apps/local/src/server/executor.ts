@@ -35,6 +35,7 @@ import { openApiPlugin } from "@executor/plugin-openapi";
 import { mcpPlugin } from "@executor/plugin-mcp";
 import { googleDiscoveryPlugin } from "@executor/plugin-google-discovery";
 import { graphqlPlugin } from "@executor/plugin-graphql";
+import { rawPlugin } from "@executor/plugin-raw";
 import { keychainPlugin } from "@executor/plugin-keychain";
 import { fileSecretsPlugin } from "@executor/plugin-file-secrets";
 import { onepasswordPlugin } from "@executor/plugin-onepassword";
@@ -104,6 +105,10 @@ const createLocalPlugins = (configFile: ConfigFileSink) =>
       composioApiKey: process.env.COMPOSIO_API_KEY || undefined,
     }),
     graphqlPlugin({
+      configFile,
+      composioApiKey: process.env.COMPOSIO_API_KEY || undefined,
+    }),
+    rawPlugin({
       configFile,
       composioApiKey: process.env.COMPOSIO_API_KEY || undefined,
     }),

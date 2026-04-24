@@ -7,6 +7,7 @@ import { OpenApiExtensionService } from "@executor/plugin-openapi/api";
 import { McpExtensionService } from "@executor/plugin-mcp/api";
 import { GoogleDiscoveryExtensionService } from "@executor/plugin-google-discovery/api";
 import { GraphqlExtensionService } from "@executor/plugin-graphql/api";
+import { RawExtensionService } from "@executor/plugin-raw/api";
 
 import { authorizeOrganization } from "../auth/authorize-organization";
 import { WorkOSAuth } from "../auth/workos";
@@ -56,6 +57,7 @@ const createProtectedApp = (userId: string, organizationId: string, organization
       Layer.succeed(McpExtensionService, executor.mcp),
       Layer.succeed(GoogleDiscoveryExtensionService, executor.googleDiscovery),
       Layer.succeed(GraphqlExtensionService, executor.graphql),
+      Layer.succeed(RawExtensionService, executor.raw),
     );
 
     return assumeOrgAuthProvided(

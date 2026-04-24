@@ -244,6 +244,31 @@ export const graphql_composio_session = pgTable("graphql_composio_session", {
   index("graphql_composio_session_scope_id_idx").on(table.scope_id),
 ]);
 
+export const raw_source = pgTable("raw_source", {
+  id: text('id').notNull(),
+  scope_id: text('scope_id').notNull(),
+  name: text('name').notNull(),
+  base_url: text('base_url').notNull(),
+  headers: jsonb('headers'),
+  composio: jsonb('composio'),
+  auth: jsonb('auth'),
+  created_at: timestamp('created_at').notNull(),
+  updated_at: timestamp('updated_at').notNull()
+}, (table) => [
+  primaryKey({ columns: [table.scope_id, table.id] }),
+  index("raw_source_scope_id_idx").on(table.scope_id),
+]);
+
+export const raw_composio_session = pgTable("raw_composio_session", {
+  id: text('id').notNull(),
+  scope_id: text('scope_id').notNull(),
+  session: jsonb('session').notNull(),
+  created_at: timestamp('created_at').notNull()
+}, (table) => [
+  primaryKey({ columns: [table.scope_id, table.id] }),
+  index("raw_composio_session_scope_id_idx").on(table.scope_id),
+]);
+
 export const workos_vault_metadata = pgTable("workos_vault_metadata", {
   id: text('id').notNull(),
   scope_id: text('scope_id').notNull(),

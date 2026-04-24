@@ -33,6 +33,7 @@
     "@executor/plugin-mcp": "workspace:*",
     "@executor/plugin-onepassword": "workspace:*",
     "@executor/plugin-openapi": "workspace:*",
+    "@executor/plugin-raw": "workspace:*",
     "@executor/react": "workspace:*",
     "@executor/runtime-quickjs": "workspace:*",
     "@executor/sdk": "workspace:*",

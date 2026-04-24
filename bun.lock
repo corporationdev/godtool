@@ -65,6 +65,7 @@
         "@executor/plugin-graphql": "workspace:*",
         "@executor/plugin-mcp": "workspace:*",
         "@executor/plugin-openapi": "workspace:*",
+        "@executor/plugin-raw": "workspace:*",
         "@executor/plugin-workos-vault": "workspace:*",
         "@executor/react": "workspace:*",
         "@executor/runtime-dynamic-worker": "workspace:*",
@@ -151,6 +152,7 @@
         "@executor/plugin-mcp": "workspace:*",
         "@executor/plugin-onepassword": "workspace:*",
         "@executor/plugin-openapi": "workspace:*",
+        "@executor/plugin-raw": "workspace:*",
         "@executor/react": "workspace:*",
         "@executor/runtime-quickjs": "workspace:*",
         "@executor/sdk": "workspace:*",
@@ -723,6 +725,43 @@
         "@executor/api": "workspace:*",
         "@executor/react": "workspace:*",
         "@executor/storage-core": "workspace:*",
+        "@types/node": "catalog:",
+        "@types/react": "catalog:",
+        "bun-types": "catalog:",
+        "react": "catalog:",
+        "tsup": "catalog:",
+        "vitest": "catalog:",
+      },
+      "peerDependencies": {
+        "@effect-atom/atom-react": "^0.5.0",
+        "@executor/api": "workspace:*",
+        "@executor/react": "workspace:*",
+        "@tanstack/react-router": "catalog:",
+        "react": "catalog:",
+      },
+      "optionalPeers": [
+        "@effect-atom/atom-react",
+        "@executor/api",
+        "@executor/react",
+        "@tanstack/react-router",
+        "react",
+      ],
+    },
+    "packages/plugins/raw": {
+      "name": "@executor/plugin-raw",
+      "version": "0.0.1",
+      "dependencies": {
+        "@effect/platform": "catalog:",
+        "@effect/platform-node": "catalog:",
+        "@executor/config": "workspace:*",
+        "@executor/sdk": "workspace:*",
+        "effect": "catalog:",
+      },
+      "devDependencies": {
+        "@effect-atom/atom-react": "^0.5.0",
+        "@effect/vitest": "catalog:",
+        "@executor/api": "workspace:*",
+        "@executor/react": "workspace:*",
         "@types/node": "catalog:",
         "@types/react": "catalog:",
         "bun-types": "catalog:",
@@ -1344,6 +1383,8 @@
     "@executor/plugin-onepassword": ["@executor/plugin-onepassword@workspace:packages/plugins/onepassword"],
 
     "@executor/plugin-openapi": ["@executor/plugin-openapi@workspace:packages/plugins/openapi"],
+
+    "@executor/plugin-raw": ["@executor/plugin-raw@workspace:packages/plugins/raw"],
 
     "@executor/plugin-workos-vault": ["@executor/plugin-workos-vault@workspace:packages/plugins/workos-vault"],
 

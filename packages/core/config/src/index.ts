@@ -3,6 +3,7 @@ export {
   SourceConfig,
   OpenApiSourceConfig,
   GraphqlSourceConfig,
+  RawSourceConfig,
   McpRemoteSourceConfig,
   McpStdioSourceConfig,
   McpAuthConfig,
