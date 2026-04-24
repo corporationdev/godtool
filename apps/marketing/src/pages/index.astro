@@ -1,14 +1,16 @@
 ---
 export const prerender = true
 import Layout from '../layouts/Layout.astro'
+import SandboxFilesystemDemo from '../components/SandboxFilesystemDemo'
 ---
 
 <Layout>
   <!-- ─── NAV ─── -->
   <nav class="fixed top-0 w-full z-50 bg-surface/80 backdrop-blur-lg">
     <div class="max-w-[1200px] mx-auto px-6 sm:px-10 h-14 flex items-center justify-between border-b border-rule">
-      <a href="/" class="font-display text-xl italic text-ink tracking-tight hover:text-teal transition-colors">godtool</a>
+      <a href="/" class="font-display text-xl text-ink tracking-tight hover:text-teal transition-colors">GOD TOOL</a>
       <div class="flex items-center gap-8">
+        <a href="#pricing" class="hidden sm:block text-[13px] text-ink-muted hover:text-ink transition-colors">Pricing</a>
         <a href="https://github.com/corporationdev/godtool" class="hidden sm:block text-[13px] text-ink-muted hover:text-ink transition-colors">GitHub</a>
         <a href="https://app.godtool.dev" class="text-[13px] font-medium text-primary-foreground bg-primary hover:bg-primary/90 px-4 py-1.5 rounded-md transition-colors">
           Get started
@@ -23,14 +25,14 @@ import Layout from '../layouts/Layout.astro'
 
     <div class="max-w-[1200px] mx-auto px-6 sm:px-10 w-full">
       <!-- Text centered -->
-      <div class="text-center max-w-2xl mx-auto mb-16">
+      <div class="text-center max-w-[980px] mx-auto mb-16">
         <h1 class="rise-d1 font-display text-[clamp(3rem,7vw,5.5rem)] leading-[0.95] tracking-tight mb-8">
-          <span class="text-ink">Your missing<br /></span><span class="italic text-teal">execution&nbsp;layer</span>
+          <span class="text-ink">A shared computer<br /></span><span class="italic text-teal"> for all of your agents</span>
         </h1>
 
-        <p class="rise-d2 text-[17px] leading-[1.7] text-ink-muted mb-10">
-          One catalog. Every agent. Shared auth, policies, and tools across
-          Cursor, Claude Code, OpenCode&mdash;or your own.
+        <p class="rise-d2 max-w-3xl mx-auto text-[17px] leading-[1.7] text-ink-muted mb-10">
+          Give Cursor, Claude Code, OpenClaw, and any agent the same persistent filesystem,
+          authenticated services, virtual desktop, binaries, and typed tool catalog.
         </p>
 
         <div class="rise-d3 flex flex-wrap items-center justify-center gap-4">
@@ -39,6 +41,19 @@ import Layout from '../layouts/Layout.astro'
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3"/></svg>
           </a>
         </div>
+      </div>
+
+      <SandboxFilesystemDemo client:load />
+
+      <div class="rise-d4 mb-6 text-center">
+        <span class="text-[11px] font-mono uppercase tracking-[0.2em] text-ink-faint mb-3 block">Authenticated tools</span>
+        <h2 class="font-display text-[clamp(1.8rem,3.6vw,3rem)] leading-[1.05] tracking-tight text-ink">
+          One login, typed tools for <span class="italic text-teal">every service.</span>
+        </h2>
+        <p class="mt-4 text-[15px] leading-7 text-ink-muted max-w-2xl mx-auto">
+          Connect an API once. Godtool turns it into TypeScript-callable tools with shared auth and policy checks,
+          available to every agent that points at your workspace.
+        </p>
       </div>
 
       <!-- URL input bar -->
@@ -53,7 +68,7 @@ import Layout from '../layouts/Layout.astro'
             <input
               id="detect-input"
               type="url"
-              placeholder="Paste any API URL to detect tools..."
+              placeholder="Paste any OpenAPI, GraphQL, or discovery URL..."
               class="flex-1 bg-transparent text-[14px] text-ink placeholder:text-ink-faint outline-none font-mono"
               autocomplete="off"
               spellcheck="false"
@@ -99,7 +114,9 @@ import Layout from '../layouts/Layout.astro'
             <div class="w-[200px] shrink-0 border-r border-rule p-3 space-y-1 hidden sm:block">
               <div class="text-[10px] font-mono text-ink-faint uppercase tracking-[0.1em] mb-2.5 px-2">Connected</div>
               <button data-source="github" class="catalog-source w-full flex items-center gap-2.5 px-2 py-2 rounded-md text-left transition-colors bg-teal/[0.08] border border-teal/15">
-                <div class="w-5 h-5 rounded bg-orange-400/15 flex items-center justify-center text-[9px] text-orange-400 font-mono font-medium shrink-0">G</div>
+                <div class="w-6 h-6 rounded-md border border-rule bg-white flex items-center justify-center shrink-0">
+                  <img src="https://www.google.com/s2/favicons?domain=github.com&sz=64" alt="" class="w-4 h-4" loading="lazy" referrerpolicy="no-referrer" />
+                </div>
                 <div class="flex-1 min-w-0">
                   <div class="text-ink text-[12px] truncate">GitHub</div>
                   <div class="text-[10px] text-ink-faint">347 tools</div>
@@ -107,7 +124,9 @@ import Layout from '../layouts/Layout.astro'
                 <span class="text-[9px] font-mono text-ink-faint shrink-0">openapi</span>
               </button>
               <button data-source="slack" class="catalog-source w-full flex items-center gap-2.5 px-2 py-2 rounded-md text-left transition-colors border border-transparent hover:bg-surface-overlay">
-                <div class="w-5 h-5 rounded bg-blue-400/15 flex items-center justify-center text-[9px] text-blue-400 font-mono font-medium shrink-0">S</div>
+                <div class="w-6 h-6 rounded-md border border-rule bg-white flex items-center justify-center shrink-0">
+                  <img src="https://www.google.com/s2/favicons?domain=slack.com&sz=64" alt="" class="w-4 h-4" loading="lazy" referrerpolicy="no-referrer" />
+                </div>
                 <div class="flex-1 min-w-0">
                   <div class="text-ink-muted text-[12px] truncate">Slack</div>
                   <div class="text-[10px] text-ink-faint">42 tools</div>
@@ -115,7 +134,9 @@ import Layout from '../layouts/Layout.astro'
                 <span class="text-[9px] font-mono text-ink-faint shrink-0">openapi</span>
               </button>
               <button data-source="calendar" class="catalog-source w-full flex items-center gap-2.5 px-2 py-2 rounded-md text-left transition-colors border border-transparent hover:bg-surface-overlay">
-                <div class="w-5 h-5 rounded bg-green-400/15 flex items-center justify-center text-[9px] text-green-400 font-mono font-medium shrink-0">C</div>
+                <div class="w-6 h-6 rounded-md border border-rule bg-white flex items-center justify-center shrink-0">
+                  <img src="https://www.google.com/s2/favicons?domain=calendar.google.com&sz=64" alt="" class="w-4 h-4" loading="lazy" referrerpolicy="no-referrer" />
+                </div>
                 <div class="flex-1 min-w-0">
                   <div class="text-ink-muted text-[12px] truncate">Calendar</div>
                   <div class="text-[10px] text-ink-faint">18 tools</div>
@@ -123,7 +144,9 @@ import Layout from '../layouts/Layout.astro'
                 <span class="text-[9px] font-mono text-ink-faint shrink-0">google</span>
               </button>
               <button data-source="linear" class="catalog-source w-full flex items-center gap-2.5 px-2 py-2 rounded-md text-left transition-colors border border-transparent hover:bg-surface-overlay">
-                <div class="w-5 h-5 rounded bg-purple-400/15 flex items-center justify-center text-[9px] text-purple-400 font-mono font-medium shrink-0">L</div>
+                <div class="w-6 h-6 rounded-md border border-rule bg-white flex items-center justify-center shrink-0">
+                  <img src="https://www.google.com/s2/favicons?domain=linear.app&sz=64" alt="" class="w-4 h-4" loading="lazy" referrerpolicy="no-referrer" />
+                </div>
                 <div class="flex-1 min-w-0">
                   <div class="text-ink-muted text-[12px] truncate">Linear</div>
                   <div class="text-[10px] text-ink-faint">56 tools</div>
@@ -131,7 +154,9 @@ import Layout from '../layouts/Layout.astro'
                 <span class="text-[9px] font-mono text-ink-faint shrink-0">graphql</span>
               </button>
               <button data-source="resend" class="catalog-source w-full flex items-center gap-2.5 px-2 py-2 rounded-md text-left transition-colors border border-transparent hover:bg-surface-overlay">
-                <div class="w-5 h-5 rounded bg-red-400/15 flex items-center justify-center text-[9px] text-red-400 font-mono font-medium shrink-0">R</div>
+                <div class="w-6 h-6 rounded-md border border-rule bg-white flex items-center justify-center shrink-0">
+                  <img src="https://www.google.com/s2/favicons?domain=resend.com&sz=64" alt="" class="w-4 h-4" loading="lazy" referrerpolicy="no-referrer" />
+                </div>
                 <div class="flex-1 min-w-0">
                   <div class="text-ink-muted text-[12px] truncate">Resend</div>
                   <div class="text-[10px] text-ink-faint">19 tools</div>
@@ -139,7 +164,9 @@ import Layout from '../layouts/Layout.astro'
                 <span class="text-[9px] font-mono text-ink-faint shrink-0">openapi</span>
               </button>
               <button data-source="axiom" class="catalog-source w-full flex items-center gap-2.5 px-2 py-2 rounded-md text-left transition-colors border border-transparent hover:bg-surface-overlay">
-                <div class="w-5 h-5 rounded bg-cyan-400/15 flex items-center justify-center text-[9px] text-cyan-400 font-mono font-medium shrink-0">A</div>
+                <div class="w-6 h-6 rounded-md border border-rule bg-white flex items-center justify-center shrink-0">
+                  <img src="https://www.google.com/s2/favicons?domain=axiom.co&sz=64" alt="" class="w-4 h-4" loading="lazy" referrerpolicy="no-referrer" />
+                </div>
                 <div class="flex-1 min-w-0">
                   <div class="text-ink-muted text-[12px] truncate">Axiom</div>
                   <div class="text-[10px] text-ink-faint">17 tools</div>
@@ -560,7 +587,7 @@ import Layout from '../layouts/Layout.astro'
             </div>
           </div>
 
-          <p class="text-[13px] text-ink-faint mt-auto">Every schema dumped into context. Tokens wasted. Poor performance.</p>
+          <p class="text-[13px] text-ink-faint mt-auto">Schemas stuffed into every chat. No durable files, no shared memory.</p>
         </div>
 
         <!-- Era 2: Bash -->
@@ -585,7 +612,7 @@ import Layout from '../layouts/Layout.astro'
             </div>
           </div>
 
-          <p class="text-[13px] text-ink-faint mt-auto">Better, but a poor permission model that pushes users to dangerously-skip-permissions.</p>
+          <p class="text-[13px] text-ink-faint mt-auto">Powerful, but credentials and permissions become per-agent and hard to govern.</p>
         </div>
 
         <!-- Era 3: Godtool -->
@@ -597,7 +624,7 @@ import Layout from '../layouts/Layout.astro'
             <!-- Multiple agents -->
             <div class="w-full grid grid-cols-3 gap-1.5">
               <div class="rounded-lg border border-rule bg-surface px-2 py-2.5 text-center text-[10px] font-mono text-ink">Cursor</div>
-              <div class="rounded-lg border border-rule bg-surface px-2 py-2.5 text-center text-[10px] font-mono text-ink">Claude</div>
+              <div class="rounded-lg border border-rule bg-surface px-2 py-2.5 text-center text-[10px] font-mono text-ink">Claude Code</div>
               <div class="rounded-lg border border-rule bg-surface px-2 py-2.5 text-center text-[10px] font-mono text-ink">Custom</div>
             </div>
             <svg class="w-full h-8 text-teal/70" viewBox="0 0 200 32" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -631,7 +658,7 @@ import Layout from '../layouts/Layout.astro'
             </div>
           </div>
 
-          <p class="relative text-[13px] text-ink-faint mt-auto">Typed, sandboxed, shared across all agents.</p>
+          <p class="relative text-[13px] text-ink-faint mt-auto">One persistent computer: files, auth, policies, binaries, virtual desktop, typed tools.</p>
         </div>
       </div>
     </div>
@@ -645,40 +672,139 @@ import Layout from '../layouts/Layout.astro'
       <div class="reveal mb-16">
         <span class="text-[11px] font-mono uppercase tracking-[0.2em] text-ink-faint mb-4 block">The stack</span>
         <h2 class="font-display text-[clamp(2rem,4.5vw,3.5rem)] leading-[1.05] tracking-tight">
-          Everything in<br /><span class="italic text-teal">one place</span>
+          The shared<br /><span class="italic text-teal">agent computer</span>
         </h2>
       </div>
 
       <div class="reveal grid sm:grid-cols-2 lg:grid-cols-3 gap-px bg-rule rounded-xl overflow-hidden">
         <div class="bg-surface p-8">
           <svg class="w-6 h-6 text-teal mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" /></svg>
-          <div class="text-[14px] font-medium mb-1">Unified catalog</div>
-          <p class="text-[13px] text-ink-muted">Every integration indexed into one typed, discoverable catalog.</p>
-        </div>
-        <div class="bg-surface p-8">
-          <svg class="w-6 h-6 text-teal mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" /></svg>
-          <div class="text-[14px] font-medium mb-1">Shared auth</div>
-          <p class="text-[13px] text-ink-muted">Sign in once. Every agent shares your credentials.</p>
-        </div>
-        <div class="bg-surface p-8">
-          <svg class="w-6 h-6 text-teal mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" /></svg>
-          <div class="text-[14px] font-medium mb-1">Policies</div>
-          <p class="text-[13px] text-ink-muted">Auto-approve reads. Pause on writes. Wildcard rules.</p>
-        </div>
-        <div class="bg-surface p-8">
-          <svg class="w-6 h-6 text-teal mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" /></svg>
-          <div class="text-[14px] font-medium mb-1">Any agent via MCP</div>
-          <p class="text-[13px] text-ink-muted">Godtool is an MCP server. Point any agent at it.</p>
+          <div class="text-[14px] font-medium mb-1">Persistent filesystem</div>
+          <p class="text-[13px] text-ink-muted">Memories, plans, generated files, and instructions survive between agents.</p>
         </div>
         <div class="bg-surface p-8">
           <svg class="w-6 h-6 text-teal mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 0 0 4.5 4.5h10.5a4.5 4.5 0 0 0 1.2-8.838 6 6 0 0 0-11.62-2.048A4.5 4.5 0 0 0 2.25 15Z" /></svg>
-          <div class="text-[14px] font-medium mb-1">Cloud-first</div>
-          <p class="text-[13px] text-ink-muted">Runs in a persistent sandbox so your agent can store memories and instructions to reuse.</p>
+          <div class="text-[14px] font-medium mb-1">Full Linux sandbox</div>
+          <p class="text-[13px] text-ink-muted">Run real binaries, ffmpeg, scripts, and a full virtual desktop with long-lived workspace state.</p>
+        </div>
+        <div class="bg-surface p-8">
+          <svg class="w-6 h-6 text-teal mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" /></svg>
+          <div class="text-[14px] font-medium mb-1">Centralized auth</div>
+          <p class="text-[13px] text-ink-muted">Sign in once. Every agent can interact with the services you approve.</p>
+        </div>
+        <div class="bg-surface p-8">
+          <svg class="w-6 h-6 text-teal mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" /></svg>
+          <div class="text-[14px] font-medium mb-1">Typed tool calling</div>
+          <p class="text-[13px] text-ink-muted">Agents call tools through TypeScript primitives instead of fragile prompt-shaped schemas.</p>
+        </div>
+        <div class="bg-surface p-8">
+          <svg class="w-6 h-6 text-teal mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" /></svg>
+          <div class="text-[14px] font-medium mb-1">Policy controls</div>
+          <p class="text-[13px] text-ink-muted">Auto-approve reads, pause on writes, and keep destructive actions explicit.</p>
         </div>
         <div class="bg-surface p-8">
           <svg class="w-6 h-6 text-teal mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" /></svg>
-          <div class="text-[14px] font-medium mb-1">Intent-based discovery</div>
-          <p class="text-[13px] text-ink-muted">Agents search by what they need, not memorized paths.</p>
+          <div class="text-[14px] font-medium mb-1">Any agent via MCP</div>
+          <p class="text-[13px] text-ink-muted">Point Cursor, Claude Code, OpenClaw, or your own agent at the same computer.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── PRICING ─── -->
+  <section id="pricing" class="py-32 sm:py-40 relative scroll-mt-20">
+    <div class="absolute inset-0 border-b border-rule"></div>
+
+    <div class="relative max-w-[1200px] mx-auto px-6 sm:px-10">
+      <div class="reveal mb-16">
+        <span class="text-[11px] font-mono uppercase tracking-[0.2em] text-ink-faint mb-4 block">Pricing</span>
+        <h2 class="font-display text-[clamp(2rem,4.5vw,3.5rem)] leading-[1.05] tracking-tight">
+          One integration layer.<br /><span class="italic text-teal">A shared computer when you need it.</span>
+        </h2>
+        <p class="mt-5 max-w-2xl text-[15px] leading-7 text-ink-muted">
+          Free centralizes auth and tools for every agent. Pro adds the persistent sandbox, filesystem, virtual desktop, and binaries.
+        </p>
+      </div>
+
+      <div class="reveal grid gap-4 md:grid-cols-2">
+        <div class="rounded-xl border border-rule bg-surface-raised p-6 sm:p-7 flex flex-col">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <div class="text-[15px] font-semibold text-ink">Free</div>
+              <p class="mt-1 text-[13px] text-ink-muted">For centralized auth and integrations</p>
+            </div>
+            <div class="rounded-md border border-rule px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.12em] text-ink-faint">
+              Integrations
+            </div>
+          </div>
+
+          <div class="mt-6 flex items-baseline gap-2">
+            <span class="font-display text-4xl tracking-tight text-ink">Free</span>
+          </div>
+
+          <a href="https://app.godtool.dev" class="mt-6 inline-flex h-10 items-center justify-center rounded-md border border-rule bg-surface text-[13px] font-medium text-ink transition-colors hover:border-ink-faint hover:bg-surface-overlay">
+            Get started
+          </a>
+
+          <ul class="mt-6 space-y-3">
+            <li class="flex items-start gap-2 text-[13px] text-ink-muted">
+              <svg class="mt-0.5 h-4 w-4 shrink-0 text-teal/70" fill="none" viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.6"><path stroke-linecap="round" stroke-linejoin="round" d="M3.5 8.5 6.5 11.5 12.5 5" /></svg>
+              <span>Unlimited integrations</span>
+            </li>
+            <li class="flex items-start gap-2 text-[13px] text-ink-muted">
+              <svg class="mt-0.5 h-4 w-4 shrink-0 text-teal/70" fill="none" viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.6"><path stroke-linecap="round" stroke-linejoin="round" d="M3.5 8.5 6.5 11.5 12.5 5" /></svg>
+              <span>Centralized auth for every agent</span>
+            </li>
+            <li class="flex items-start gap-2 text-[13px] text-ink-muted">
+              <svg class="mt-0.5 h-4 w-4 shrink-0 text-teal/70" fill="none" viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.6"><path stroke-linecap="round" stroke-linejoin="round" d="M3.5 8.5 6.5 11.5 12.5 5" /></svg>
+              <span>Shared typed tool catalog</span>
+            </li>
+            <li class="flex items-start gap-2 text-[13px] text-ink-muted">
+              <svg class="mt-0.5 h-4 w-4 shrink-0 text-teal/70" fill="none" viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.6"><path stroke-linecap="round" stroke-linejoin="round" d="M3.5 8.5 6.5 11.5 12.5 5" /></svg>
+              <span>5,000 stateless executions each month</span>
+            </li>
+          </ul>
+        </div>
+
+        <div class="rounded-xl border border-teal/25 bg-surface-raised p-6 sm:p-7 flex flex-col relative overflow-hidden">
+          <div class="absolute inset-x-0 top-0 h-px bg-teal/40"></div>
+          <div class="absolute inset-0 bg-teal/[0.03] pointer-events-none"></div>
+          <div class="relative flex items-start justify-between gap-4">
+            <div>
+              <div class="text-[15px] font-semibold text-ink">Pro</div>
+              <p class="mt-1 text-[13px] text-ink-muted">For a persistent sandbox environment</p>
+            </div>
+            <div class="rounded-md border border-teal/25 bg-teal/[0.08] px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.12em] text-teal">
+              Persistent
+            </div>
+          </div>
+
+          <div class="relative mt-6 flex items-baseline gap-2">
+            <span class="font-display text-4xl tracking-tight text-ink">Pro</span>
+          </div>
+
+          <a href="https://app.godtool.dev" class="relative mt-6 inline-flex h-10 items-center justify-center rounded-md bg-primary text-[13px] font-medium text-primary-foreground transition-colors hover:bg-primary/90">
+            Get started
+          </a>
+
+          <ul class="relative mt-6 space-y-3">
+            <li class="flex items-start gap-2 text-[13px] text-ink-muted">
+              <svg class="mt-0.5 h-4 w-4 shrink-0 text-teal" fill="none" viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.6"><path stroke-linecap="round" stroke-linejoin="round" d="M3.5 8.5 6.5 11.5 12.5 5" /></svg>
+              <span>Unlimited integrations</span>
+            </li>
+            <li class="flex items-start gap-2 text-[13px] text-ink-muted">
+              <svg class="mt-0.5 h-4 w-4 shrink-0 text-teal" fill="none" viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.6"><path stroke-linecap="round" stroke-linejoin="round" d="M3.5 8.5 6.5 11.5 12.5 5" /></svg>
+              <span>Unlimited executions</span>
+            </li>
+            <li class="flex items-start gap-2 text-[13px] text-ink-muted">
+              <svg class="mt-0.5 h-4 w-4 shrink-0 text-teal" fill="none" viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.6"><path stroke-linecap="round" stroke-linejoin="round" d="M3.5 8.5 6.5 11.5 12.5 5" /></svg>
+              <span>Persistent sandbox environment</span>
+            </li>
+            <li class="flex items-start gap-2 text-[13px] text-ink-muted">
+              <svg class="mt-0.5 h-4 w-4 shrink-0 text-teal" fill="none" viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.6"><path stroke-linecap="round" stroke-linejoin="round" d="M3.5 8.5 6.5 11.5 12.5 5" /></svg>
+              <span>Shared filesystem, virtual desktop, and binaries</span>
+            </li>
+          </ul>
         </div>
       </div>
     </div>
@@ -691,7 +817,7 @@ import Layout from '../layouts/Layout.astro'
     <div class="relative max-w-[1200px] mx-auto px-6 sm:px-10">
       <div class="reveal max-w-2xl mx-auto text-center">
         <h2 class="font-display text-[clamp(2rem,5vw,4rem)] leading-[1.05] tracking-tight mb-8">
-          Try the future of <span class="italic text-teal">agents.</span>
+          Give your agents a <span class="italic text-teal">shared computer.</span>
         </h2>
 
         <div class="flex flex-wrap items-center justify-center gap-4">
