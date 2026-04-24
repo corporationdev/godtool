@@ -217,7 +217,7 @@ describe("rawPlugin", () => {
   );
 
   it.effect("rejects paths that escape the configured base URL", () =>
-    Effect.gen(function* () {
+    Effect.sync(() => {
       expect(() =>
         buildRequestUrl("https://api.example.com/v1", "../oauth/token", undefined),
       ).toThrow(/escapes the configured base URL/);

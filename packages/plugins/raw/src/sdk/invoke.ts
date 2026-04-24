@@ -36,7 +36,7 @@ const asRecord = (value: unknown): Record<string, unknown> =>
     ? (value as Record<string, unknown>)
     : {};
 
-const HTTP_METHODS = new Set([
+const HTTP_METHODS = [
   "GET",
   "POST",
   "PUT",
@@ -44,22 +44,16 @@ const HTTP_METHODS = new Set([
   "DELETE",
   "HEAD",
   "OPTIONS",
-]);
+] as const;
+
+type HttpMethod = (typeof HTTP_METHODS)[number];
 
 export const normalizeMethod = (
   value: unknown,
-): "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS" => {
+): HttpMethod => {
   const normalized = String(value ?? "GET").trim().toUpperCase();
-  if (
-    normalized === "GET" ||
-    normalized === "POST" ||
-    normalized === "PUT" ||
-    normalized === "PATCH" ||
-    normalized === "DELETE" ||
-    normalized === "HEAD" ||
-    normalized === "OPTIONS"
-  ) {
-    return normalized;
+  if ((HTTP_METHODS as readonly string[]).includes(normalized)) {
+    return normalized as HttpMethod;
   }
   throw new RawInvocationError({
     message: `Unsupported HTTP method: ${normalized}`,
@@ -189,7 +183,7 @@ export const buildRequestUrl = (
 };
 
 const requestFor = (
-  method: ReturnType<typeof normalizeMethod>,
+  method: HttpMethod,
   url: string,
 ): HttpClientRequest.HttpClientRequest => {
   switch (method) {
