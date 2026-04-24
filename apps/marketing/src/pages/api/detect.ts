@@ -68,11 +68,11 @@ export const POST: APIRoute = async ({ request }) => {
       const config = makeTestConfig({
         plugins: [openApiPlugin(), graphqlPlugin(), googleDiscoveryPlugin()],
       });
-      const executor = yield* createExecutor(config);
+      const runtime = yield* createExecutor(config);
 
       try {
         // Detect what kind of source lives at this URL
-        const detected = yield* executor.sources.detect(url).pipe(Effect.timeout("10 seconds"));
+        const detected = yield* runtime.sources.detect(url).pipe(Effect.timeout("10 seconds"));
 
         if (!detected || detected.length === 0) return null;
 
@@ -80,13 +80,13 @@ export const POST: APIRoute = async ({ request }) => {
 
         // Add source to register its tools (Google Discovery needs auth so skip)
         if (match.kind === "openapi") {
-          yield* executor.openapi.addSpec({
+          yield* runtime.openapi.addSpec({
             spec: match.endpoint,
             namespace: match.namespace,
             scope: "test-scope",
           });
         } else if (match.kind === "graphql") {
-          yield* executor.graphql.addSource({
+          yield* runtime.graphql.addSource({
             endpoint: match.endpoint,
             namespace: match.namespace,
             scope: "test-scope",
@@ -102,7 +102,7 @@ export const POST: APIRoute = async ({ request }) => {
           };
         }
 
-        const tools = yield* executor.tools.list({
+        const tools = yield* runtime.tools.list({
           sourceId: match.namespace,
         });
         const mapped = formatTools(tools);
@@ -114,7 +114,7 @@ export const POST: APIRoute = async ({ request }) => {
           tools: mapped.slice(0, 50),
         };
       } finally {
-        yield* executor.close();
+        yield* runtime.close();
       }
     });
 
