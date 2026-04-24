@@ -3,6 +3,7 @@ import { openApiPlugin } from "@executor/plugin-openapi";
 import { mcpPlugin } from "@executor/plugin-mcp";
 import { googleDiscoveryPlugin } from "@executor/plugin-google-discovery";
 import { graphqlPlugin } from "@executor/plugin-graphql";
+import { rawPlugin } from "@executor/plugin-raw";
 import { workosVaultPlugin } from "@executor/plugin-workos-vault";
 
 // ---------------------------------------------------------------------------
@@ -20,6 +21,7 @@ export default defineExecutorConfig({
     mcpPlugin({ dangerouslyAllowStdioMCP: false }),
     googleDiscoveryPlugin(),
     graphqlPlugin(),
+    rawPlugin(),
     workosVaultPlugin({
       credentials: { apiKey: "", clientId: "" },
     }),

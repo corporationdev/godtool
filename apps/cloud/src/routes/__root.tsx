@@ -11,6 +11,8 @@ import { OnboardingPage } from "../web/pages/onboarding";
 import { Shell } from "../web/shell";
 import appCss from "@executor/react/globals.css?url";
 
+const faviconVersion = "godtool-hammer";
+
 if (typeof window !== "undefined" && import.meta.env.VITE_PUBLIC_SENTRY_DSN) {
   Sentry.init({
     dsn: import.meta.env.VITE_PUBLIC_SENTRY_DSN,
@@ -29,11 +31,11 @@ export const Route = createRootRoute({
       { title: "GOD TOOL" },
     ],
     links: [
-      { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
-      { rel: "icon", type: "image/x-icon", href: "/favicon.ico" },
-      { rel: "icon", type: "image/png", sizes: "32x32", href: "/favicon-32.png" },
-      { rel: "icon", type: "image/png", sizes: "192x192", href: "/favicon-192.png" },
-      { rel: "apple-touch-icon", sizes: "180x180", href: "/apple-touch-icon.png" },
+      { rel: "icon", type: "image/svg+xml", href: `/favicon.svg?v=${faviconVersion}` },
+      { rel: "icon", type: "image/x-icon", href: `/favicon.ico?v=${faviconVersion}` },
+      { rel: "icon", type: "image/png", sizes: "32x32", href: `/favicon-32.png?v=${faviconVersion}` },
+      { rel: "icon", type: "image/png", sizes: "192x192", href: `/favicon-192.png?v=${faviconVersion}` },
+      { rel: "apple-touch-icon", sizes: "180x180", href: `/apple-touch-icon.png?v=${faviconVersion}` },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {

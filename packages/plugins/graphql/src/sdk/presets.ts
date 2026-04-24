@@ -15,15 +15,6 @@ export interface GraphqlPreset {
 
 export const graphqlPresets: readonly GraphqlPreset[] = [
   {
-    id: "github-graphql",
-    name: "GitHub GraphQL",
-    summary: "Repos, issues, PRs, and users via GitHub's GraphQL API.",
-    url: "https://api.github.com/graphql",
-    icon: "https://github.com/favicon.ico",
-    featured: true,
-    composio: { app: "github" },
-  },
-  {
     id: "gitlab",
     name: "GitLab",
     summary: "Projects, merge requests, pipelines, and users.",
@@ -48,12 +39,5 @@ export const graphqlPresets: readonly GraphqlPreset[] = [
     url: "https://api.monday.com/v2",
     icon: "https://monday.com/favicon.ico",
     composio: { app: "monday" },
-  },
-  {
-    id: "anilist",
-    name: "AniList",
-    summary: "Anime and manga database — no auth required.",
-    url: "https://graphql.anilist.co",
-    icon: "https://anilist.co/img/icons/favicon-32x32.png",
   },
 ];

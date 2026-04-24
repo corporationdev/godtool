@@ -46,6 +46,7 @@ import { openApiPlugin } from "@executor/plugin-openapi";
 import { mcpPlugin } from "@executor/plugin-mcp";
 import { googleDiscoveryPlugin } from "@executor/plugin-google-discovery";
 import { graphqlPlugin } from "@executor/plugin-graphql";
+import { rawPlugin } from "@executor/plugin-raw";
 import {
   workosVaultPlugin,
   WorkOSVaultClientError,
@@ -57,6 +58,7 @@ import { OpenApiExtensionService } from "@executor/plugin-openapi/api";
 import { McpExtensionService } from "@executor/plugin-mcp/api";
 import { GoogleDiscoveryExtensionService } from "@executor/plugin-google-discovery/api";
 import { GraphqlExtensionService } from "@executor/plugin-graphql/api";
+import { RawExtensionService } from "@executor/plugin-raw/api";
 
 import { AuthContext, OrgAuth } from "../../auth/middleware";
 import {
@@ -191,6 +193,7 @@ const createTestScopedExecutor = (
       mcpPlugin({ dangerouslyAllowStdioMCP: false }),
       googleDiscoveryPlugin({ composioApiKey: "composio-test-key" }),
       graphqlPlugin(),
+      rawPlugin({ composioApiKey: "composio-test-key" }),
       workosVaultPlugin({ client: fakeVault }),
     ] as const;
     const schema = collectSchemas(plugins);
@@ -267,6 +270,7 @@ const buildAppForScope = (userId: string, orgId: string, orgName: string) =>
       Layer.succeed(McpExtensionService, executor.mcp),
       Layer.succeed(GoogleDiscoveryExtensionService, executor.googleDiscovery),
       Layer.succeed(GraphqlExtensionService, executor.graphql),
+      Layer.succeed(RawExtensionService, executor.raw),
     );
     return assumeTestOrgAuthProvided(
       yield* HttpApiBuilder.httpApp.pipe(

@@ -48,6 +48,11 @@ describe("ExecutorFileConfig schema", () => {
           namespace: "gql",
         },
         {
+          kind: "raw",
+          baseUrl: "https://api.example.com/v1",
+          namespace: "raw_api",
+        },
+        {
           kind: "mcp",
           transport: "remote",
           name: "Remote MCP",
@@ -71,7 +76,7 @@ describe("ExecutorFileConfig schema", () => {
     };
 
     const result = Schema.decodeUnknownSync(ExecutorFileConfig)(raw);
-    expect(result.sources).toHaveLength(4);
+    expect(result.sources).toHaveLength(5);
     expect(result.name).toBe("test");
     expect(result.secrets!["my-token"]!.name).toBe("My Token");
   });
@@ -176,10 +181,17 @@ describe("write operations", () => {
           namespace: "second",
         });
 
+        yield* addSourceToConfig(path, {
+          kind: "raw",
+          baseUrl: "https://api.example.com/v1",
+          namespace: "third",
+        });
+
         const config = yield* loadConfig(path);
-        expect(config!.sources).toHaveLength(2);
+        expect(config!.sources).toHaveLength(3);
         expect(config!.sources![0]!.kind).toBe("openapi");
         expect(config!.sources![1]!.kind).toBe("graphql");
+        expect(config!.sources![2]!.kind).toBe("raw");
       }),
     ),
   );
@@ -211,9 +223,16 @@ describe("write operations", () => {
           namespace: "second",
         });
 
+        yield* addSourceToConfig(path, {
+          kind: "raw",
+          baseUrl: "https://api.example.com/v1",
+          namespace: "third",
+        });
+
         const content = yield* fs.readFileString(path);
         expect(content).toContain("// My project config");
         expect(content).toContain("graphql");
+        expect(content).toContain("raw");
       }),
     ),
   );

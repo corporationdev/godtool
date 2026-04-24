@@ -211,6 +211,93 @@ type PresetEntry = {
   pluginLabel: string;
 };
 
+const PRESET_POPULARITY_ORDER = [
+  "raw:slack",
+  "googleDiscovery:google-gmail",
+  "raw:notion",
+  "graphql:linear",
+  "openapi:github-rest",
+  "openapi:stripe",
+  "raw:hubspot",
+  "raw:jira",
+  "raw:confluence",
+  "raw:outlook",
+  "raw:clickup",
+  "raw:airtable",
+  "raw:figma",
+  "raw:intercom",
+  "raw:shopify",
+  "raw:attio",
+  "raw:calendly",
+  "raw:canva",
+  "raw:contentful",
+  "raw:todoist",
+  "raw:zoom",
+  "raw:trello",
+  "raw:bitbucket",
+  "raw:box",
+  "raw:onedrive",
+  "raw:discord",
+  "openapi:supabase",
+  "openapi:openai",
+  "openapi:openrouter",
+  "openapi:cloudflare",
+  "openapi:vercel",
+  "openapi:neon",
+  "openapi:sentry",
+  "openapi:asana",
+  "openapi:digitalocean",
+  "openapi:convex",
+  "openapi:spotify",
+  "openapi:resend",
+  "openapi:exa",
+  "openapi:exa-websets",
+  "googleDiscovery:google-calendar",
+  "googleDiscovery:google-drive",
+  "googleDiscovery:google-sheets",
+  "googleDiscovery:google-docs",
+  "googleDiscovery:google-slides",
+  "googleDiscovery:google-forms",
+  "googleDiscovery:google-tasks",
+  "googleDiscovery:google-people",
+  "googleDiscovery:google-chat",
+  "googleDiscovery:google-keep",
+  "googleDiscovery:google-youtube-data",
+  "googleDiscovery:google-search-console",
+  "googleDiscovery:google-classroom",
+  "googleDiscovery:google-bigquery",
+  "googleDiscovery:google-admin-directory",
+  "googleDiscovery:google-admin-reports",
+  "googleDiscovery:google-apps-script",
+  "googleDiscovery:google-cloud-resource-manager",
+] as const;
+
+const PRESET_POPULARITY_INDEX = new Map<string, number>(
+  PRESET_POPULARITY_ORDER.map((key, index) => [key, index] as const),
+);
+
+const PRESET_PLUGIN_FALLBACK_PRIORITY: Record<string, number> = {
+  raw: 0,
+  graphql: 1,
+  openapi: 2,
+  googleDiscovery: 3,
+  mcp: 4,
+};
+
+const presetSortKey = (entry: PresetEntry): readonly [number, string, string] => {
+  const explicit = PRESET_POPULARITY_INDEX.get(`${entry.pluginKey}:${entry.preset.id}`);
+  if (explicit !== undefined) {
+    return [explicit, entry.preset.name.toLowerCase(), entry.pluginLabel.toLowerCase()];
+  }
+
+  const fallbackPriority = PRESET_PLUGIN_FALLBACK_PRIORITY[entry.pluginKey] ?? 99;
+  return [
+    1_000 + fallbackPriority * 1_000,
+    entry.preset.name.toLowerCase(),
+    entry.pluginLabel.toLowerCase(),
+  ];
+};
+
 function PresetGrid(props: { plugins: readonly SourcePlugin[] }) {
   const allPresets = useMemo(() => {
     const entries: PresetEntry[] = [];
@@ -223,7 +310,15 @@ function PresetGrid(props: { plugins: readonly SourcePlugin[] }) {
         });
       }
     }
-    return entries;
+    return entries.sort((left, right) => {
+      const leftKey = presetSortKey(left);
+      const rightKey = presetSortKey(right);
+      return (
+        leftKey[0] - rightKey[0] ||
+        leftKey[1].localeCompare(rightKey[1]) ||
+        leftKey[2].localeCompare(rightKey[2])
+      );
+    });
   }, [props.plugins]);
 
   if (allPresets.length === 0) return null;

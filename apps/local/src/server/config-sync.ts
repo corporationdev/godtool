@@ -107,6 +107,14 @@ const addSourceFromConfig = (
         headers: translateHeaders(source.headers) as Record<string, string> | undefined,
       }).pipe(Effect.asVoid);
 
+    case "raw":
+      return executor.raw.addSource({
+        baseUrl: source.baseUrl,
+        scope,
+        namespace: source.namespace,
+        headers: translateHeaders(source.headers),
+      }).pipe(Effect.asVoid);
+
     case "mcp":
       if (source.transport === "stdio") {
         return executor.mcp.addSource({

@@ -24,6 +24,7 @@ import { openApiPlugin } from "@executor/plugin-openapi";
 import { mcpPlugin } from "@executor/plugin-mcp";
 import { googleDiscoveryPlugin } from "@executor/plugin-google-discovery";
 import { graphqlPlugin } from "@executor/plugin-graphql";
+import { rawPlugin } from "@executor/plugin-raw";
 import { workosVaultPlugin } from "@executor/plugin-workos-vault";
 
 import { env } from "cloudflare:workers";
@@ -45,6 +46,7 @@ const createOrgPlugins = () =>
     mcpPlugin({ dangerouslyAllowStdioMCP: false }),
     googleDiscoveryPlugin({ composioApiKey: env.COMPOSIO_API_KEY || undefined }),
     graphqlPlugin({ composioApiKey: env.COMPOSIO_API_KEY || undefined }),
+    rawPlugin({ composioApiKey: env.COMPOSIO_API_KEY || undefined }),
     workosVaultPlugin({
       credentials: {
         apiKey: env.WORKOS_API_KEY,

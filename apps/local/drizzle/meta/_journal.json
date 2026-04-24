@@ -43,6 +43,13 @@
       "when": 1777167600000,
       "tag": "0005_google_discovery_composio",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1777171200000,
+      "tag": "0006_raw",
+      "breakpoints": true
     }
   ]
 }

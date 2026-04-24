@@ -19,6 +19,7 @@ import {
   GoogleDiscoveryHandlers,
 } from "@executor/plugin-google-discovery/api";
 import { GraphqlGroup, GraphqlHandlers } from "@executor/plugin-graphql/api";
+import { RawGroup, RawHandlers } from "@executor/plugin-raw/api";
 
 import { OrgAuth } from "../auth/middleware";
 import { OrgAuthLive } from "../auth/middleware-live";
@@ -34,6 +35,7 @@ export const ProtectedCloudApi = CoreExecutorApi.add(OpenApiGroup)
   .add(McpGroup)
   .add(GoogleDiscoveryGroup)
   .add(GraphqlGroup)
+  .add(RawGroup)
   .add(FilesApi)
   .addError(InternalError)
   .middleware(OrgAuth);
@@ -62,6 +64,7 @@ export const ProtectedCloudApiHandlers = Layer.mergeAll(
   McpHandlers,
   GoogleDiscoveryHandlers,
   GraphqlHandlers,
+  RawHandlers,
   FilesHandlers,
 );
 
