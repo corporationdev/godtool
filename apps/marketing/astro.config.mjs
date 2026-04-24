@@ -10,6 +10,14 @@ export default defineConfig({
   output: "server",
   vite: {
     plugins: [tailwindcss()],
+    optimizeDeps: {
+      exclude: ["effect"],
+    },
+    ssr: {
+      optimizeDeps: {
+        exclude: ["effect"],
+      },
+    },
   },
 
   adapter: cloudflare(),

@@ -7,12 +7,10 @@ import Layout from '../layouts/Layout.astro'
   <!-- ─── NAV ─── -->
   <nav class="fixed top-0 w-full z-50 bg-surface/80 backdrop-blur-lg">
     <div class="max-w-[1200px] mx-auto px-6 sm:px-10 h-14 flex items-center justify-between border-b border-rule">
-      <a href="/" class="font-display text-xl italic text-ink tracking-tight hover:text-teal transition-colors">executor</a>
+      <a href="/" class="font-display text-xl italic text-ink tracking-tight hover:text-teal transition-colors">godtool</a>
       <div class="flex items-center gap-8">
-        <a href="#roadmap" class="hidden sm:block text-[13px] text-ink-muted hover:text-ink transition-colors">Roadmap</a>
-        <!-- <a href="/setup" class="hidden sm:block text-[13px] text-ink-muted hover:text-ink transition-colors">Setup</a> -->
-        <a href="https://github.com/RhysSullivan/executor" class="hidden sm:block text-[13px] text-ink-muted hover:text-ink transition-colors">GitHub</a>
-        <a href="#install" class="text-[13px] font-medium text-surface bg-teal hover:bg-teal-dim px-4 py-1.5 rounded-md transition-colors">
+        <a href="https://github.com/corporationdev/godtool" class="hidden sm:block text-[13px] text-ink-muted hover:text-ink transition-colors">GitHub</a>
+        <a href="https://app.godtool.dev" class="text-[13px] font-medium text-primary-foreground bg-primary hover:bg-primary/90 px-4 py-1.5 rounded-md transition-colors">
           Get started
         </a>
       </div>
@@ -20,7 +18,7 @@ import Layout from '../layouts/Layout.astro'
   </nav>
 
   <!-- ─── HERO ─── -->
-  <section class="relative min-h-screen flex flex-col justify-center pt-14 overflow-hidden">
+  <section class="relative min-h-screen flex flex-col justify-center pt-28 sm:pt-32 overflow-hidden">
     <div class="absolute top-[15%] right-[10%] w-[500px] h-[500px] bg-teal/[0.04] rounded-full blur-[150px] pointer-events-none"></div>
 
     <div class="max-w-[1200px] mx-auto px-6 sm:px-10 w-full">
@@ -36,7 +34,7 @@ import Layout from '../layouts/Layout.astro'
         </p>
 
         <div class="rise-d3 flex flex-wrap items-center justify-center gap-4">
-          <a href="#install" class="inline-flex items-center gap-2 text-[14px] font-medium text-surface bg-teal hover:bg-teal-dim px-5 py-2.5 rounded-md transition-colors">
+          <a href="https://app.godtool.dev" class="inline-flex items-center gap-2 text-[14px] font-medium text-primary-foreground bg-primary hover:bg-primary/90 px-5 py-2.5 rounded-md transition-colors">
             Get started
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3"/></svg>
           </a>
@@ -56,11 +54,11 @@ import Layout from '../layouts/Layout.astro'
               autocomplete="off"
               spellcheck="false"
             />
-            <button id="detect-btn" class="text-[12px] font-medium text-surface bg-teal hover:bg-teal-dim px-4 py-1.5 rounded-md transition-colors shrink-0 disabled:opacity-40 disabled:cursor-not-allowed">
+            <button id="detect-btn" class="text-[12px] font-medium text-primary-foreground bg-primary hover:bg-primary/90 px-4 py-1.5 rounded-md transition-colors shrink-0 disabled:opacity-40 disabled:cursor-not-allowed">
               Detect
             </button>
           </div>
-          <div id="detect-status" class="hidden absolute left-0 right-0 -bottom-7 text-[11px] font-mono text-center"></div>
+          <div id="detect-status" class="hidden mt-3 min-h-5 text-[12px] leading-5 font-mono text-center"></div>
           <div id="detect-examples" class="mt-3 flex flex-wrap items-center gap-2 justify-center">
             <span class="text-[11px] text-ink-faint">Try:</span>
             <button class="detect-example text-[11px] font-mono text-teal/60 hover:text-teal border border-rule hover:border-teal/20 rounded px-2 py-1 transition-colors" data-url="https://raw.githubusercontent.com/github/rest-api-description/main/descriptions/api.github.com/api.github.com.json">GitHub REST</button>
@@ -79,7 +77,7 @@ import Layout from '../layouts/Layout.astro'
           <!-- Top bar -->
           <div class="flex items-center justify-between px-5 py-3 border-b border-rule">
             <div class="flex items-center gap-3">
-              <span class="font-display italic text-ink text-sm">executor</span>
+              <span class="font-display italic text-ink text-sm">godtool</span>
               <span class="text-ink-faint">/</span>
               <span class="text-ink-muted">Sources</span>
               <span class="text-ink-faint">/</span>
@@ -426,7 +424,7 @@ import Layout from '../layouts/Layout.astro'
         async function detectUrl(url) {
           detectBtn.disabled = true;
           detectBtn.textContent = 'Detecting...';
-          detectStatus.className = 'absolute left-0 right-0 -bottom-7 text-[11px] font-mono text-center text-ink-muted';
+          detectStatus.className = 'mt-3 min-h-5 text-[12px] leading-5 font-mono text-center text-ink-muted';
           detectStatus.textContent = 'Probing URL...';
 
           try {
@@ -438,7 +436,7 @@ import Layout from '../layouts/Layout.astro'
             const data = await res.json();
 
             if (!res.ok) {
-              detectStatus.className = 'absolute left-0 right-0 -bottom-7 text-[11px] font-mono text-center text-red-400/70';
+              detectStatus.className = 'mt-3 min-h-5 text-[12px] leading-5 font-mono text-center text-red-300';
               detectStatus.textContent = data.error || 'Detection failed';
               return;
             }
@@ -478,14 +476,14 @@ import Layout from '../layouts/Layout.astro'
 
             renderSource(key);
 
-            detectStatus.className = 'absolute left-0 right-0 -bottom-7 text-[11px] font-mono text-center text-teal';
+            detectStatus.className = 'mt-3 min-h-5 text-[12px] leading-5 font-mono text-center text-teal';
             detectStatus.textContent = `${data.kind} detected — ${data.count} tools found`;
             detectExamples.classList.add('hidden');
 
             // Clear input
             detectInput.value = '';
           } catch (err) {
-            detectStatus.className = 'absolute left-0 right-0 -bottom-7 text-[11px] font-mono text-center text-red-400/70';
+            detectStatus.className = 'mt-3 min-h-5 text-[12px] leading-5 font-mono text-center text-red-300';
             detectStatus.textContent = 'Network error — could not reach detection API';
           } finally {
             detectBtn.disabled = false;
@@ -586,10 +584,10 @@ import Layout from '../layouts/Layout.astro'
           <p class="text-[13px] text-ink-faint mt-auto">Better, but a poor permission model that pushes users to dangerously-skip-permissions — or requires a VM.</p>
         </div>
 
-        <!-- Era 3: Executor -->
+        <!-- Era 3: Godtool -->
         <div class="rounded-xl border border-teal/20 bg-surface-raised p-6 sm:p-8 flex flex-col relative overflow-hidden">
           <div class="absolute inset-0 bg-gradient-to-b from-teal/[0.03] to-transparent pointer-events-none"></div>
-          <span class="relative font-mono text-[11px] text-teal uppercase tracking-[0.15em] mb-6">Era 3 &middot; Executor</span>
+          <span class="relative font-mono text-[11px] text-teal/80 uppercase tracking-[0.15em] mb-6">Era 3 &middot; Godtool</span>
 
           <div class="relative flex-1 flex flex-col items-center gap-3 my-6">
             <!-- Multiple agents -->
@@ -598,21 +596,21 @@ import Layout from '../layouts/Layout.astro'
               <div class="rounded-lg border border-rule bg-surface px-2 py-2.5 text-center text-[10px] font-mono text-ink">Claude</div>
               <div class="rounded-lg border border-rule bg-surface px-2 py-2.5 text-center text-[10px] font-mono text-ink">Custom</div>
             </div>
-            <svg class="w-full h-8 text-teal/50" viewBox="0 0 200 32" fill="none" stroke="currentColor" stroke-width="1.5">
+            <svg class="w-full h-8 text-teal/70" viewBox="0 0 200 32" fill="none" stroke="currentColor" stroke-width="1.5">
               <line x1="33" y1="0" x2="100" y2="32" />
               <line x1="100" y1="0" x2="100" y2="32" />
               <line x1="167" y1="0" x2="100" y2="32" />
             </svg>
-            <!-- Executor box with features -->
-            <div class="w-full rounded-lg border border-teal/30 bg-teal/[0.06] px-4 py-3">
-              <div class="text-center text-[13px] font-mono text-teal mb-2">executor</div>
+            <!-- Godtool box with features -->
+            <div class="w-full rounded-lg border border-teal/40 bg-teal/[0.08] px-4 py-3">
+              <div class="text-center text-[13px] font-mono text-teal/90 mb-2">godtool</div>
               <div class="flex justify-center gap-2">
-                <span class="text-[9px] font-mono text-teal/60 border border-teal/15 rounded px-1.5 py-0.5">auth</span>
-                <span class="text-[9px] font-mono text-teal/60 border border-teal/15 rounded px-1.5 py-0.5">policies</span>
-                <span class="text-[9px] font-mono text-teal/60 border border-teal/15 rounded px-1.5 py-0.5">catalog</span>
+                <span class="text-[9px] font-mono text-teal/80 border border-teal/25 rounded px-1.5 py-0.5">auth</span>
+                <span class="text-[9px] font-mono text-teal/80 border border-teal/25 rounded px-1.5 py-0.5">policies</span>
+                <span class="text-[9px] font-mono text-teal/80 border border-teal/25 rounded px-1.5 py-0.5">catalog</span>
               </div>
             </div>
-            <svg class="w-full h-8 text-teal/50" viewBox="0 0 200 32" fill="none" stroke="currentColor" stroke-width="1.5">
+            <svg class="w-full h-8 text-teal/70" viewBox="0 0 200 32" fill="none" stroke="currentColor" stroke-width="1.5">
               <line x1="50" y1="0" x2="20" y2="32" />
               <line x1="75" y1="0" x2="60" y2="32" />
               <line x1="100" y1="0" x2="100" y2="32" />
@@ -620,15 +618,15 @@ import Layout from '../layouts/Layout.astro'
               <line x1="150" y1="0" x2="180" y2="32" />
             </svg>
             <div class="w-full grid grid-cols-5 gap-1">
-              <div class="rounded border border-teal/20 bg-teal/5 px-1 py-2 text-center text-[8px] font-mono text-teal/60">REST</div>
-              <div class="rounded border border-teal/20 bg-teal/5 px-1 py-2 text-center text-[8px] font-mono text-teal/60">GraphQL</div>
-              <div class="rounded border border-teal/20 bg-teal/5 px-1 py-2 text-center text-[8px] font-mono text-teal/60">MCP</div>
-              <div class="rounded border border-teal/20 bg-teal/5 px-1 py-2 text-center text-[8px] font-mono text-teal/60">gRPC</div>
-              <div class="rounded border border-teal/15 bg-teal/[0.02] px-1 py-2 text-center text-[8px] font-mono text-teal/40 italic">any</div>
+              <div class="rounded border border-teal/30 bg-teal/[0.07] px-1 py-2 text-center text-[8px] font-mono text-teal/80">REST</div>
+              <div class="rounded border border-teal/30 bg-teal/[0.07] px-1 py-2 text-center text-[8px] font-mono text-teal/80">GraphQL</div>
+              <div class="rounded border border-teal/30 bg-teal/[0.07] px-1 py-2 text-center text-[8px] font-mono text-teal/80">MCP</div>
+              <div class="rounded border border-teal/30 bg-teal/[0.07] px-1 py-2 text-center text-[8px] font-mono text-teal/80">gRPC</div>
+              <div class="rounded border border-teal/25 bg-teal/[0.04] px-1 py-2 text-center text-[8px] font-mono text-teal/65 italic">any</div>
             </div>
           </div>
 
-          <p class="relative text-[13px] text-teal/70 mt-auto">Typed, sandboxed, shared across all agents.</p>
+          <p class="relative text-[13px] text-ink-faint mt-auto">Typed, sandboxed, shared across all agents.</p>
         </div>
       </div>
     </div>
@@ -665,12 +663,12 @@ import Layout from '../layouts/Layout.astro'
         <div class="bg-surface p-8">
           <svg class="w-6 h-6 text-teal mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" /></svg>
           <div class="text-[14px] font-medium mb-1">Any agent via MCP</div>
-          <p class="text-[13px] text-ink-muted">Executor is an MCP server. Point any agent at it.</p>
+          <p class="text-[13px] text-ink-muted">Godtool is an MCP server. Point any agent at it.</p>
         </div>
         <div class="bg-surface p-8">
-          <svg class="w-6 h-6 text-teal mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" /></svg>
-          <div class="text-[14px] font-medium mb-1">Local-first</div>
-          <p class="text-[13px] text-ink-muted">Secrets in your keychain. Nothing leaves your machine.</p>
+          <svg class="w-6 h-6 text-teal mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 0 0 4.5 4.5h10.5a4.5 4.5 0 0 0 1.2-8.838 6 6 0 0 0-11.62-2.048A4.5 4.5 0 0 0 2.25 15Z" /></svg>
+          <div class="text-[14px] font-medium mb-1">Cloud-first</div>
+          <p class="text-[13px] text-ink-muted">Runs in a persistent sandbox so your agent can store memories and instructions to reuse.</p>
         </div>
         <div class="bg-surface p-8">
           <svg class="w-6 h-6 text-teal mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" /></svg>
@@ -681,83 +679,8 @@ import Layout from '../layouts/Layout.astro'
     </div>
   </section>
 
-
-  <!-- ─── ROADMAP ─── -->
-  <section id="roadmap" class="py-32 sm:py-40 relative">
-    <div class="max-w-[1200px] mx-auto px-6 sm:px-10">
-      <div class="reveal mb-16">
-        <span class="text-[11px] font-mono uppercase tracking-[0.2em] text-ink-faint mb-4 block">Roadmap</span>
-        <h2 class="font-display text-[clamp(2rem,4.5vw,3.5rem)] leading-[1.05] tracking-tight">
-          What's <span class="italic text-teal">next</span>
-        </h2>
-      </div>
-
-      <div class="reveal grid md:grid-cols-3 gap-6">
-        <!-- Now -->
-        <div class="rounded-xl border border-teal/20 p-6 sm:p-8 relative overflow-hidden">
-          <div class="absolute inset-0 bg-gradient-to-b from-teal/[0.03] to-transparent pointer-events-none"></div>
-          <div class="relative">
-            <div class="flex items-center gap-2 mb-5">
-              <div class="w-2 h-2 rounded-full bg-teal shadow-[0_0_6px_rgba(61,216,181,0.4)]"></div>
-              <span class="font-mono text-[11px] text-teal uppercase tracking-[0.15em]">Now</span>
-            </div>
-            <ul class="space-y-3 text-[14px]">
-              <li class="flex items-start gap-2.5">
-                <svg class="w-4 h-4 text-teal mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
-                <span class="text-ink-muted">Core SDK &amp; CLI</span>
-              </li>
-              <li class="flex items-start gap-2.5">
-                <svg class="w-4 h-4 text-teal mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
-                <span class="text-ink-muted">MCP bridge</span>
-              </li>
-              <li class="flex items-start gap-2.5">
-                <svg class="w-4 h-4 text-teal mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
-                <span class="text-ink-muted">Policy engine</span>
-              </li>
-              <li class="flex items-start gap-2.5">
-                <svg class="w-4 h-4 text-teal mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
-                <span class="text-ink-muted">Local web UI</span>
-              </li>
-              <li class="flex items-start gap-2.5">
-                <svg class="w-4 h-4 text-teal mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
-                <span class="text-ink-muted">Desktop app</span>
-              </li>
-            </ul>
-          </div>
-        </div>
-
-        <!-- Soon -->
-        <div class="rounded-xl border border-rule p-6 sm:p-8">
-          <div class="flex items-center gap-2 mb-5">
-            <div class="w-2 h-2 rounded-full bg-ink-faint"></div>
-            <span class="font-mono text-[11px] text-ink-muted uppercase tracking-[0.15em]">Soon</span>
-          </div>
-          <ul class="space-y-3 text-[14px]">
-            <li class="text-ink-muted">Team management &amp; SaaS</li>
-            <li class="text-ink-muted">Advanced approval workflows</li>
-            <li class="text-ink-muted">Org-wide source catalog</li>
-          </ul>
-        </div>
-
-        <!-- Later -->
-        <div class="rounded-xl border border-rule/50 p-6 sm:p-8">
-          <div class="flex items-center gap-2 mb-5">
-            <div class="w-2 h-2 rounded-full bg-ink-faint/40"></div>
-            <span class="font-mono text-[11px] text-ink-faint uppercase tracking-[0.15em]">Later</span>
-          </div>
-          <ul class="space-y-3 text-[14px]">
-            <li class="text-ink-faint">Customer-managed integrations</li>
-            <li class="text-ink-faint">Workflow primitives (webhooks, crons)</li>
-            <li class="text-ink-faint">Virtual filesystems &amp; KV stores</li>
-            <li class="text-ink-faint">npm ecosystem support</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-  </section>
-
   <!-- ─── CTA ─── -->
-  <section id="install" class="py-32 sm:py-40 relative">
+  <section class="py-32 sm:py-40 relative">
     <div class="absolute inset-0 border-t border-rule"></div>
 
     <div class="relative max-w-[1200px] mx-auto px-6 sm:px-10">
@@ -766,138 +689,27 @@ import Layout from '../layouts/Layout.astro'
           Try the future of <span class="italic text-teal">tool calling.</span>
         </h2>
 
-        <div class="flex items-center justify-center mb-10">
-          <a href="https://github.com/RhysSullivan/executor" class="inline-flex items-center gap-2 text-[14px] text-ink-muted hover:text-ink border border-rule hover:border-ink-faint px-6 py-3 rounded-md transition-colors">
+        <div class="flex flex-wrap items-center justify-center gap-4">
+          <a href="https://app.godtool.dev" class="inline-flex items-center gap-2 text-[14px] font-medium text-primary-foreground bg-primary hover:bg-primary/90 px-6 py-3 rounded-md transition-colors">
+            Get started
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5H19.5M19.5 4.5V10.5M19.5 4.5L10.5 13.5"/><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25V19.5a1.5 1.5 0 0 1-1.5 1.5H4.5A1.5 1.5 0 0 1 3 19.5V6a1.5 1.5 0 0 1 1.5-1.5h5.25"/></svg>
+          </a>
+          <a href="https://github.com/corporationdev/godtool" class="inline-flex items-center gap-2 text-[14px] text-ink-muted hover:text-ink border border-rule hover:border-ink-faint px-6 py-3 rounded-md transition-colors">
             View on GitHub
           </a>
-        </div>
-
-        <!-- MCP installation steps -->
-        <div class="mt-10 text-left max-w-lg mx-auto space-y-5" id="install-steps">
-          <div>
-            <p class="text-[12px] font-medium text-ink-muted uppercase tracking-wider mb-2">1. Install</p>
-            <!-- Package manager tabs -->
-            <div class="flex gap-0 border border-rule rounded-lg overflow-hidden">
-              <div class="flex border-b border-rule w-full bg-surface-raised">
-                <button data-pm="npm" class="pm-tab pm-tab-active flex-1 text-[12px] font-medium py-2 border-b-2 transition-colors">npm</button>
-                <button data-pm="bun" class="pm-tab flex-1 text-[12px] font-medium py-2 border-b-2 border-transparent text-ink-faint hover:text-ink transition-colors">bun</button>
-                <button data-pm="pnpm" class="pm-tab flex-1 text-[12px] font-medium py-2 border-b-2 border-transparent text-ink-faint hover:text-ink transition-colors">pnpm</button>
-              </div>
-            </div>
-            <div class="install-cmd relative bg-surface-raised border border-t-0 border-rule rounded-b-lg px-5 py-3 font-mono text-[14px]">
-              <span class="text-ink-faint select-none">$ </span><span class="cmd-text text-ink">npm install -g executor</span>
-              <button class="copy-btn absolute right-3 top-1/2 -translate-y-1/2 text-ink-faint hover:text-ink transition-colors p-1" aria-label="Copy">
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9.75a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" /></svg>
-              </button>
-            </div>
-          </div>
-          <div>
-            <p class="text-[12px] font-medium text-ink-muted uppercase tracking-wider mb-2">2. Add to your agent</p>
-            <!-- Runner tabs -->
-            <div class="flex gap-0 border border-rule rounded-lg overflow-hidden">
-              <div class="flex border-b border-rule w-full bg-surface-raised">
-                <button data-runner="npx" class="runner-tab runner-tab-active flex-1 text-[12px] font-medium py-2 border-b-2 transition-colors">npx</button>
-                <button data-runner="bunx" class="runner-tab flex-1 text-[12px] font-medium py-2 border-b-2 border-transparent text-ink-faint hover:text-ink transition-colors">bunx</button>
-                <button data-runner="pnpx" class="runner-tab flex-1 text-[12px] font-medium py-2 border-b-2 border-transparent text-ink-faint hover:text-ink transition-colors">pnpx</button>
-              </div>
-            </div>
-            <div class="relative bg-surface-raised border border-t-0 border-rule rounded-b-lg px-5 py-3 font-mono text-[14px]">
-              <span class="text-ink-faint select-none">$ </span><span class="runner-cmd-text text-ink">npx add-mcp "executor mcp" --name "executor"</span>
-              <button class="copy-btn absolute right-3 top-1/2 -translate-y-1/2 text-ink-faint hover:text-ink transition-colors p-1" aria-label="Copy">
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9.75a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" /></svg>
-              </button>
-            </div>
-            <p class="text-[12px] text-ink-faint mt-1.5">You can also tell your agent to use the <code class="text-ink/70 bg-surface-raised px-1 py-0.5 rounded text-[11px]">executor</code> CLI directly if they don't support MCP.</p>
-          </div>
-          <div>
-            <p class="text-[12px] font-medium text-ink-muted uppercase tracking-wider mb-2">3. Add a source and go</p>
-            <div class="relative bg-surface-raised border border-rule rounded-lg px-5 py-3 font-mono text-[14px]">
-              <span class="text-ink-faint select-none">$ </span><span class="text-ink">executor web</span>
-              <button class="copy-btn absolute right-3 top-1/2 -translate-y-1/2 text-ink-faint hover:text-ink transition-colors p-1" aria-label="Copy">
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9.75a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" /></svg>
-              </button>
-            </div>
-            <p class="text-[12px] text-ink-faint mt-1.5">Opens the dashboard at localhost:4788 — add sources, set policies, manage auth.</p>
-          </div>
         </div>
       </div>
     </div>
   </section>
 
-  <script>
-    // Package manager tabs
-    const cmds: Record<string, string> = {
-      npm: 'npm install -g executor',
-      bun: 'bun add -g executor',
-      pnpm: 'pnpm add -g executor',
-    };
-    const tabs = document.querySelectorAll<HTMLButtonElement>('.pm-tab');
-    const cmdText = document.querySelector('.cmd-text');
-    tabs.forEach(tab => {
-      tab.addEventListener('click', () => {
-        tabs.forEach(t => {
-          t.classList.remove('pm-tab-active', 'text-teal', 'border-teal');
-          t.classList.add('border-transparent', 'text-ink-faint');
-        });
-        tab.classList.add('pm-tab-active', 'text-teal', 'border-teal');
-        tab.classList.remove('border-transparent', 'text-ink-faint');
-        if (cmdText) cmdText.textContent = cmds[tab.dataset.pm!] || cmds.npm;
-      });
-    });
-    // Set initial active state
-    const initial = document.querySelector('.pm-tab-active');
-    if (initial) {
-      initial.classList.add('text-teal', 'border-teal');
-    }
-
-    // Runner tabs (npx/bunx/pnpx)
-    const runnerCmds: Record<string, string> = {
-      npx: 'npx add-mcp "executor mcp" --name "executor"',
-      bunx: 'bunx add-mcp "executor mcp" --name "executor"',
-      pnpx: 'pnpx add-mcp "executor mcp" --name "executor"',
-    };
-    const runnerTabs = document.querySelectorAll<HTMLButtonElement>('.runner-tab');
-    const runnerCmdText = document.querySelector('.runner-cmd-text');
-    runnerTabs.forEach(tab => {
-      tab.addEventListener('click', () => {
-        runnerTabs.forEach(t => {
-          t.classList.remove('runner-tab-active', 'text-teal', 'border-teal');
-          t.classList.add('border-transparent', 'text-ink-faint');
-        });
-        tab.classList.add('runner-tab-active', 'text-teal', 'border-teal');
-        tab.classList.remove('border-transparent', 'text-ink-faint');
-        if (runnerCmdText) runnerCmdText.textContent = runnerCmds[tab.dataset.runner!] || runnerCmds.npx;
-      });
-    });
-    const initialRunner = document.querySelector('.runner-tab-active');
-    if (initialRunner) {
-      initialRunner.classList.add('text-teal', 'border-teal');
-    }
-
-    // Copy buttons
-    document.querySelectorAll<HTMLButtonElement>('.copy-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const block = btn.closest('div');
-        const cmdEl = block?.querySelector('.cmd-text') || block?.querySelector('.runner-cmd-text') || block?.querySelector('.text-ink');
-        const text = cmdEl?.textContent?.trim();
-        if (!text) return;
-        navigator.clipboard.writeText(text);
-        const svg = btn.querySelector('svg')!;
-        const orig = svg.innerHTML;
-        svg.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />';
-        setTimeout(() => { svg.innerHTML = orig; }, 1500);
-      });
-    });
-  </script>
-
   <!-- ─── FOOTER ─── -->
   <footer class="border-t border-rule py-10">
     <div class="max-w-[1200px] mx-auto px-6 sm:px-10 flex items-center justify-between">
-      <span class="font-display italic text-ink-faint text-sm">executor</span>
+      <span class="font-display italic text-ink-faint text-sm">godtool</span>
       <div class="flex items-center gap-5 text-[13px]">
         <a href="/privacy" class="text-ink-faint hover:text-ink transition-colors">Privacy</a>
         <a href="/terms" class="text-ink-faint hover:text-ink transition-colors">Terms</a>
-        <a href="https://github.com/RhysSullivan/executor" class="text-ink-faint hover:text-ink transition-colors">GitHub</a>
+        <a href="https://github.com/corporationdev/godtool" class="text-ink-faint hover:text-ink transition-colors">GitHub</a>
       </div>
     </div>
   </footer>
