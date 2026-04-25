@@ -37,7 +37,11 @@ RUN apt-get update \
     xdg-utils \
     xdotool \
     xfce4 \
+    xfce4-panel \
     xfce4-terminal \
+    xfconf \
+    xfdesktop4 \
+    xfwm4 \
     xvfb \
     xz-utils \
     zip \

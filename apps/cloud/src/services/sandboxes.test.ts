@@ -5,6 +5,9 @@ import { DbService } from "./db";
 import {
   CODE_SERVER_CONFIG_PATH_FOR_TESTS,
   CODE_SERVER_PROCESS_NAME_FOR_TESTS,
+  DESKTOP_RUNTIME_PROCESS_NAME_FOR_TESTS,
+  DESKTOP_RUNTIME_SCRIPT_PATH_FOR_TESTS,
+  DESKTOP_RUNTIME_VERSION_PATH_FOR_TESTS,
   EXECUTE_RUNTIME_PROCESS_NAME_FOR_TESTS,
   EXECUTE_RUNTIME_SERVER_PATH_FOR_TESTS,
   EXECUTE_RUNTIME_VERSION_PATH_FOR_TESTS,
@@ -26,8 +29,10 @@ class FakeSandboxHandle implements SandboxHandle {
   readonly files = new Map<string, string>();
   readonly directories = new Set<string>();
   lastCodeServerExecCommand: string | null = null;
+  lastDesktopExecCommand: string | null = null;
   lastExecuteExecCommand: string | null = null;
   lastCodeServerWorkingDir: string | null = null;
+  lastDesktopWorkingDir: string | null = null;
   lastExecuteWorkingDir: string | null = null;
   codeServerConfigWrites = 0;
   codeServerExecCalls = 0;
@@ -35,7 +40,13 @@ class FakeSandboxHandle implements SandboxHandle {
   codeServerKillCalls = 0;
   codeServerLogsText = "";
   codeServerStopCalls = 0;
+  desktopExecCalls = 0;
   desktopHealthChecks = 0;
+  desktopKillCalls = 0;
+  desktopLogsText = "";
+  desktopScriptWrites = 0;
+  desktopStopCalls = 0;
+  desktopVersionWrites = 0;
   executeExecCalls = 0;
   executeHealthChecks = 0;
   executeKillCalls = 0;
@@ -53,6 +64,7 @@ class FakeSandboxHandle implements SandboxHandle {
   desktopHealthy = false;
   executeHealthy = false;
   onCodeServerExec?: () => Promise<void> | void;
+  onDesktopExec?: () => Promise<void> | void;
   onExecuteExec?: () => Promise<void> | void;
 
   readonly fs = {
@@ -76,6 +88,12 @@ class FakeSandboxHandle implements SandboxHandle {
       }
       if (path === CODE_SERVER_CONFIG_PATH_FOR_TESTS) {
         this.codeServerConfigWrites += 1;
+      }
+      if (path === DESKTOP_RUNTIME_SCRIPT_PATH_FOR_TESTS) {
+        this.desktopScriptWrites += 1;
+      }
+      if (path === DESKTOP_RUNTIME_VERSION_PATH_FOR_TESTS) {
+        this.desktopVersionWrites += 1;
       }
     },
   };
@@ -128,6 +146,14 @@ class FakeSandboxHandle implements SandboxHandle {
         return;
       }
 
+      if (options.name === DESKTOP_RUNTIME_PROCESS_NAME_FOR_TESTS) {
+        this.desktopExecCalls += 1;
+        this.lastDesktopExecCommand = options.command;
+        this.lastDesktopWorkingDir = options.workingDir ?? null;
+        await this.onDesktopExec?.();
+        return;
+      }
+
       throw new Error(`Unexpected process.exec(${options.name})`);
     },
     kill: async (name: string) => {
@@ -138,6 +164,11 @@ class FakeSandboxHandle implements SandboxHandle {
 
       if (name === CODE_SERVER_PROCESS_NAME_FOR_TESTS) {
         this.codeServerKillCalls += 1;
+        return;
+      }
+
+      if (name === DESKTOP_RUNTIME_PROCESS_NAME_FOR_TESTS) {
+        this.desktopKillCalls += 1;
         return;
       }
 
@@ -152,6 +183,10 @@ class FakeSandboxHandle implements SandboxHandle {
         return this.codeServerLogsText;
       }
 
+      if (name === DESKTOP_RUNTIME_PROCESS_NAME_FOR_TESTS) {
+        return this.desktopLogsText;
+      }
+
       throw new Error(`Unexpected process.logs(${name})`);
     },
     stop: async (name: string) => {
@@ -162,6 +197,11 @@ class FakeSandboxHandle implements SandboxHandle {
 
       if (name === CODE_SERVER_PROCESS_NAME_FOR_TESTS) {
         this.codeServerStopCalls += 1;
+        return;
+      }
+
+      if (name === DESKTOP_RUNTIME_PROCESS_NAME_FOR_TESTS) {
+        this.desktopStopCalls += 1;
         return;
       }
 
@@ -825,7 +865,13 @@ describe("sandboxes service", () => {
 
     expect(providerCalls).toEqual({ create: 1, wake: 0 });
     expect(handleCalls).toEqual({ getHandle: 2 });
-    expect(handle.desktopHealthChecks).toBe(1);
+    expect(handle.desktopExecCalls).toBe(1);
+    expect(handle.desktopHealthChecks).toBe(2);
+    expect(handle.desktopScriptWrites).toBe(1);
+    expect(handle.desktopStopCalls).toBe(1);
+    expect(handle.desktopVersionWrites).toBe(1);
+    expect(handle.lastDesktopExecCommand).toContain("'/root/.godtool/runtime/desktop/start.sh'");
+    expect(handle.lastDesktopWorkingDir).toBe("/workspace");
     expect(handle.previewCreates).toBe(1);
     expect(handle.previewTokenCreates).toBe(1);
     expect(handle.lastPreviewName).toBe("desktop-vnc");
@@ -877,6 +923,10 @@ describe("sandboxes service", () => {
 
     expect(providerCalls).toEqual({ create: 1, wake: 0 });
     expect(handleCalls).toEqual({ getHandle: 2 });
+    expect(handle.desktopExecCalls).toBe(1);
+    expect(handle.desktopScriptWrites).toBe(1);
+    expect(handle.desktopStopCalls).toBe(1);
+    expect(handle.desktopVersionWrites).toBe(1);
     expect(String(result.sessionError)).toContain("desktop stream");
     expect(result.row?.status).toBe("error");
     expect(result.row?.error).toContain("desktop stream");

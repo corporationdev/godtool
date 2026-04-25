@@ -11,6 +11,7 @@ import type { DrizzleDb } from "./db";
 
 const DEFAULT_BLAXEL_MEMORY_MB = 4096;
 const DEFAULT_BLAXEL_REGION = "us-pdx-1";
+const DEVELOPMENT_BLAXEL_WORKSPACE = "godtool-dev";
 const BLAXEL_PROVIDER = "blaxel" as const;
 const SANDBOX_WORKSPACE_DIRECTORY = SANDBOX_SCAFFOLD_ROOT_DIRECTORY;
 const INTERNAL_RUNTIME_ROOT_DIRECTORY = "/root/.godtool";
@@ -30,6 +31,10 @@ const CODE_SERVER_CONFIG_DIRECTORY = "/root/.config/code-server";
 const CODE_SERVER_CONFIG_PATH = `${CODE_SERVER_CONFIG_DIRECTORY}/config.yaml`;
 const CODE_SERVER_TOKEN_TTL_MS = 1000 * 60 * 30;
 const DESKTOP_PORT = 6080;
+const DESKTOP_RUNTIME_DIRECTORY = `${INTERNAL_RUNTIME_DIRECTORY}/desktop`;
+const DESKTOP_RUNTIME_SCRIPT_PATH = `${DESKTOP_RUNTIME_DIRECTORY}/start.sh`;
+const DESKTOP_RUNTIME_VERSION_PATH = `${DESKTOP_RUNTIME_DIRECTORY}/version.txt`;
+const DESKTOP_RUNTIME_PROCESS_NAME = "godtool-desktop-runtime";
 const DESKTOP_PREVIEW_NAME = "desktop-vnc";
 const DESKTOP_START_POLL_MS = 500;
 const DESKTOP_START_TIMEOUT_MS = 60_000;
@@ -44,6 +49,9 @@ export const EXECUTE_RUNTIME_SERVER_PATH_FOR_TESTS = EXECUTE_RUNTIME_SERVER_PATH
 export const EXECUTE_RUNTIME_VERSION_PATH_FOR_TESTS = EXECUTE_RUNTIME_VERSION_PATH;
 export const CODE_SERVER_PROCESS_NAME_FOR_TESTS = CODE_SERVER_PROCESS_NAME;
 export const CODE_SERVER_CONFIG_PATH_FOR_TESTS = CODE_SERVER_CONFIG_PATH;
+export const DESKTOP_RUNTIME_PROCESS_NAME_FOR_TESTS = DESKTOP_RUNTIME_PROCESS_NAME;
+export const DESKTOP_RUNTIME_SCRIPT_PATH_FOR_TESTS = DESKTOP_RUNTIME_SCRIPT_PATH;
+export const DESKTOP_RUNTIME_VERSION_PATH_FOR_TESTS = DESKTOP_RUNTIME_VERSION_PATH;
 
 export type SandboxStatus = "creating" | "ready" | "error";
 export type SandboxRecord = typeof sandboxes.$inferSelect;
@@ -175,9 +183,26 @@ export interface SandboxesServiceOptions {
   readonly executeRuntimeStartTimeoutMs?: number;
 }
 
+const getEffectiveBlaxelWorkspace = (): string | undefined => {
+  const configuredWorkspace = env.BLAXEL_WORKSPACE?.trim();
+  const stage = env.STAGE?.trim();
+
+  if (
+    stage === "dev" ||
+    stage?.startsWith("dev-") ||
+    stage === "preview" ||
+    stage?.startsWith("preview-") ||
+    stage?.startsWith("pr-")
+  ) {
+    return DEVELOPMENT_BLAXEL_WORKSPACE;
+  }
+
+  return configuredWorkspace;
+};
+
 const getRequiredBlaxelConfig = () => {
   const apiKey = env.BLAXEL_API_KEY?.trim();
-  const workspace = env.BLAXEL_WORKSPACE?.trim();
+  const workspace = getEffectiveBlaxelWorkspace();
   const templateImage = env.BLAXEL_TEMPLATE_IMAGE?.trim();
 
   if (!apiKey) {
@@ -880,6 +905,263 @@ const createCodeServerSession = async (
   };
 };
 
+const DESKTOP_RUNTIME_SCRIPT = `#!/usr/bin/env bash
+set -euo pipefail
+
+export DISPLAY=:0
+export HOME=/root
+export XDG_RUNTIME_DIR=/tmp/xdg-runtime
+export CHROME_USER_DATA_DIR=/tmp/chrome-profile
+export CHROME_DEBUGGING_PORT=9222
+export DESKTOP_USER=desktop
+export DESKTOP_HOME=/home/desktop
+export DESKTOP_XAUTHORITY=/tmp/desktop.Xauthority
+export DESKTOP_ICEAUTHORITY=/tmp/desktop.ICEauthority
+export DESKTOP_SUPERVISOR_PATH=/tmp/godtool-desktop-supervisor.sh
+export DESKTOP_SUPERVISOR_LOG_PATH=/tmp/xfce-supervisor.log
+
+mkdir -p "\${XDG_RUNTIME_DIR}" "\${CHROME_USER_DATA_DIR}"
+chmod 700 "\${XDG_RUNTIME_DIR}"
+touch "\${DESKTOP_XAUTHORITY}" "\${DESKTOP_ICEAUTHORITY}"
+chown "\${DESKTOP_USER}:\${DESKTOP_USER}" \\
+  "\${XDG_RUNTIME_DIR}" \\
+  "\${CHROME_USER_DATA_DIR}" \\
+  "\${DESKTOP_XAUTHORITY}" \\
+  "\${DESKTOP_ICEAUTHORITY}"
+
+cleanup() {
+  for pid in \\
+    "\${chrome_launcher_pid:-}" \\
+    "\${chrome_pid:-}" \\
+    "\${websockify_pid:-}" \\
+    "\${x11vnc_pid:-}" \\
+    "\${desktop_supervisor_pid:-}" \\
+    "\${xvfb_pid:-}"; do
+    if [[ -n "\${pid}" ]] && kill -0 "\${pid}" 2>/dev/null; then
+      kill "\${pid}" || true
+    fi
+  done
+}
+
+trap cleanup EXIT
+
+resolve_browser_binary() {
+  local candidate=""
+
+  for candidate in google-chrome-stable chromium chromium-browser; do
+    if command -v "\${candidate}" >/dev/null 2>&1; then
+      printf '%s\\n' "\${candidate}"
+      return 0
+    fi
+  done
+
+  echo "Could not find a Chromium-based browser binary." >&2
+  exit 1
+}
+
+wait_for_file() {
+  local file_path="$1"
+  local attempt=0
+
+  until [[ -e "\${file_path}" ]]; do
+    attempt=$((attempt + 1))
+
+    if (( attempt > 200 )); then
+      echo "Timed out waiting for \${file_path}" >&2
+      exit 1
+    fi
+
+    sleep 0.1
+  done
+}
+
+wait_for_user_process() {
+  local pattern="$1"
+  local timeout_attempts="\${2:-100}"
+  local attempt=0
+  local pid=""
+
+  until [[ -n "\${pid}" ]]; do
+    pid="$(pgrep -u "\${DESKTOP_USER}" -n -f -- "\${pattern}" || true)"
+
+    if [[ -n "\${pid}" ]]; then
+      printf '%s\\n' "\${pid}"
+      return 0
+    fi
+
+    attempt=$((attempt + 1))
+
+    if (( attempt > timeout_attempts )); then
+      return 1
+    fi
+
+    sleep 0.1
+  done
+}
+
+desktop_env_prefix() {
+  cat <<EOF
+export DISPLAY=\${DISPLAY}
+export HOME=\${DESKTOP_HOME}
+export XDG_RUNTIME_DIR=\${XDG_RUNTIME_DIR}
+export XDG_CONFIG_DIRS=/etc/xdg
+export XDG_DATA_DIRS=/usr/local/share:/usr/share
+export XAUTHORITY=\${DESKTOP_XAUTHORITY}
+export ICEAUTHORITY=\${DESKTOP_ICEAUTHORITY}
+export XDG_SESSION_TYPE=x11
+export DESKTOP_SESSION=xfce
+export XDG_CURRENT_DESKTOP=XFCE
+EOF
+}
+
+start_browser() {
+  local browser_binary
+  local browser_command
+
+  browser_binary="$(resolve_browser_binary)"
+  browser_command="$(cat <<EOF
+$(desktop_env_prefix)
+exec "\${browser_binary}" \\
+  --user-data-dir="\${CHROME_USER_DATA_DIR}" \\
+  --no-first-run \\
+  --no-default-browser-check \\
+  --remote-debugging-address=127.0.0.1 \\
+  --remote-debugging-port="\${CHROME_DEBUGGING_PORT}" \\
+  --window-position=120,80 \\
+  --window-size=1200,760 \\
+  about:blank
+EOF
+)"
+
+  su -s /bin/bash -c "\${browser_command}" "\${DESKTOP_USER}" >/tmp/google-chrome.log 2>&1 &
+  chrome_launcher_pid=$!
+
+  if ! chrome_pid="$(wait_for_user_process "--remote-debugging-port=\${CHROME_DEBUGGING_PORT}" 100)"; then
+    echo "Timed out waiting for Chrome to start" >&2
+    cat /tmp/google-chrome.log >&2 || true
+    exit 1
+  fi
+}
+
+write_desktop_supervisor() {
+  cat >"\${DESKTOP_SUPERVISOR_PATH}" <<'SUPERVISOR'
+#!/usr/bin/env bash
+set -euo pipefail
+
+export DISPLAY=:0
+export HOME=/home/desktop
+export XDG_RUNTIME_DIR=/tmp/xdg-runtime
+export XDG_CONFIG_DIRS=/etc/xdg
+export XDG_DATA_DIRS=/usr/local/share:/usr/share
+export XAUTHORITY=/tmp/desktop.Xauthority
+export ICEAUTHORITY=/tmp/desktop.ICEauthority
+export XDG_SESSION_TYPE=x11
+export DESKTOP_SESSION=xfce
+export XDG_CURRENT_DESKTOP=XFCE
+
+eval "$(dbus-launch --sh-syntax)"
+
+cleanup_desktop_components() {
+  for pid in \
+    "\${terminal_pid:-}" \
+    "\${xfdesktop_pid:-}" \
+    "\${xfce_panel_pid:-}" \
+    "\${xfwm_pid:-}" \
+    "\${xfsettingsd_pid:-}" \
+    "\${DBUS_SESSION_BUS_PID:-}"; do
+    if [[ -n "\${pid}" ]] && kill -0 "\${pid}" 2>/dev/null; then
+      kill "\${pid}" || true
+    fi
+  done
+}
+
+trap cleanup_desktop_components EXIT
+
+xfsettingsd --no-daemon >/tmp/xfsettingsd.log 2>&1 &
+xfsettingsd_pid=$!
+
+xfwm4 --replace >/tmp/xfwm4.log 2>&1 &
+xfwm_pid=$!
+
+xfce4-panel --disable-wm-check >/tmp/xfce4-panel.log 2>&1 &
+xfce_panel_pid=$!
+
+xfdesktop --disable-wm-check >/tmp/xfdesktop.log 2>&1 &
+xfdesktop_pid=$!
+
+xfce4-terminal --disable-server >/tmp/xfce4-terminal.log 2>&1 &
+terminal_pid=$!
+
+wait -n "\${xfsettingsd_pid}" "\${xfwm_pid}" "\${xfce_panel_pid}" "\${xfdesktop_pid}"
+SUPERVISOR
+
+  chown "\${DESKTOP_USER}:\${DESKTOP_USER}" "\${DESKTOP_SUPERVISOR_PATH}"
+  chmod 755 "\${DESKTOP_SUPERVISOR_PATH}"
+}
+
+start_desktop_supervisor() {
+  write_desktop_supervisor
+
+  su -s /bin/bash -c "\${DESKTOP_SUPERVISOR_PATH}" "\${DESKTOP_USER}" >"\${DESKTOP_SUPERVISOR_LOG_PATH}" 2>&1 &
+  desktop_supervisor_pid=$!
+
+  for pattern in xfsettingsd xfwm4 xfce4-panel xfdesktop; do
+    if ! wait_for_user_process "\${pattern}" 100 >/dev/null; then
+      echo "Timed out waiting for \${pattern}" >&2
+      cat "\${DESKTOP_SUPERVISOR_LOG_PATH}" >&2 || true
+      cat "/tmp/\${pattern}.log" >&2 || true
+      exit 1
+    fi
+  done
+}
+
+start_desktop_runtime() {
+  Xvfb "\${DISPLAY}" -screen 0 1440x900x24 -ac &
+  xvfb_pid=$!
+
+  wait_for_file /tmp/.X11-unix/X0
+
+  start_desktop_supervisor
+  start_browser
+
+  x11vnc \\
+    -display "\${DISPLAY}" \\
+    -rfbport 5900 \\
+    -localhost \\
+    -forever \\
+    -shared \\
+    -nopw \\
+    -quiet &
+  x11vnc_pid=$!
+
+  sleep 1
+
+  websockify --web /usr/share/novnc 6080 localhost:5900 &
+  websockify_pid=$!
+
+  echo "Desktop runtime started"
+}
+
+start_desktop_runtime
+
+pids=()
+for pid in \\
+  "\${xvfb_pid:-}" \\
+  "\${desktop_supervisor_pid:-}" \\
+  "\${chrome_launcher_pid:-}" \\
+  "\${x11vnc_pid:-}" \\
+  "\${websockify_pid:-}"; do
+  if [[ -n "\${pid}" ]]; then
+    pids+=("\${pid}")
+  fi
+done
+
+wait -n "\${pids[@]}"
+`;
+
+const getDesktopRuntimeVersion = (): string =>
+  createHash("sha256").update(DESKTOP_RUNTIME_SCRIPT).digest("hex");
+
 const fetchDesktopHealth = async (
   sandbox: SandboxHandle,
 ): Promise<{ readonly ok: boolean; readonly status: number }> => {
@@ -918,6 +1200,72 @@ const waitForDesktopHealth = async (
   }
 
   throw new Error("Timed out waiting for the desktop stream to become healthy.");
+};
+
+const stopDesktopRuntimeProcess = async (sandbox: SandboxHandle): Promise<void> => {
+  try {
+    await sandbox.process.stop(DESKTOP_RUNTIME_PROCESS_NAME);
+    return;
+  } catch {
+    // Process may not be running or may require a kill.
+  }
+
+  try {
+    await sandbox.process.kill(DESKTOP_RUNTIME_PROCESS_NAME);
+  } catch {
+    // Process does not exist.
+  }
+};
+
+const ensureDesktopRuntimeScript = async (
+  sandbox: SandboxHandle,
+): Promise<{ readonly cacheHit: boolean }> => {
+  await ensureDirectoryExists(sandbox, INTERNAL_RUNTIME_ROOT_DIRECTORY);
+  await ensureDirectoryExists(sandbox, INTERNAL_RUNTIME_DIRECTORY);
+  await ensureDirectoryExists(sandbox, DESKTOP_RUNTIME_DIRECTORY);
+  const runtimeVersion = getDesktopRuntimeVersion();
+  const existingVersion = await sandbox.fs.read(DESKTOP_RUNTIME_VERSION_PATH).catch(() => null);
+  if (existingVersion === runtimeVersion) {
+    return { cacheHit: true };
+  }
+
+  await sandbox.fs.write(DESKTOP_RUNTIME_SCRIPT_PATH, DESKTOP_RUNTIME_SCRIPT);
+  await sandbox.fs.write(DESKTOP_RUNTIME_VERSION_PATH, runtimeVersion);
+  return { cacheHit: false };
+};
+
+const ensureDesktopRunning = async (
+  sandbox: SandboxHandle,
+  options?: SandboxesServiceOptions,
+): Promise<void> => {
+  const install = await ensureDesktopRuntimeScript(sandbox);
+
+  const health = await fetchDesktopHealth(sandbox);
+  if (health.ok && install.cacheHit) {
+    return;
+  }
+
+  await stopDesktopRuntimeProcess(sandbox);
+
+  try {
+    await sandbox.process.exec({
+      command: ["bash", quoteShellArgument(DESKTOP_RUNTIME_SCRIPT_PATH)].join(" "),
+      env: {
+        PORT: String(DESKTOP_PORT),
+      },
+      maxRestarts: 5,
+      name: DESKTOP_RUNTIME_PROCESS_NAME,
+      restartOnFailure: true,
+      waitForCompletion: false,
+      workingDir: SANDBOX_WORKSPACE_DIRECTORY,
+    });
+  } catch (error) {
+    if (!isProcessAlreadyRunningError(error, DESKTOP_RUNTIME_PROCESS_NAME)) {
+      throw error;
+    }
+  }
+
+  await waitForDesktopHealth(sandbox, options);
 };
 
 const createDesktopSession = async (
@@ -1168,7 +1516,7 @@ export const makeSandboxesService = (
       ensuredSandbox,
       async (sandboxRef) => {
         const sandbox = await sandboxHandleProvider.getSandboxHandle(sandboxRef.externalId);
-        await waitForDesktopHealth(sandbox, runtimeOptions);
+        await ensureDesktopRunning(sandbox, runtimeOptions);
         return await createDesktopSession(sandbox, sandboxRef);
       },
     );

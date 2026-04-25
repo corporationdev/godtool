@@ -95,9 +95,9 @@ addOptionalStringBinding(bindings, "AXIOM_DATASET");
 addOptionalStringBinding(bindings, "AXIOM_TRACES_URL");
 addOptionalStringBinding(bindings, "AXIOM_TRACES_SAMPLE_RATIO");
 addOptionalStringBinding(bindings, "EXECUTOR_MCP_DEBUG");
-addOptionalStringBinding(bindings, "BLAXEL_WORKSPACE");
-addOptionalStringBinding(bindings, "BLAXEL_REGION");
-addOptionalStringBinding(bindings, "BLAXEL_TEMPLATE_IMAGE");
+bindings.BLAXEL_WORKSPACE = runtime.blaxelWorkspace;
+bindings.BLAXEL_REGION = runtime.blaxelRegion;
+bindings.BLAXEL_TEMPLATE_IMAGE = runtime.blaxelTemplateImage;
 
 export const cloud = await Worker("cloud", {
   name: runtime.cloudWorkerName,

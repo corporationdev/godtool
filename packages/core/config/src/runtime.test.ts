@@ -3,6 +3,7 @@ import { describe, expect, it } from "@effect/vitest";
 import {
   getStageAppUrl,
   getStageAuthkitDomain,
+  getStageBlaxelWorkspace,
   getStageCloudWorkerName,
   getStageServerHostname,
   getStageServerUrl,
@@ -28,12 +29,8 @@ describe("runtime stage urls", () => {
   });
 
   it("derives the deployed cloud worker name from the stage", () => {
-    expect(getStageCloudWorkerName("dev-isaac-1234abcd")).toBe(
-      "godtool-web-dev-isaac-1234abcd",
-    );
-    expect(getStageCloudWorkerName("preview-code-server")).toBe(
-      "godtool-web-preview-code-server",
-    );
+    expect(getStageCloudWorkerName("dev-isaac-1234abcd")).toBe("godtool-web-dev-isaac-1234abcd");
+    expect(getStageCloudWorkerName("preview-code-server")).toBe("godtool-web-preview-code-server");
     expect(getStageCloudWorkerName("production")).toBe("godtool-web-production");
   });
 
@@ -44,9 +41,13 @@ describe("runtime stage urls", () => {
     expect(getStageAuthkitDomain("preview-my-branch")).toBe(
       "https://balanced-mirage-25-staging.authkit.app",
     );
-    expect(getStageAuthkitDomain("production")).toBe(
-      "https://reverent-value-48.authkit.app",
-    );
+    expect(getStageAuthkitDomain("production")).toBe("https://reverent-value-48.authkit.app");
+  });
+
+  it("uses the dev Blaxel workspace outside production", () => {
+    expect(getStageBlaxelWorkspace("dev-isaac-1234abcd")).toBe("godtool-dev");
+    expect(getStageBlaxelWorkspace("preview-my-branch")).toBe("godtool-dev");
+    expect(getStageBlaxelWorkspace("production")).toBe("godtool");
   });
 
   it("includes both app and server urls in the runtime context", () => {
@@ -56,5 +57,6 @@ describe("runtime stage urls", () => {
     expect(runtime.serverUrl).toBe("https://server-dev-isaac-1234abcd.godtool.dev");
     expect(runtime.cloudWorkerName).toBe("godtool-web-dev-isaac-1234abcd");
     expect(runtime.authkitDomain).toBe("https://balanced-mirage-25-staging.authkit.app");
+    expect(runtime.blaxelWorkspace).toBe("godtool-dev");
   });
 });
