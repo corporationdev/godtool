@@ -5,6 +5,8 @@ import {
   type Bindings,
   DurableObjectNamespace,
   Hyperdrive,
+  Images,
+  KVNamespace,
   Worker,
   WorkerLoader,
 } from "alchemy/cloudflare";
@@ -45,6 +47,11 @@ const runtime = resolveRuntimeContext(stage);
 const siteUrl = new URL(runtime.appUrl);
 const serverUrl = new URL(runtime.serverUrl);
 const hyperdriveName = stage;
+const marketingWorkerName =
+  runtime.stageKind === "production"
+    ? "godtool-marketing-production"
+    : `godtool-marketing-${stage}`;
+const marketingDomains = ["godtool.dev", "www.godtool.dev"];
 
 const app = await alchemy("godtool-cloud", {
   adopt: true,
@@ -115,5 +122,35 @@ export const cloud = await Worker("cloud", {
   domains: runtime.appHostname ? [runtime.appHostname] : undefined,
   bindings,
 });
+
+if (runtime.stageKind === "production") {
+  const marketingAssets = await Assets({
+    path: "../marketing/dist/client",
+  });
+
+  const marketingSession = await KVNamespace("marketing-session", {
+    title: `${marketingWorkerName}-session`,
+    adopt: true,
+  });
+
+  await Worker("marketing", {
+    name: marketingWorkerName,
+    adopt: true,
+    cwd: "../marketing/dist/server",
+    entrypoint: "./entry.mjs",
+    noBundle: true,
+    compatibilityDate: "2025-04-01",
+    compatibilityFlags: ["nodejs_compat"],
+    observability: {
+      enabled: true,
+    },
+    domains: marketingDomains.map((domainName) => ({ domainName, adopt: true })),
+    bindings: {
+      ASSETS: marketingAssets,
+      IMAGES: Images(),
+      SESSION: marketingSession,
+    },
+  });
+}
 
 await app.finalize();

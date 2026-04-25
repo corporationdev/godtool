@@ -18,6 +18,8 @@ const token = requireEnv("CLOUDFLARE_API_TOKEN");
 const accountId = requireEnv("CLOUDFLARE_ACCOUNT_ID");
 const stage = requireEnv("STAGE");
 const runtime = resolveRuntimeContext(stage);
+const marketingWorkerName = "godtool-marketing-production";
+const marketingDomains = ["godtool.dev", "www.godtool.dev"];
 
 const cloudflareFetch = async <Result>(path: string): Promise<Result> => {
   const response = await fetch(`https://api.cloudflare.com/client/v4${path}`, {
@@ -34,7 +36,9 @@ const cloudflareFetch = async <Result>(path: string): Promise<Result> => {
   const data = (await response.json()) as CloudflareResponse<Result>;
   if (!data.success) {
     const detail = data.errors?.map((error) => `${error.code}: ${error.message}`).join(", ");
-    throw new Error(`Cloudflare API ${path} returned unsuccessful response: ${detail ?? "unknown"}`);
+    throw new Error(
+      `Cloudflare API ${path} returned unsuccessful response: ${detail ?? "unknown"}`,
+    );
   }
 
   return data.result;
@@ -46,6 +50,13 @@ const workerScripts = await cloudflareFetch<Array<{ id: string }>>(
 
 if (!workerScripts.some((script) => script.id === runtime.cloudWorkerName)) {
   throw new Error(`Expected deployed worker ${runtime.cloudWorkerName} to exist in Cloudflare`);
+}
+
+if (
+  runtime.stageKind === "production" &&
+  !workerScripts.some((script) => script.id === marketingWorkerName)
+) {
+  throw new Error(`Expected deployed worker ${marketingWorkerName} to exist in Cloudflare`);
 }
 
 if (runtime.appHostname) {
@@ -76,11 +87,29 @@ if (runtime.appHostname) {
   }
 }
 
+if (runtime.stageKind === "production") {
+  for (const hostname of marketingDomains) {
+    const domains = await cloudflareFetch<
+      Array<{ hostname: string; service: string; environment?: string }>
+    >(`/accounts/${accountId}/workers/domains?hostname=${encodeURIComponent(hostname)}`);
+
+    if (
+      !domains.some(
+        (domain) => domain.hostname === hostname && domain.service === marketingWorkerName,
+      )
+    ) {
+      throw new Error(`Expected worker domain ${hostname} to be bound to ${marketingWorkerName}`);
+    }
+  }
+}
+
 console.log(
   JSON.stringify({
     ok: true,
     stage,
     worker: runtime.cloudWorkerName,
+    marketingWorker: runtime.stageKind === "production" ? marketingWorkerName : null,
     appHostname: runtime.appHostname,
+    marketingHostnames: runtime.stageKind === "production" ? marketingDomains : [],
   }),
 );
