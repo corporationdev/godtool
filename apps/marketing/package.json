@@ -6,7 +6,7 @@
     "dev": "astro dev --host 127.0.0.1 --port 4321",
     "build": "astro build",
     "preview": "astro preview",
-    "deploy": "astro build && wrangler deploy --config dist/server/wrangler.json",
+    "deploy": "sh -lc 'if [ \"$CI\" != \"true\" ]; then echo \"Production deploys run in CI only.\" >&2; exit 1; fi; bun run --cwd ../cloud deploy:ci'",
     "deploy:dry-run": "astro build && wrangler deploy --config dist/server/wrangler.json --dry-run",
     "astro": "astro",
     "typecheck": "tsgo --noEmit",
