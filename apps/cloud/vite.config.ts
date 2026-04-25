@@ -1,5 +1,6 @@
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, loadEnv, type Plugin } from "vite";
 import { cloudflare } from "@cloudflare/vite-plugin";
+import { resolveRuntimeContext } from "@executor/config/runtime";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
@@ -19,10 +20,7 @@ const devCrashGuard = (): Plugin => {
     if (installed) return;
     installed = true;
     process.on("uncaughtException", (err, origin) => {
-      console.error(
-        `[dev-crash-guard] uncaughtException (origin=${origin}):`,
-        err,
-      );
+      console.error(`[dev-crash-guard] uncaughtException (origin=${origin}):`, err);
     });
     process.on("unhandledRejection", (reason, promise) => {
       console.error("[dev-crash-guard] unhandledRejection:", reason, promise);
@@ -58,12 +56,7 @@ function getSingleLabelSubdomain(prefix: string, value: string): string {
   return `${prefix}${value.slice(0, maxValueLength)}${hashSuffix}`;
 }
 
-const getAllowedHosts = (): string[] | undefined => {
-  const stage = process.env.STAGE?.trim();
-  if (!stage) {
-    return undefined;
-  }
-
+const getAllowedHosts = (stage: string): string[] | undefined => {
   if (!(stage === "dev" || stage.startsWith("dev-"))) {
     return undefined;
   }
@@ -71,16 +64,39 @@ const getAllowedHosts = (): string[] | undefined => {
   return [`${getSingleLabelSubdomain(serverSubdomainPrefix, stage)}.${rootDomain}`];
 };
 
-export default defineConfig({
-  resolve: { tsconfigPaths: true },
-  server: {
-    allowedHosts: getAllowedHosts(),
-  },
-  plugins: [
-    devCrashGuard(),
-    tailwindcss(),
-    cloudflare({ viteEnvironment: { name: "ssr" }, inspectorPort: false }),
-    tanstackStart(),
-    react(),
-  ],
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), "");
+  const stage = env.STAGE?.trim();
+
+  if (!stage) {
+    throw new Error("Missing STAGE env var. Run `bun secrets:inject`.");
+  }
+
+  const runtime = resolveRuntimeContext(stage);
+  Object.assign(process.env, {
+    ...(env.BLAXEL_API_KEY ? { BL_API_KEY: env.BLAXEL_API_KEY } : {}),
+    BL_REGION: runtime.blaxelRegion,
+    BL_WORKSPACE: runtime.blaxelWorkspace,
+    BLAXEL_REGION: runtime.blaxelRegion,
+    BLAXEL_TEMPLATE_IMAGE: runtime.blaxelTemplateImage,
+    BLAXEL_WORKSPACE: runtime.blaxelWorkspace,
+    MCP_AUTHKIT_DOMAIN: runtime.authkitDomain,
+    MCP_RESOURCE_ORIGIN: runtime.serverUrl,
+    VITE_PUBLIC_SITE_URL: runtime.appUrl,
+    VITE_SERVER_URL: runtime.serverUrl,
+  });
+
+  return {
+    resolve: { tsconfigPaths: true },
+    server: {
+      allowedHosts: getAllowedHosts(stage),
+    },
+    plugins: [
+      devCrashGuard(),
+      tailwindcss(),
+      cloudflare({ viteEnvironment: { name: "ssr" }, inspectorPort: false }),
+      tanstackStart(),
+      react(),
+    ],
+  };
 });

@@ -1,4 +1,5 @@
 import { Link, Outlet, useLocation } from "@tanstack/react-router";
+import type { CSSProperties } from "react";
 import { useRef, useState } from "react";
 import { useAtomValue, useAtomSet, Result } from "@effect-atom/atom-react";
 import {
@@ -62,6 +63,34 @@ const navItems = [
   { to: "/billing", label: "Billing", icon: CreditCard },
   { to: "/secrets", label: "Secrets", icon: KeyRound },
 ] as const;
+
+const brandMarkStyle = {
+  WebkitMask: "url('/favicon.svg') center / contain no-repeat",
+  mask: "url('/favicon.svg') center / contain no-repeat",
+} satisfies CSSProperties;
+
+function BrandMark(props: { className?: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`${props.className ?? "size-5"} shrink-0 bg-current`}
+      style={brandMarkStyle}
+    />
+  );
+}
+
+function BrandLogo(props: { textClassName?: string }) {
+  return (
+    <>
+      <BrandMark />
+      <span
+        className={`whitespace-nowrap font-display tracking-tight text-foreground ${props.textClassName ?? "text-base"}`}
+      >
+        GOD TOOL
+      </span>
+    </>
+  );
+}
 
 // ── Avatar ────────────────────────────────────────────────────────────────
 
@@ -245,10 +274,8 @@ function AppSidebar(props: { pathname: string }) {
       <SidebarHeader>
         <div className="flex h-10 items-center px-2 group-data-[collapsible=icon]:justify-center">
           <div className="min-w-0 flex-1 overflow-hidden max-w-[999px] group-data-[collapsible=icon]:max-w-0 group-data-[collapsible=icon]:flex-none transition-[max-width] duration-200 ease-linear">
-            <Link to="/" className="flex items-center">
-              <span className="whitespace-nowrap font-display text-base tracking-tight text-foreground">
-                GOD TOOL
-              </span>
+            <Link to="/" className="flex items-center gap-2 text-foreground">
+              <BrandLogo />
             </Link>
           </div>
           <SidebarTrigger className="shrink-0" />

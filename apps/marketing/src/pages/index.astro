@@ -1,6 +1,7 @@
 ---
 export const prerender = true
 import Layout from '../layouts/Layout.astro'
+import BrandLogo from '../components/BrandLogo.astro'
 import SandboxFilesystemDemo from '../components/SandboxFilesystemDemo'
 ---
 
@@ -8,7 +9,7 @@ import SandboxFilesystemDemo from '../components/SandboxFilesystemDemo'
   <!-- ─── NAV ─── -->
   <nav class="fixed top-0 w-full z-50 border-b border-rule bg-surface/80 backdrop-blur-lg">
     <div class="max-w-[1200px] mx-auto px-6 sm:px-10 h-14 flex items-center justify-between">
-      <a href="/" class="font-display text-xl text-ink tracking-tight hover:text-teal transition-colors">GOD TOOL</a>
+      <BrandLogo />
       <div class="flex items-center gap-8">
         <a href="#pricing" class="hidden sm:block text-[13px] text-ink-muted hover:text-ink transition-colors">Pricing</a>
         <a href="https://github.com/corporationdev/godtool" class="hidden sm:block text-[13px] text-ink-muted hover:text-ink transition-colors">GitHub</a>

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { initialize, SandboxInstance } from "@blaxel/core";
+import { resolveRuntimeContext } from "@executor/config/runtime";
 import { env } from "cloudflare:workers";
 import { eq } from "drizzle-orm";
 
@@ -10,8 +11,6 @@ import { sandboxes } from "./schema";
 import type { DrizzleDb } from "./db";
 
 const DEFAULT_BLAXEL_MEMORY_MB = 4096;
-const DEFAULT_BLAXEL_REGION = "us-pdx-1";
-const DEVELOPMENT_BLAXEL_WORKSPACE = "godtool-dev";
 const BLAXEL_PROVIDER = "blaxel" as const;
 const SANDBOX_WORKSPACE_DIRECTORY = SANDBOX_SCAFFOLD_ROOT_DIRECTORY;
 const INTERNAL_RUNTIME_ROOT_DIRECTORY = "/root/.godtool";
@@ -183,46 +182,30 @@ export interface SandboxesServiceOptions {
   readonly executeRuntimeStartTimeoutMs?: number;
 }
 
-const getEffectiveBlaxelWorkspace = (): string | undefined => {
-  const configuredWorkspace = env.BLAXEL_WORKSPACE?.trim();
+const getRequiredRuntimeContext = () => {
   const stage = env.STAGE?.trim();
 
-  if (
-    stage === "dev" ||
-    stage?.startsWith("dev-") ||
-    stage === "preview" ||
-    stage?.startsWith("preview-") ||
-    stage?.startsWith("pr-")
-  ) {
-    return DEVELOPMENT_BLAXEL_WORKSPACE;
+  if (!stage) {
+    throw new Error("Missing STAGE");
   }
 
-  return configuredWorkspace;
+  return resolveRuntimeContext(stage);
 };
 
 const getRequiredBlaxelConfig = () => {
   const apiKey = env.BLAXEL_API_KEY?.trim();
-  const workspace = getEffectiveBlaxelWorkspace();
-  const templateImage = env.BLAXEL_TEMPLATE_IMAGE?.trim();
+  const runtime = getRequiredRuntimeContext();
 
   if (!apiKey) {
     throw new Error("Missing BLAXEL_API_KEY");
   }
 
-  if (!workspace) {
-    throw new Error("Missing BLAXEL_WORKSPACE");
-  }
-
-  if (!templateImage) {
-    throw new Error("Missing BLAXEL_TEMPLATE_IMAGE");
-  }
-
   return {
     apiKey,
     memoryMb: DEFAULT_BLAXEL_MEMORY_MB,
-    region: env.BLAXEL_REGION?.trim() || DEFAULT_BLAXEL_REGION,
-    templateImage,
-    workspace,
+    region: runtime.blaxelRegion,
+    templateImage: runtime.blaxelTemplateImage,
+    workspace: runtime.blaxelWorkspace,
   };
 };
 
@@ -231,6 +214,10 @@ let initializedKey: string | null = null;
 const configureBlaxel = () => {
   const config = getRequiredBlaxelConfig();
   const nextKey = `${config.workspace}:${config.region}:${config.templateImage}`;
+
+  process.env.BL_WORKSPACE = config.workspace;
+  process.env.BL_API_KEY = config.apiKey;
+  process.env.BL_REGION = config.region;
 
   if (initializedKey !== nextKey) {
     initialize({
@@ -434,7 +421,9 @@ const hasOwn = <K extends string>(value: unknown, key: K): value is Record<K, un
   typeof value === "object" && value !== null && key in value;
 
 const includesRetryableSandboxMarker = (value: string): boolean =>
-  value.includes("WORKLOAD_UNAVAILABLE") || /retry with exponential backoff/i.test(value);
+  value.includes("IMAGE_NOT_FOUND") ||
+  value.includes("WORKLOAD_UNAVAILABLE") ||
+  /retry with exponential backoff/i.test(value);
 
 const isRetryableSandboxError = (error: unknown): boolean => {
   if (typeof error === "string") {

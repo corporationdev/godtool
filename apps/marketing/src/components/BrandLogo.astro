@@ -1,0 +1,23 @@
+---
+interface Props {
+  class?: string;
+}
+
+const { class: className = "" } = Astro.props;
+---
+
+<a
+  href="/"
+  aria-label="GOD TOOL home"
+  class:list={[
+    "inline-flex items-center gap-2 font-display text-xl tracking-tight text-ink transition-colors hover:text-teal",
+    className,
+  ]}
+>
+  <span
+    aria-hidden="true"
+    class="size-5 shrink-0 bg-current"
+    style="-webkit-mask: url('/favicon.svg') center / contain no-repeat; mask: url('/favicon.svg') center / contain no-repeat;"
+  ></span>
+  <span>GOD TOOL</span>
+</a>
