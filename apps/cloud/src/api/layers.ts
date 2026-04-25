@@ -15,6 +15,8 @@ import { RawGroup, RawHandlers } from "@executor/plugin-raw/api";
 import { OrgAuth } from "../auth/middleware";
 import { OrgAuthLive, SessionAuthLive } from "../auth/middleware-live";
 import { UserStoreService } from "../auth/context";
+import { DesktopApi } from "../desktop/api";
+import { DesktopHandlers } from "../desktop/handlers";
 import { FilesApi } from "../files/api";
 import { FilesHandlers } from "../files/handlers";
 import {
@@ -38,6 +40,7 @@ const ProtectedCloudApi = CoreExecutorApi.add(OpenApiGroup)
   .add(GraphqlGroup)
   .add(RawGroup)
   .add(FilesApi)
+  .add(DesktopApi)
   .addError(InternalError)
   .middleware(OrgAuth);
 
@@ -66,6 +69,7 @@ export const ProtectedCloudApiLive = HttpApiBuilder.api(ProtectedCloudApi).pipe(
       GraphqlHandlers,
       RawHandlers,
       FilesHandlers,
+      DesktopHandlers,
       OrgAuthLive,
       ObservabilityLive,
     ),

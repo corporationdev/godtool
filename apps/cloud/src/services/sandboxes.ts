@@ -5,10 +5,7 @@ import { env } from "cloudflare:workers";
 import { eq } from "drizzle-orm";
 
 import { EXECUTE_RUNTIME_ASSETS } from "./execute-runtime.generated";
-import {
-  SANDBOX_SCAFFOLD_ROOT_DIRECTORY,
-  sandboxScaffoldFiles,
-} from "./sandbox-scaffold";
+import { SANDBOX_SCAFFOLD_ROOT_DIRECTORY, sandboxScaffoldFiles } from "./sandbox-scaffold";
 import { sandboxes } from "./schema";
 import type { DrizzleDb } from "./db";
 
@@ -32,6 +29,11 @@ const CODE_SERVER_START_TIMEOUT_MS = 15_000;
 const CODE_SERVER_CONFIG_DIRECTORY = "/root/.config/code-server";
 const CODE_SERVER_CONFIG_PATH = `${CODE_SERVER_CONFIG_DIRECTORY}/config.yaml`;
 const CODE_SERVER_TOKEN_TTL_MS = 1000 * 60 * 30;
+const DESKTOP_PORT = 6080;
+const DESKTOP_PREVIEW_NAME = "desktop-vnc";
+const DESKTOP_START_POLL_MS = 500;
+const DESKTOP_START_TIMEOUT_MS = 60_000;
+const DESKTOP_TOKEN_TTL_MS = 1000 * 60 * 30;
 const MAX_PROCESS_LOG_CHARS = 12_000;
 const MAX_SANDBOX_NAME_LENGTH = 49;
 const SANDBOX_NAME_HASH_LENGTH = 8;
@@ -77,10 +79,15 @@ export interface CodeServerSession {
   readonly url: string;
 }
 
+export interface DesktopSession {
+  readonly expiresAt: string;
+  readonly sandboxId: string;
+  readonly sandboxStatus: "created" | "reused";
+  readonly url: string;
+}
+
 export interface SandboxProvider {
-  readonly createOrGetSandbox: (args: {
-    readonly organizationId: string;
-  }) => Promise<{
+  readonly createOrGetSandbox: (args: { readonly organizationId: string }) => Promise<{
     readonly externalId: string;
     readonly sandboxName: string;
     readonly status: "created" | "reused";
@@ -162,6 +169,8 @@ export interface SandboxHandleProvider {
 export interface SandboxesServiceOptions {
   readonly codeServerStartPollMs?: number;
   readonly codeServerStartTimeoutMs?: number;
+  readonly desktopStartPollMs?: number;
+  readonly desktopStartTimeoutMs?: number;
   readonly executeRuntimeStartPollMs?: number;
   readonly executeRuntimeStartTimeoutMs?: number;
 }
@@ -234,7 +243,9 @@ export const getSandboxNameForOrganization = (organizationId: string) => {
   return `${SANDBOX_NAME_PREFIX}-${baseSegment || "org"}-${hash}`;
 };
 
-const resolveSandboxExternalId = async (sandbox: Awaited<ReturnType<typeof SandboxInstance.get>>) => {
+const resolveSandboxExternalId = async (
+  sandbox: Awaited<ReturnType<typeof SandboxInstance.get>>,
+) => {
   await sandbox.wait();
   const externalId = sandbox.metadata.name?.trim();
 
@@ -265,6 +276,10 @@ export const makeBlaxelSandboxProvider = (): SandboxProvider => ({
         {
           protocol: "HTTP",
           target: CODE_SERVER_PORT,
+        },
+        {
+          protocol: "HTTP",
+          target: DESKTOP_PORT,
         },
       ],
       region: config.region,
@@ -299,9 +314,7 @@ export const makeBlaxelSandboxHandleProvider = (): SandboxHandleProvider => ({
 });
 
 const inferBrokenMessage = (organizationId: string, error: string | null | undefined) =>
-  error?.trim().length
-    ? error
-    : `Sandbox for organization "${organizationId}" is marked broken.`;
+  error?.trim().length ? error : `Sandbox for organization "${organizationId}" is marked broken.`;
 
 const ensureRuntimeAssetsPresent = () => {
   if (
@@ -347,8 +360,7 @@ const renderUnknownError = (error: unknown): string => {
     "message" in error &&
     typeof error.message === "string"
   ) {
-    const code =
-      "code" in error && typeof error.code === "string" ? ` (${error.code})` : "";
+    const code = "code" in error && typeof error.code === "string" ? ` (${error.code})` : "";
     return `${error.message}${code}`;
   }
 
@@ -405,9 +417,7 @@ const isRetryableSandboxError = (error: unknown): boolean => {
   }
 
   if (error instanceof Error) {
-    return (
-      includesRetryableSandboxMarker(error.message) || isRetryableSandboxError(error.cause)
-    );
+    return includesRetryableSandboxMarker(error.message) || isRetryableSandboxError(error.cause);
   }
 
   if (hasOwn(error, "retryable") && error.retryable === true) {
@@ -539,7 +549,10 @@ const ensureWorkspaceScaffold = async (sandbox: SandboxHandle): Promise<void> =>
 
 export const makeSandboxStore = (db: DrizzleDb) => {
   const getByOrganizationId = async (organizationId: string) => {
-    const rows = await db.select().from(sandboxes).where(eq(sandboxes.organizationId, organizationId));
+    const rows = await db
+      .select()
+      .from(sandboxes)
+      .where(eq(sandboxes.organizationId, organizationId));
     return rows[0] ?? null;
   };
 
@@ -580,10 +593,7 @@ export const makeSandboxStore = (db: DrizzleDb) => {
     return updated;
   };
 
-  const markError = async (args: {
-    readonly error: string;
-    readonly organizationId: string;
-  }) => {
+  const markError = async (args: { readonly error: string; readonly organizationId: string }) => {
     const [updated] = await db
       .update(sandboxes)
       .set({
@@ -711,7 +721,9 @@ const waitForExecuteRuntimeHealth = async (
     await sleep(pollMs);
   }
 
-  const processLogs = await sandbox.process.logs(EXECUTE_RUNTIME_PROCESS_NAME, "all").catch(() => "");
+  const processLogs = await sandbox.process
+    .logs(EXECUTE_RUNTIME_PROCESS_NAME, "all")
+    .catch(() => "");
   throw new Error(
     processLogs.trim().length > 0
       ? `Timed out waiting for execute runtime to become healthy.\n${truncateOutput(processLogs.trim(), MAX_PROCESS_LOG_CHARS)}`
@@ -868,6 +880,84 @@ const createCodeServerSession = async (
   };
 };
 
+const fetchDesktopHealth = async (
+  sandbox: SandboxHandle,
+): Promise<{ readonly ok: boolean; readonly status: number }> => {
+  try {
+    const response = await sandbox.fetch(DESKTOP_PORT, "/vnc.html");
+    return {
+      ok: response.ok,
+      status: response.status,
+    };
+  } catch {
+    return {
+      ok: false,
+      status: 0,
+    };
+  }
+};
+
+const waitForDesktopHealth = async (
+  sandbox: SandboxHandle,
+  options?: SandboxesServiceOptions,
+): Promise<{ readonly ok: true; readonly status: number }> => {
+  const timeoutMs = options?.desktopStartTimeoutMs ?? DESKTOP_START_TIMEOUT_MS;
+  const pollMs = options?.desktopStartPollMs ?? DESKTOP_START_POLL_MS;
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const health = await fetchDesktopHealth(sandbox);
+    if (health.ok) {
+      return {
+        ok: true,
+        status: health.status,
+      };
+    }
+
+    await sleep(pollMs);
+  }
+
+  throw new Error("Timed out waiting for the desktop stream to become healthy.");
+};
+
+const createDesktopSession = async (
+  sandbox: SandboxHandle,
+  ensuredSandbox: EnsuredSandbox,
+): Promise<DesktopSession> => {
+  const preview = await sandbox.previews.createIfNotExists({
+    metadata: {
+      name: DESKTOP_PREVIEW_NAME,
+    },
+    spec: {
+      port: DESKTOP_PORT,
+      public: false,
+    },
+  });
+  const previewUrl = preview.spec.url?.trim();
+
+  if (!previewUrl) {
+    throw new Error("Blaxel preview URL is missing for desktop.");
+  }
+
+  const expiresAt = new Date(Date.now() + DESKTOP_TOKEN_TTL_MS);
+  const token = await preview.tokens.create(expiresAt);
+  const url = new URL("/vnc.html", previewUrl);
+  const tokenParam = `bl_preview_token=${encodeURIComponent(token.value)}`;
+  url.searchParams.set("autoconnect", "1");
+  url.searchParams.set("path", `websockify?${tokenParam}`);
+  url.searchParams.set("resize", "scale");
+  url.searchParams.set("bl_preview_token", token.value);
+  url.searchParams.set("_t", Date.now().toString());
+
+  return {
+    expiresAt:
+      typeof token.expiresAt === "string" ? token.expiresAt : token.expiresAt.toISOString(),
+    sandboxId: ensuredSandbox.externalId,
+    sandboxStatus: ensuredSandbox.status,
+    url: url.toString(),
+  };
+};
+
 const ensureExecuteRuntimeStarted = async (
   sandbox: SandboxHandle,
   forceRestart: boolean,
@@ -925,8 +1015,9 @@ export const makeSandboxesService = (
   const runtimeOptions: SandboxesServiceOptions = {
     codeServerStartPollMs: options?.codeServerStartPollMs ?? CODE_SERVER_START_POLL_MS,
     codeServerStartTimeoutMs: options?.codeServerStartTimeoutMs ?? CODE_SERVER_START_TIMEOUT_MS,
-    executeRuntimeStartPollMs:
-      options?.executeRuntimeStartPollMs ?? EXECUTE_RUNTIME_START_POLL_MS,
+    desktopStartPollMs: options?.desktopStartPollMs ?? DESKTOP_START_POLL_MS,
+    desktopStartTimeoutMs: options?.desktopStartTimeoutMs ?? DESKTOP_START_TIMEOUT_MS,
+    executeRuntimeStartPollMs: options?.executeRuntimeStartPollMs ?? EXECUTE_RUNTIME_START_POLL_MS,
     executeRuntimeStartTimeoutMs:
       options?.executeRuntimeStartTimeoutMs ?? EXECUTE_RUNTIME_START_TIMEOUT_MS,
   };
@@ -935,8 +1026,7 @@ export const makeSandboxesService = (
     record: SandboxRecord,
     allowUnavailableRecovery = true,
   ): Promise<EnsuredSandbox> => {
-    const allowRetryFromError =
-      record.status === "error" && isRetryableSandboxError(record.error);
+    const allowRetryFromError = record.status === "error" && isRetryableSandboxError(record.error);
 
     if (record.status === "error" && !allowRetryFromError) {
       throw new Error(inferBrokenMessage(record.organizationId, record.error));
@@ -1045,21 +1135,43 @@ export const makeSandboxesService = (
 
     const ensuredSandbox = await ensureProvisioned(row);
 
-    return await withUnavailableSandboxRecovery(organizationId, ensuredSandbox, async (sandboxRef) => {
-      const sandbox = await sandboxHandleProvider.getSandboxHandle(sandboxRef.externalId);
-      await ensureWorkspaceScaffold(sandbox);
-      return sandboxRef;
-    });
+    return await withUnavailableSandboxRecovery(
+      organizationId,
+      ensuredSandbox,
+      async (sandboxRef) => {
+        const sandbox = await sandboxHandleProvider.getSandboxHandle(sandboxRef.externalId);
+        await ensureWorkspaceScaffold(sandbox);
+        return sandboxRef;
+      },
+    );
   };
 
   const ensureCodeServerSession = async (organizationId: string): Promise<CodeServerSession> => {
     const ensuredSandbox = await ensureSandbox(organizationId);
 
-    return await withUnavailableSandboxRecovery(organizationId, ensuredSandbox, async (sandboxRef) => {
-      const sandbox = await sandboxHandleProvider.getSandboxHandle(sandboxRef.externalId);
-      await ensureCodeServerRunning(sandbox, runtimeOptions);
-      return await createCodeServerSession(sandbox, sandboxRef);
-    });
+    return await withUnavailableSandboxRecovery(
+      organizationId,
+      ensuredSandbox,
+      async (sandboxRef) => {
+        const sandbox = await sandboxHandleProvider.getSandboxHandle(sandboxRef.externalId);
+        await ensureCodeServerRunning(sandbox, runtimeOptions);
+        return await createCodeServerSession(sandbox, sandboxRef);
+      },
+    );
+  };
+
+  const ensureDesktopSession = async (organizationId: string): Promise<DesktopSession> => {
+    const ensuredSandbox = await ensureSandbox(organizationId);
+
+    return await withUnavailableSandboxRecovery(
+      organizationId,
+      ensuredSandbox,
+      async (sandboxRef) => {
+        const sandbox = await sandboxHandleProvider.getSandboxHandle(sandboxRef.externalId);
+        await waitForDesktopHealth(sandbox, runtimeOptions);
+        return await createDesktopSession(sandbox, sandboxRef);
+      },
+    );
   };
 
   const ensureExecuteRuntimeRunning = async (
@@ -1067,30 +1179,35 @@ export const makeSandboxesService = (
   ): Promise<EnsuredExecuteRuntime> => {
     const ensuredSandbox = await ensureSandbox(organizationId);
 
-    return await withUnavailableSandboxRecovery(organizationId, ensuredSandbox, async (sandboxRef) => {
-      const sandbox = await sandboxHandleProvider.getSandboxHandle(sandboxRef.externalId);
-      const install = await ensureExecuteRuntimeInstalled(sandbox);
-      const runtimeState = await ensureExecuteRuntimeStarted(
-        sandbox,
-        !install.cacheHit,
-        runtimeOptions,
-      );
-      return {
-        health: {
-          ok: true,
-          status: runtimeState.healthStatus,
-        },
-        install,
-        runtime: {
-          status: runtimeState.runtimeStatus,
-        },
-        sandbox: sandboxRef,
-      };
-    });
+    return await withUnavailableSandboxRecovery(
+      organizationId,
+      ensuredSandbox,
+      async (sandboxRef) => {
+        const sandbox = await sandboxHandleProvider.getSandboxHandle(sandboxRef.externalId);
+        const install = await ensureExecuteRuntimeInstalled(sandbox);
+        const runtimeState = await ensureExecuteRuntimeStarted(
+          sandbox,
+          !install.cacheHit,
+          runtimeOptions,
+        );
+        return {
+          health: {
+            ok: true,
+            status: runtimeState.healthStatus,
+          },
+          install,
+          runtime: {
+            status: runtimeState.runtimeStatus,
+          },
+          sandbox: sandboxRef,
+        };
+      },
+    );
   };
 
   return {
     ensureCodeServerSession,
+    ensureDesktopSession,
     ensureExecuteRuntimeRunning,
     ensureSandbox,
     getSandbox: (organizationId: string) => store.getByOrganizationId(organizationId),

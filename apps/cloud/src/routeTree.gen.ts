@@ -14,6 +14,7 @@ import { Route as SecretsRouteImport } from './routes/secrets'
 import { Route as OrgRouteImport } from './routes/org'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as FilesRouteImport } from './routes/files'
+import { Route as DesktopRouteImport } from './routes/desktop'
 import { Route as ConnectionsRouteImport } from './routes/connections'
 import { Route as BillingRouteImport } from './routes/billing'
 import { Route as IndexRouteImport } from './routes/index'
@@ -44,6 +45,11 @@ const LoginRoute = LoginRouteImport.update({
 const FilesRoute = FilesRouteImport.update({
   id: '/files',
   path: '/files',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DesktopRoute = DesktopRouteImport.update({
+  id: '/desktop',
+  path: '/desktop',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConnectionsRoute = ConnectionsRouteImport.update({
@@ -81,6 +87,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/billing': typeof BillingRoute
   '/connections': typeof ConnectionsRoute
+  '/desktop': typeof DesktopRoute
   '/files': typeof FilesRoute
   '/login': typeof LoginRoute
   '/org': typeof OrgRoute
@@ -94,6 +101,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/billing': typeof BillingRoute
   '/connections': typeof ConnectionsRoute
+  '/desktop': typeof DesktopRoute
   '/files': typeof FilesRoute
   '/login': typeof LoginRoute
   '/org': typeof OrgRoute
@@ -108,6 +116,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/billing': typeof BillingRoute
   '/connections': typeof ConnectionsRoute
+  '/desktop': typeof DesktopRoute
   '/files': typeof FilesRoute
   '/login': typeof LoginRoute
   '/org': typeof OrgRoute
@@ -123,6 +132,7 @@ export interface FileRouteTypes {
     | '/'
     | '/billing'
     | '/connections'
+    | '/desktop'
     | '/files'
     | '/login'
     | '/org'
@@ -136,6 +146,7 @@ export interface FileRouteTypes {
     | '/'
     | '/billing'
     | '/connections'
+    | '/desktop'
     | '/files'
     | '/login'
     | '/org'
@@ -149,6 +160,7 @@ export interface FileRouteTypes {
     | '/'
     | '/billing'
     | '/connections'
+    | '/desktop'
     | '/files'
     | '/login'
     | '/org'
@@ -163,6 +175,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BillingRoute: typeof BillingRoute
   ConnectionsRoute: typeof ConnectionsRoute
+  DesktopRoute: typeof DesktopRoute
   FilesRoute: typeof FilesRoute
   LoginRoute: typeof LoginRoute
   OrgRoute: typeof OrgRoute
@@ -208,6 +221,13 @@ declare module '@tanstack/react-router' {
       path: '/files'
       fullPath: '/files'
       preLoaderRoute: typeof FilesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/desktop': {
+      id: '/desktop'
+      path: '/desktop'
+      fullPath: '/desktop'
+      preLoaderRoute: typeof DesktopRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/connections': {
@@ -259,6 +279,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BillingRoute: BillingRoute,
   ConnectionsRoute: ConnectionsRoute,
+  DesktopRoute: DesktopRoute,
   FilesRoute: FilesRoute,
   LoginRoute: LoginRoute,
   OrgRoute: OrgRoute,

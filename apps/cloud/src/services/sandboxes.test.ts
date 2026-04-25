@@ -35,17 +35,22 @@ class FakeSandboxHandle implements SandboxHandle {
   codeServerKillCalls = 0;
   codeServerLogsText = "";
   codeServerStopCalls = 0;
+  desktopHealthChecks = 0;
   executeExecCalls = 0;
   executeHealthChecks = 0;
   executeKillCalls = 0;
   executeLogsText = "";
   executeStopCalls = 0;
+  lastPreviewName: string | null = null;
+  lastPreviewPort: number | null = null;
+  lastPreviewPublic: boolean | null = null;
   previewCreates = 0;
   previewTokenCreates = 0;
   previewUrl = "https://preview.example.com";
   serverWrites = 0;
   versionWrites = 0;
   codeServerHealthy = false;
+  desktopHealthy = false;
   executeHealthy = false;
   onCodeServerExec?: () => Promise<void> | void;
   onExecuteExec?: () => Promise<void> | void;
@@ -76,8 +81,14 @@ class FakeSandboxHandle implements SandboxHandle {
   };
 
   readonly previews = {
-    createIfNotExists: async () => {
+    createIfNotExists: async (args: {
+      readonly metadata: { readonly name: string };
+      readonly spec: { readonly port: number; readonly public: boolean };
+    }) => {
       this.previewCreates += 1;
+      this.lastPreviewName = args.metadata.name;
+      this.lastPreviewPort = args.spec.port;
+      this.lastPreviewPublic = args.spec.public;
       return {
         spec: {
           url: this.previewUrl,
@@ -96,7 +107,11 @@ class FakeSandboxHandle implements SandboxHandle {
   };
 
   readonly process = {
-    exec: async (options: { readonly command: string; readonly name: string; readonly workingDir?: string }) => {
+    exec: async (options: {
+      readonly command: string;
+      readonly name: string;
+      readonly workingDir?: string;
+    }) => {
       if (options.name === EXECUTE_RUNTIME_PROCESS_NAME_FOR_TESTS) {
         this.executeExecCalls += 1;
         this.lastExecuteExecCommand = options.command;
@@ -163,6 +178,11 @@ class FakeSandboxHandle implements SandboxHandle {
     if (port === 8081 && path === "/healthz") {
       this.codeServerHealthChecks += 1;
       return this.codeServerHealthy ? { ok: true, status: 200 } : { ok: false, status: 503 };
+    }
+
+    if (port === 6080 && path === "/vnc.html") {
+      this.desktopHealthChecks += 1;
+      return this.desktopHealthy ? { ok: true, status: 200 } : { ok: false, status: 503 };
     }
 
     throw new Error(`Unexpected fetch(${port}, ${path})`);
@@ -251,7 +271,9 @@ describe("sandboxes service", () => {
     expect(handle.lastExecuteWorkingDir).toBe("/workspace");
     expect(handle.serverWrites).toBe(1);
     expect(handle.versionWrites).toBe(1);
-    expect(handle.files.get(EXECUTE_RUNTIME_VERSION_PATH_FOR_TESTS)).toBe(getExecuteRuntimeVersion());
+    expect(handle.files.get(EXECUTE_RUNTIME_VERSION_PATH_FOR_TESTS)).toBe(
+      getExecuteRuntimeVersion(),
+    );
     expect(handle.files.get("/workspace/SYSTEM.md")).toContain("# System");
     expect(handle.files.get("/workspace/MEMORY.md")?.trim()).toBe("");
   });
@@ -774,6 +796,90 @@ describe("sandboxes service", () => {
     expect(handle.previewTokenCreates).toBe(2);
     expect(secondSession.sandboxStatus).toBe("reused");
     expect(secondSession.url).toContain("bl_preview_token=token-2");
+  });
+
+  it("returns a tokenized noVNC desktop session for a healthy sandbox desktop", async () => {
+    const orgId = `org_${crypto.randomUUID()}`;
+    const providerCalls = { create: 0, wake: 0 };
+    const handleCalls = { getHandle: 0 };
+    const handle = new FakeSandboxHandle();
+    handle.desktopHealthy = true;
+
+    const session = await program(
+      Effect.gen(function* () {
+        const { db } = yield* DbService;
+        yield* Effect.promise(() =>
+          makeUserStore(db).upsertOrganization({ id: orgId, name: "Desktop" }),
+        );
+        return yield* Effect.promise(() =>
+          makeSandboxesService(
+            db,
+            makeProvider(providerCalls),
+            makeHandleProvider(handle, handleCalls),
+          ).ensureDesktopSession(orgId),
+        );
+      }),
+    );
+
+    const url = new URL(session.url);
+
+    expect(providerCalls).toEqual({ create: 1, wake: 0 });
+    expect(handleCalls).toEqual({ getHandle: 2 });
+    expect(handle.desktopHealthChecks).toBe(1);
+    expect(handle.previewCreates).toBe(1);
+    expect(handle.previewTokenCreates).toBe(1);
+    expect(handle.lastPreviewName).toBe("desktop-vnc");
+    expect(handle.lastPreviewPort).toBe(6080);
+    expect(handle.lastPreviewPublic).toBe(false);
+    expect(session.sandboxStatus).toBe("created");
+    expect(session.sandboxId).toBe(`sbx_${orgId}`);
+    expect(url.origin).toBe("https://preview.example.com");
+    expect(url.pathname).toBe("/vnc.html");
+    expect(url.searchParams.get("autoconnect")).toBe("1");
+    expect(url.searchParams.get("resize")).toBe("scale");
+    expect(url.searchParams.get("bl_preview_token")).toBe("token-1");
+    expect(url.searchParams.get("path")).toBe("websockify?bl_preview_token=token-1");
+  });
+
+  it("marks the sandbox broken when the desktop stream never becomes healthy", async () => {
+    const orgId = `org_${crypto.randomUUID()}`;
+    const providerCalls = { create: 0, wake: 0 };
+    const handleCalls = { getHandle: 0 };
+    const handle = new FakeSandboxHandle();
+
+    const result = await program(
+      Effect.gen(function* () {
+        const { db } = yield* DbService;
+        yield* Effect.promise(() =>
+          makeUserStore(db).upsertOrganization({ id: orgId, name: "Broken Desktop" }),
+        );
+        const service = makeSandboxesService(
+          db,
+          makeProvider(providerCalls),
+          makeHandleProvider(handle, handleCalls),
+          {
+            desktopStartPollMs: 0,
+            desktopStartTimeoutMs: 1,
+          },
+        );
+        const sessionError = yield* Effect.promise(async () => {
+          try {
+            await service.ensureDesktopSession(orgId);
+            return null;
+          } catch (error) {
+            return error;
+          }
+        });
+        const row = yield* Effect.promise(() => service.getSandbox(orgId));
+        return { row, sessionError };
+      }),
+    );
+
+    expect(providerCalls).toEqual({ create: 1, wake: 0 });
+    expect(handleCalls).toEqual({ getHandle: 2 });
+    expect(String(result.sessionError)).toContain("desktop stream");
+    expect(result.row?.status).toBe("error");
+    expect(result.row?.error).toContain("desktop stream");
   });
 
   it("treats an already-running code-server process as reusable", async () => {

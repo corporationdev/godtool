@@ -6,11 +6,7 @@
 import { HttpApiBuilder, HttpRouter, HttpServer } from "@effect/platform";
 import { Layer } from "effect";
 
-import {
-  CoreExecutorApi,
-  InternalError,
-  observabilityMiddleware,
-} from "@executor/api";
+import { CoreExecutorApi, InternalError, observabilityMiddleware } from "@executor/api";
 import { CoreHandlers } from "@executor/api/server";
 import { OpenApiGroup, OpenApiHandlers } from "@executor/plugin-openapi/api";
 import { McpGroup, McpHandlers } from "@executor/plugin-mcp/api";
@@ -23,6 +19,8 @@ import { RawGroup, RawHandlers } from "@executor/plugin-raw/api";
 
 import { OrgAuth } from "../auth/middleware";
 import { OrgAuthLive } from "../auth/middleware-live";
+import { DesktopApi } from "../desktop/api";
+import { DesktopHandlers } from "../desktop/handlers";
 import { FilesApi } from "../files/api";
 import { FilesHandlers } from "../files/handlers";
 import { UserStoreService } from "../auth/context";
@@ -37,6 +35,7 @@ export const ProtectedCloudApi = CoreExecutorApi.add(OpenApiGroup)
   .add(GraphqlGroup)
   .add(RawGroup)
   .add(FilesApi)
+  .add(DesktopApi)
   .addError(InternalError)
   .middleware(OrgAuth);
 
@@ -66,6 +65,7 @@ export const ProtectedCloudApiHandlers = Layer.mergeAll(
   GraphqlHandlers,
   RawHandlers,
   FilesHandlers,
+  DesktopHandlers,
 );
 
 // `ErrorCaptureLive` is provided above the handler + middleware layers
@@ -73,8 +73,6 @@ export const ProtectedCloudApiHandlers = Layer.mergeAll(
 // InternalError(traceId)`) AND the observability middleware's defect
 // catchall both see the same Sentry-backed implementation.
 export const ProtectedCloudApiLive = HttpApiBuilder.api(ProtectedCloudApi).pipe(
-  Layer.provide(
-    Layer.mergeAll(ProtectedCloudApiHandlers, OrgAuthLive, ObservabilityLive),
-  ),
+  Layer.provide(Layer.mergeAll(ProtectedCloudApiHandlers, OrgAuthLive, ObservabilityLive)),
   Layer.provide(ErrorCaptureLive),
 );

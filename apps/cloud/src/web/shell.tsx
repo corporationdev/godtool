@@ -1,7 +1,15 @@
 import { Link, Outlet, useLocation } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { useAtomValue, useAtomSet, Result } from "@effect-atom/atom-react";
-import { ChevronsUpDown, CreditCard, Database, Files, KeyRound, Link2 } from "lucide-react";
+import {
+  ChevronsUpDown,
+  CreditCard,
+  Database,
+  Files,
+  KeyRound,
+  Link2,
+  Monitor,
+} from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -49,6 +57,7 @@ const sourcePlugins = [
 const navItems = [
   { to: "/", label: "Sources", icon: Database },
   { to: "/files", label: "Files", icon: Files },
+  { to: "/desktop", label: "Desktop", icon: Monitor },
   { to: "/connections", label: "Connections", icon: Link2 },
   { to: "/billing", label: "Billing", icon: CreditCard },
   { to: "/secrets", label: "Secrets", icon: KeyRound },
@@ -68,7 +77,12 @@ function initialsFor(name: string | null, email: string) {
   return email[0]!.toUpperCase();
 }
 
-function UserAvatar(props: { url: string | null; name: string | null; email: string; size?: "sm" | "md" }) {
+function UserAvatar(props: {
+  url: string | null;
+  name: string | null;
+  email: string;
+  size?: "sm" | "md";
+}) {
   const size = props.size === "md" ? "size-8" : "size-7";
   const text = props.size === "md" ? "text-sm" : "text-xs";
   if (props.url) {
@@ -161,9 +175,7 @@ function UserFooter() {
                   size="md"
                 />
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-medium">
-                    {auth.user.name ?? auth.user.email}
-                  </span>
+                  <span className="truncate font-medium">{auth.user.name ?? auth.user.email}</span>
                   {auth.organization && (
                     <span className="truncate text-xs text-muted-foreground">
                       {auth.organization.name}
@@ -192,7 +204,11 @@ function UserFooter() {
                 Signed in as
               </DropdownMenuLabel>
               <DropdownMenuItem className="gap-2 text-xs pointer-events-none">
-                <UserAvatar url={auth.user.avatarUrl} name={auth.user.name} email={auth.user.email} />
+                <UserAvatar
+                  url={auth.user.avatarUrl}
+                  name={auth.user.name}
+                  email={auth.user.email}
+                />
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium text-foreground">
                     {auth.user.name ?? auth.user.email}
@@ -220,7 +236,9 @@ function UserFooter() {
 
 function AppSidebar(props: { pathname: string }) {
   const isActive = (to: string) =>
-    to === "/" ? props.pathname === "/" : props.pathname === to || props.pathname.startsWith(to + "/");
+    to === "/"
+      ? props.pathname === "/"
+      : props.pathname === to || props.pathname.startsWith(to + "/");
 
   return (
     <Sidebar collapsible="icon">
