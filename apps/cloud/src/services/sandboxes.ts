@@ -11,6 +11,7 @@ import { sandboxes } from "./schema";
 import type { DrizzleDb } from "./db";
 
 const DEFAULT_BLAXEL_MEMORY_MB = 4096;
+const BLAXEL_OPERATION_TIMEOUT_MS = 45_000;
 const BLAXEL_PROVIDER = "blaxel" as const;
 const SANDBOX_WORKSPACE_DIRECTORY = SANDBOX_SCAFFOLD_ROOT_DIRECTORY;
 const INTERNAL_RUNTIME_ROOT_DIRECTORY = "/root/.godtool";
@@ -30,27 +31,22 @@ const CODE_SERVER_CONFIG_DIRECTORY = "/root/.config/code-server";
 const CODE_SERVER_CONFIG_PATH = `${CODE_SERVER_CONFIG_DIRECTORY}/config.yaml`;
 const CODE_SERVER_TOKEN_TTL_MS = 1000 * 60 * 30;
 const DESKTOP_PORT = 6080;
-const DESKTOP_RUNTIME_DIRECTORY = `${INTERNAL_RUNTIME_DIRECTORY}/desktop`;
-const DESKTOP_RUNTIME_SCRIPT_PATH = `${DESKTOP_RUNTIME_DIRECTORY}/start.sh`;
-const DESKTOP_RUNTIME_VERSION_PATH = `${DESKTOP_RUNTIME_DIRECTORY}/version.txt`;
-const DESKTOP_RUNTIME_PROCESS_NAME = "godtool-desktop-runtime";
-const DESKTOP_PREVIEW_NAME = "desktop-vnc";
+const DESKTOP_PREVIEW_NAME = "desktop-vnc-public";
 const DESKTOP_START_POLL_MS = 500;
 const DESKTOP_START_TIMEOUT_MS = 60_000;
+const DESKTOP_HEALTH_FETCH_TIMEOUT_MS = 5_000;
 const DESKTOP_TOKEN_TTL_MS = 1000 * 60 * 30;
 const MAX_PROCESS_LOG_CHARS = 12_000;
 const MAX_SANDBOX_NAME_LENGTH = 49;
 const SANDBOX_NAME_HASH_LENGTH = 8;
 const SANDBOX_NAME_PREFIX = "godtool-org";
+const SANDBOX_NAME_RANDOM_SUFFIX_LENGTH = 8;
 export const EXECUTE_RUNTIME_PORT = 4789;
 export const EXECUTE_RUNTIME_PROCESS_NAME_FOR_TESTS = EXECUTE_RUNTIME_PROCESS_NAME;
 export const EXECUTE_RUNTIME_SERVER_PATH_FOR_TESTS = EXECUTE_RUNTIME_SERVER_PATH;
 export const EXECUTE_RUNTIME_VERSION_PATH_FOR_TESTS = EXECUTE_RUNTIME_VERSION_PATH;
 export const CODE_SERVER_PROCESS_NAME_FOR_TESTS = CODE_SERVER_PROCESS_NAME;
 export const CODE_SERVER_CONFIG_PATH_FOR_TESTS = CODE_SERVER_CONFIG_PATH;
-export const DESKTOP_RUNTIME_PROCESS_NAME_FOR_TESTS = DESKTOP_RUNTIME_PROCESS_NAME;
-export const DESKTOP_RUNTIME_SCRIPT_PATH_FOR_TESTS = DESKTOP_RUNTIME_SCRIPT_PATH;
-export const DESKTOP_RUNTIME_VERSION_PATH_FOR_TESTS = DESKTOP_RUNTIME_VERSION_PATH;
 
 export type SandboxStatus = "creating" | "ready" | "error";
 export type SandboxRecord = typeof sandboxes.$inferSelect;
@@ -220,6 +216,11 @@ const configureBlaxel = () => {
   process.env.BL_REGION = config.region;
 
   if (initializedKey !== nextKey) {
+    console.info("[sandboxes] configuring Blaxel", {
+      region: config.region,
+      templateImage: config.templateImage,
+      workspace: config.workspace,
+    });
     initialize({
       apiKey: config.apiKey,
       workspace: config.workspace,
@@ -255,10 +256,19 @@ export const getSandboxNameForOrganization = (organizationId: string) => {
   return `${SANDBOX_NAME_PREFIX}-${baseSegment || "org"}-${hash}`;
 };
 
+const getFreshSandboxNameForOrganization = (organizationId: string) => {
+  const suffix = crypto.randomUUID().replaceAll("-", "").slice(0, SANDBOX_NAME_RANDOM_SUFFIX_LENGTH);
+  const deterministicPrefix = getSandboxNameForOrganization(organizationId);
+  const maxPrefixLength =
+    MAX_SANDBOX_NAME_LENGTH - SANDBOX_NAME_RANDOM_SUFFIX_LENGTH - 1;
+
+  return `${deterministicPrefix.slice(0, maxPrefixLength).replace(/-+$/g, "")}-${suffix}`;
+};
+
 const resolveSandboxExternalId = async (
   sandbox: Awaited<ReturnType<typeof SandboxInstance.get>>,
 ) => {
-  await sandbox.wait();
+  await withTimeout(sandbox.wait(), BLAXEL_OPERATION_TIMEOUT_MS, "Blaxel sandbox wait");
   const externalId = sandbox.metadata.name?.trim();
 
   if (!externalId) {
@@ -271,31 +281,41 @@ const resolveSandboxExternalId = async (
 export const makeBlaxelSandboxProvider = (): SandboxProvider => ({
   createOrGetSandbox: async ({ organizationId }) => {
     const config = configureBlaxel();
-    const sandboxName = getSandboxNameForOrganization(organizationId);
-    const sandbox = await SandboxInstance.createIfNotExists({
-      image: config.templateImage,
-      labels: {
-        app: "godtool",
-        organizationId,
-      },
-      memory: config.memoryMb,
-      name: sandboxName,
-      ports: [
-        {
-          protocol: "HTTP",
-          target: EXECUTE_RUNTIME_PORT,
-        },
-        {
-          protocol: "HTTP",
-          target: CODE_SERVER_PORT,
-        },
-        {
-          protocol: "HTTP",
-          target: DESKTOP_PORT,
-        },
-      ],
+    const sandboxName = getFreshSandboxNameForOrganization(organizationId);
+    console.info("[sandboxes] creating fresh sandbox", {
+      organizationId,
       region: config.region,
+      sandboxName,
+      workspace: config.workspace,
     });
+    const sandbox = await withTimeout(
+      SandboxInstance.createIfNotExists({
+        image: config.templateImage,
+        labels: {
+          app: "godtool",
+          organizationId,
+        },
+        memory: config.memoryMb,
+        name: sandboxName,
+        ports: [
+          {
+            protocol: "HTTP",
+            target: EXECUTE_RUNTIME_PORT,
+          },
+          {
+            protocol: "HTTP",
+            target: CODE_SERVER_PORT,
+          },
+          {
+            protocol: "HTTP",
+            target: DESKTOP_PORT,
+          },
+        ],
+        region: config.region,
+      }),
+      BLAXEL_OPERATION_TIMEOUT_MS,
+      `Blaxel createIfNotExists(${sandboxName})`,
+    );
 
     return {
       externalId: await resolveSandboxExternalId(sandbox),
@@ -305,12 +325,22 @@ export const makeBlaxelSandboxProvider = (): SandboxProvider => ({
   },
 
   wakeSandbox: async ({ externalId, organizationId }) => {
-    configureBlaxel();
-    const sandbox = await SandboxInstance.get(externalId);
+    const config = configureBlaxel();
+    console.info("[sandboxes] waking sandbox", {
+      externalId,
+      organizationId,
+      region: config.region,
+      workspace: config.workspace,
+    });
+    const sandbox = await withTimeout(
+      SandboxInstance.get(externalId),
+      BLAXEL_OPERATION_TIMEOUT_MS,
+      `Blaxel get(${externalId})`,
+    );
 
     return {
       externalId: await resolveSandboxExternalId(sandbox),
-      sandboxName: getSandboxNameForOrganization(organizationId),
+      sandboxName: externalId,
       status: "reused",
     };
   },
@@ -318,9 +348,18 @@ export const makeBlaxelSandboxProvider = (): SandboxProvider => ({
 
 export const makeBlaxelSandboxHandleProvider = (): SandboxHandleProvider => ({
   getSandboxHandle: async (externalId) => {
-    configureBlaxel();
-    const sandbox = await SandboxInstance.get(externalId);
-    await sandbox.wait();
+    const config = configureBlaxel();
+    console.info("[sandboxes] attaching sandbox handle", {
+      externalId,
+      region: config.region,
+      workspace: config.workspace,
+    });
+    const sandbox = await withTimeout(
+      SandboxInstance.get(externalId),
+      BLAXEL_OPERATION_TIMEOUT_MS,
+      `Blaxel get(${externalId})`,
+    );
+    await withTimeout(sandbox.wait(), BLAXEL_OPERATION_TIMEOUT_MS, "Blaxel sandbox wait");
     return sandbox as unknown as SandboxHandle;
   },
 });
@@ -423,6 +462,9 @@ const hasOwn = <K extends string>(value: unknown, key: K): value is Record<K, un
 const includesRetryableSandboxMarker = (value: string): boolean =>
   value.includes("IMAGE_NOT_FOUND") ||
   value.includes("WORKLOAD_UNAVAILABLE") ||
+  value.includes("Timed out waiting for the desktop stream to become healthy") ||
+  /Blaxel .* timed out after \d+ms/i.test(value) ||
+  /Sandbox .* timed out after \d+ms/i.test(value) ||
   /retry with exponential backoff/i.test(value);
 
 const isRetryableSandboxError = (error: unknown): boolean => {
@@ -460,7 +502,43 @@ const isRetryableSandboxError = (error: unknown): boolean => {
 const includesUnavailableSandboxMarker = (value: string): boolean =>
   /currently not available/i.test(value) || /verify it exists and is running/i.test(value);
 
+const isSandboxNotFoundError = (error: unknown): boolean => {
+  if (typeof error === "string") {
+    return /"status"\s*:\s*404/.test(error) || /"statusText"\s*:\s*"Not Found"/.test(error);
+  }
+
+  if (error instanceof Error) {
+    return isSandboxNotFoundError(error.message) || isSandboxNotFoundError(error.cause);
+  }
+
+  if (hasOwn(error, "status") && error.status === 404) {
+    return true;
+  }
+
+  if (hasOwn(error, "statusText") && error.statusText === "Not Found") {
+    return true;
+  }
+
+  if (hasOwn(error, "message") && typeof error.message === "string") {
+    return isSandboxNotFoundError(error.message);
+  }
+
+  if (hasOwn(error, "error")) {
+    return isSandboxNotFoundError(error.error);
+  }
+
+  if (hasOwn(error, "cause")) {
+    return isSandboxNotFoundError(error.cause);
+  }
+
+  return false;
+};
+
 const isRetryableSandboxUnavailableError = (error: unknown): boolean => {
+  if (isSandboxNotFoundError(error)) {
+    return true;
+  }
+
   if (!isRetryableSandboxError(error)) {
     return false;
   }
@@ -502,7 +580,12 @@ const throwSandboxFailure = async (
 ): Promise<never> => {
   const rendered = renderUnknownError(error);
 
-  if (isRetryableSandboxError(error) || isRetryableSandboxError(rendered)) {
+  if (
+    isRetryableSandboxError(error) ||
+    isRetryableSandboxError(rendered) ||
+    isRetryableSandboxUnavailableError(error) ||
+    isRetryableSandboxUnavailableError(rendered)
+  ) {
     throw new Error(rendered);
   }
 
@@ -515,9 +598,34 @@ const throwSandboxFailure = async (
 
 const quoteShellArgument = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
 
+const withTimeout = async <A>(
+  promise: Promise<A>,
+  timeoutMs: number,
+  description: string,
+): Promise<A> => {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => {
+      reject(new Error(`${description} timed out after ${timeoutMs}ms.`));
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  }
+};
+
 const ensureDirectoryExists = async (sandbox: SandboxHandle, path: string) => {
   try {
-    await sandbox.fs.mkdir(path);
+    await withTimeout(
+      sandbox.fs.mkdir(path),
+      BLAXEL_OPERATION_TIMEOUT_MS,
+      `Sandbox mkdir(${path})`,
+    );
   } catch {
     // Directory already exists.
   }
@@ -865,15 +973,19 @@ const createCodeServerSession = async (
   sandbox: SandboxHandle,
   ensuredSandbox: EnsuredSandbox,
 ): Promise<CodeServerSession> => {
-  const preview = await sandbox.previews.createIfNotExists({
-    metadata: {
-      name: CODE_SERVER_PREVIEW_NAME,
-    },
-    spec: {
-      port: CODE_SERVER_PORT,
-      public: false,
-    },
-  });
+  const preview = await withTimeout(
+    sandbox.previews.createIfNotExists({
+      metadata: {
+        name: CODE_SERVER_PREVIEW_NAME,
+      },
+      spec: {
+        port: CODE_SERVER_PORT,
+        public: false,
+      },
+    }),
+    BLAXEL_OPERATION_TIMEOUT_MS,
+    "Blaxel code-server preview createIfNotExists",
+  );
   const previewUrl = preview.spec.url?.trim();
 
   if (!previewUrl) {
@@ -881,7 +993,11 @@ const createCodeServerSession = async (
   }
 
   const expiresAt = new Date(Date.now() + CODE_SERVER_TOKEN_TTL_MS);
-  const token = await preview.tokens.create(expiresAt);
+  const token = await withTimeout(
+    preview.tokens.create(expiresAt),
+    BLAXEL_OPERATION_TIMEOUT_MS,
+    "Blaxel code-server preview token create",
+  );
   const url = new URL(previewUrl);
   url.searchParams.set("bl_preview_token", token.value);
 
@@ -894,268 +1010,15 @@ const createCodeServerSession = async (
   };
 };
 
-const DESKTOP_RUNTIME_SCRIPT = `#!/usr/bin/env bash
-set -euo pipefail
-
-export DISPLAY=:0
-export HOME=/root
-export XDG_RUNTIME_DIR=/tmp/xdg-runtime
-export CHROME_USER_DATA_DIR=/tmp/chrome-profile
-export CHROME_DEBUGGING_PORT=9222
-export DESKTOP_USER=desktop
-export DESKTOP_HOME=/home/desktop
-export DESKTOP_XAUTHORITY=/tmp/desktop.Xauthority
-export DESKTOP_ICEAUTHORITY=/tmp/desktop.ICEauthority
-export DESKTOP_SUPERVISOR_PATH=/tmp/godtool-desktop-supervisor.sh
-export DESKTOP_SUPERVISOR_LOG_PATH=/tmp/xfce-supervisor.log
-
-mkdir -p "\${XDG_RUNTIME_DIR}" "\${CHROME_USER_DATA_DIR}"
-chmod 700 "\${XDG_RUNTIME_DIR}"
-touch "\${DESKTOP_XAUTHORITY}" "\${DESKTOP_ICEAUTHORITY}"
-chown "\${DESKTOP_USER}:\${DESKTOP_USER}" \\
-  "\${XDG_RUNTIME_DIR}" \\
-  "\${CHROME_USER_DATA_DIR}" \\
-  "\${DESKTOP_XAUTHORITY}" \\
-  "\${DESKTOP_ICEAUTHORITY}"
-
-cleanup() {
-  for pid in \\
-    "\${chrome_launcher_pid:-}" \\
-    "\${chrome_pid:-}" \\
-    "\${websockify_pid:-}" \\
-    "\${x11vnc_pid:-}" \\
-    "\${desktop_supervisor_pid:-}" \\
-    "\${xvfb_pid:-}"; do
-    if [[ -n "\${pid}" ]] && kill -0 "\${pid}" 2>/dev/null; then
-      kill "\${pid}" || true
-    fi
-  done
-}
-
-trap cleanup EXIT
-
-resolve_browser_binary() {
-  local candidate=""
-
-  for candidate in google-chrome-stable chromium chromium-browser; do
-    if command -v "\${candidate}" >/dev/null 2>&1; then
-      printf '%s\\n' "\${candidate}"
-      return 0
-    fi
-  done
-
-  echo "Could not find a Chromium-based browser binary." >&2
-  exit 1
-}
-
-wait_for_file() {
-  local file_path="$1"
-  local attempt=0
-
-  until [[ -e "\${file_path}" ]]; do
-    attempt=$((attempt + 1))
-
-    if (( attempt > 200 )); then
-      echo "Timed out waiting for \${file_path}" >&2
-      exit 1
-    fi
-
-    sleep 0.1
-  done
-}
-
-wait_for_user_process() {
-  local pattern="$1"
-  local timeout_attempts="\${2:-100}"
-  local attempt=0
-  local pid=""
-
-  until [[ -n "\${pid}" ]]; do
-    pid="$(pgrep -u "\${DESKTOP_USER}" -n -f -- "\${pattern}" || true)"
-
-    if [[ -n "\${pid}" ]]; then
-      printf '%s\\n' "\${pid}"
-      return 0
-    fi
-
-    attempt=$((attempt + 1))
-
-    if (( attempt > timeout_attempts )); then
-      return 1
-    fi
-
-    sleep 0.1
-  done
-}
-
-desktop_env_prefix() {
-  cat <<EOF
-export DISPLAY=\${DISPLAY}
-export HOME=\${DESKTOP_HOME}
-export XDG_RUNTIME_DIR=\${XDG_RUNTIME_DIR}
-export XDG_CONFIG_DIRS=/etc/xdg
-export XDG_DATA_DIRS=/usr/local/share:/usr/share
-export XAUTHORITY=\${DESKTOP_XAUTHORITY}
-export ICEAUTHORITY=\${DESKTOP_ICEAUTHORITY}
-export XDG_SESSION_TYPE=x11
-export DESKTOP_SESSION=xfce
-export XDG_CURRENT_DESKTOP=XFCE
-EOF
-}
-
-start_browser() {
-  local browser_binary
-  local browser_command
-
-  browser_binary="$(resolve_browser_binary)"
-  browser_command="$(cat <<EOF
-$(desktop_env_prefix)
-exec "\${browser_binary}" \\
-  --user-data-dir="\${CHROME_USER_DATA_DIR}" \\
-  --no-first-run \\
-  --no-default-browser-check \\
-  --remote-debugging-address=127.0.0.1 \\
-  --remote-debugging-port="\${CHROME_DEBUGGING_PORT}" \\
-  --window-position=120,80 \\
-  --window-size=1200,760 \\
-  about:blank
-EOF
-)"
-
-  su -s /bin/bash -c "\${browser_command}" "\${DESKTOP_USER}" >/tmp/google-chrome.log 2>&1 &
-  chrome_launcher_pid=$!
-
-  if ! chrome_pid="$(wait_for_user_process "--remote-debugging-port=\${CHROME_DEBUGGING_PORT}" 100)"; then
-    echo "Timed out waiting for Chrome to start" >&2
-    cat /tmp/google-chrome.log >&2 || true
-    exit 1
-  fi
-}
-
-write_desktop_supervisor() {
-  cat >"\${DESKTOP_SUPERVISOR_PATH}" <<'SUPERVISOR'
-#!/usr/bin/env bash
-set -euo pipefail
-
-export DISPLAY=:0
-export HOME=/home/desktop
-export XDG_RUNTIME_DIR=/tmp/xdg-runtime
-export XDG_CONFIG_DIRS=/etc/xdg
-export XDG_DATA_DIRS=/usr/local/share:/usr/share
-export XAUTHORITY=/tmp/desktop.Xauthority
-export ICEAUTHORITY=/tmp/desktop.ICEauthority
-export XDG_SESSION_TYPE=x11
-export DESKTOP_SESSION=xfce
-export XDG_CURRENT_DESKTOP=XFCE
-
-eval "$(dbus-launch --sh-syntax)"
-
-cleanup_desktop_components() {
-  for pid in \
-    "\${terminal_pid:-}" \
-    "\${xfdesktop_pid:-}" \
-    "\${xfce_panel_pid:-}" \
-    "\${xfwm_pid:-}" \
-    "\${xfsettingsd_pid:-}" \
-    "\${DBUS_SESSION_BUS_PID:-}"; do
-    if [[ -n "\${pid}" ]] && kill -0 "\${pid}" 2>/dev/null; then
-      kill "\${pid}" || true
-    fi
-  done
-}
-
-trap cleanup_desktop_components EXIT
-
-xfsettingsd --no-daemon >/tmp/xfsettingsd.log 2>&1 &
-xfsettingsd_pid=$!
-
-xfwm4 --replace >/tmp/xfwm4.log 2>&1 &
-xfwm_pid=$!
-
-xfce4-panel --disable-wm-check >/tmp/xfce4-panel.log 2>&1 &
-xfce_panel_pid=$!
-
-xfdesktop --disable-wm-check >/tmp/xfdesktop.log 2>&1 &
-xfdesktop_pid=$!
-
-xfce4-terminal --disable-server >/tmp/xfce4-terminal.log 2>&1 &
-terminal_pid=$!
-
-wait -n "\${xfsettingsd_pid}" "\${xfwm_pid}" "\${xfce_panel_pid}" "\${xfdesktop_pid}"
-SUPERVISOR
-
-  chown "\${DESKTOP_USER}:\${DESKTOP_USER}" "\${DESKTOP_SUPERVISOR_PATH}"
-  chmod 755 "\${DESKTOP_SUPERVISOR_PATH}"
-}
-
-start_desktop_supervisor() {
-  write_desktop_supervisor
-
-  su -s /bin/bash -c "\${DESKTOP_SUPERVISOR_PATH}" "\${DESKTOP_USER}" >"\${DESKTOP_SUPERVISOR_LOG_PATH}" 2>&1 &
-  desktop_supervisor_pid=$!
-
-  for pattern in xfsettingsd xfwm4 xfce4-panel xfdesktop; do
-    if ! wait_for_user_process "\${pattern}" 100 >/dev/null; then
-      echo "Timed out waiting for \${pattern}" >&2
-      cat "\${DESKTOP_SUPERVISOR_LOG_PATH}" >&2 || true
-      cat "/tmp/\${pattern}.log" >&2 || true
-      exit 1
-    fi
-  done
-}
-
-start_desktop_runtime() {
-  Xvfb "\${DISPLAY}" -screen 0 1440x900x24 -ac &
-  xvfb_pid=$!
-
-  wait_for_file /tmp/.X11-unix/X0
-
-  start_desktop_supervisor
-  start_browser
-
-  x11vnc \\
-    -display "\${DISPLAY}" \\
-    -rfbport 5900 \\
-    -localhost \\
-    -forever \\
-    -shared \\
-    -nopw \\
-    -quiet &
-  x11vnc_pid=$!
-
-  sleep 1
-
-  websockify --web /usr/share/novnc 6080 localhost:5900 &
-  websockify_pid=$!
-
-  echo "Desktop runtime started"
-}
-
-start_desktop_runtime
-
-pids=()
-for pid in \\
-  "\${xvfb_pid:-}" \\
-  "\${desktop_supervisor_pid:-}" \\
-  "\${chrome_launcher_pid:-}" \\
-  "\${x11vnc_pid:-}" \\
-  "\${websockify_pid:-}"; do
-  if [[ -n "\${pid}" ]]; then
-    pids+=("\${pid}")
-  fi
-done
-
-wait -n "\${pids[@]}"
-`;
-
-const getDesktopRuntimeVersion = (): string =>
-  createHash("sha256").update(DESKTOP_RUNTIME_SCRIPT).digest("hex");
-
 const fetchDesktopHealth = async (
   sandbox: SandboxHandle,
 ): Promise<{ readonly ok: boolean; readonly status: number }> => {
   try {
-    const response = await sandbox.fetch(DESKTOP_PORT, "/vnc.html");
+    const response = await withTimeout(
+      sandbox.fetch(DESKTOP_PORT, "/vnc.html"),
+      DESKTOP_HEALTH_FETCH_TIMEOUT_MS,
+      "Sandbox desktop health fetch",
+    );
     return {
       ok: response.ok,
       status: response.status,
@@ -1178,6 +1041,10 @@ const waitForDesktopHealth = async (
 
   while (Date.now() - startedAt < timeoutMs) {
     const health = await fetchDesktopHealth(sandbox);
+    console.info("[sandboxes] desktop health probe", {
+      ok: health.ok,
+      status: health.status,
+    });
     if (health.ok) {
       return {
         ok: true,
@@ -1191,104 +1058,51 @@ const waitForDesktopHealth = async (
   throw new Error("Timed out waiting for the desktop stream to become healthy.");
 };
 
-const stopDesktopRuntimeProcess = async (sandbox: SandboxHandle): Promise<void> => {
-  try {
-    await sandbox.process.stop(DESKTOP_RUNTIME_PROCESS_NAME);
-    return;
-  } catch {
-    // Process may not be running or may require a kill.
-  }
-
-  try {
-    await sandbox.process.kill(DESKTOP_RUNTIME_PROCESS_NAME);
-  } catch {
-    // Process does not exist.
-  }
-};
-
-const ensureDesktopRuntimeScript = async (
-  sandbox: SandboxHandle,
-): Promise<{ readonly cacheHit: boolean }> => {
-  await ensureDirectoryExists(sandbox, INTERNAL_RUNTIME_ROOT_DIRECTORY);
-  await ensureDirectoryExists(sandbox, INTERNAL_RUNTIME_DIRECTORY);
-  await ensureDirectoryExists(sandbox, DESKTOP_RUNTIME_DIRECTORY);
-  const runtimeVersion = getDesktopRuntimeVersion();
-  const existingVersion = await sandbox.fs.read(DESKTOP_RUNTIME_VERSION_PATH).catch(() => null);
-  if (existingVersion === runtimeVersion) {
-    return { cacheHit: true };
-  }
-
-  await sandbox.fs.write(DESKTOP_RUNTIME_SCRIPT_PATH, DESKTOP_RUNTIME_SCRIPT);
-  await sandbox.fs.write(DESKTOP_RUNTIME_VERSION_PATH, runtimeVersion);
-  return { cacheHit: false };
-};
-
 const ensureDesktopRunning = async (
   sandbox: SandboxHandle,
   options?: SandboxesServiceOptions,
 ): Promise<void> => {
-  const install = await ensureDesktopRuntimeScript(sandbox);
-
-  const health = await fetchDesktopHealth(sandbox);
-  if (health.ok && install.cacheHit) {
-    return;
-  }
-
-  await stopDesktopRuntimeProcess(sandbox);
-
-  try {
-    await sandbox.process.exec({
-      command: ["bash", quoteShellArgument(DESKTOP_RUNTIME_SCRIPT_PATH)].join(" "),
-      env: {
-        PORT: String(DESKTOP_PORT),
-      },
-      maxRestarts: 5,
-      name: DESKTOP_RUNTIME_PROCESS_NAME,
-      restartOnFailure: true,
-      waitForCompletion: false,
-      workingDir: SANDBOX_WORKSPACE_DIRECTORY,
-    });
-  } catch (error) {
-    if (!isProcessAlreadyRunningError(error, DESKTOP_RUNTIME_PROCESS_NAME)) {
-      throw error;
-    }
-  }
-
+  console.info("[sandboxes] waiting for template desktop health");
   await waitForDesktopHealth(sandbox, options);
+  console.info("[sandboxes] template desktop healthy");
 };
 
 const createDesktopSession = async (
   sandbox: SandboxHandle,
   ensuredSandbox: EnsuredSandbox,
 ): Promise<DesktopSession> => {
-  const preview = await sandbox.previews.createIfNotExists({
-    metadata: {
-      name: DESKTOP_PREVIEW_NAME,
-    },
-    spec: {
-      port: DESKTOP_PORT,
-      public: false,
-    },
+  console.info("[sandboxes] creating desktop preview", {
+    sandboxId: ensuredSandbox.externalId,
   });
+  const preview = await withTimeout(
+    sandbox.previews.createIfNotExists({
+      metadata: {
+        name: DESKTOP_PREVIEW_NAME,
+      },
+      spec: {
+        port: DESKTOP_PORT,
+        public: true,
+      },
+    }),
+    BLAXEL_OPERATION_TIMEOUT_MS,
+    "Blaxel desktop preview createIfNotExists",
+  );
   const previewUrl = preview.spec.url?.trim();
 
   if (!previewUrl) {
     throw new Error("Blaxel preview URL is missing for desktop.");
   }
 
-  const expiresAt = new Date(Date.now() + DESKTOP_TOKEN_TTL_MS);
-  const token = await preview.tokens.create(expiresAt);
   const url = new URL("/vnc.html", previewUrl);
-  const tokenParam = `bl_preview_token=${encodeURIComponent(token.value)}`;
   url.searchParams.set("autoconnect", "1");
-  url.searchParams.set("path", `websockify?${tokenParam}`);
+  url.searchParams.set("path", "websockify");
   url.searchParams.set("resize", "scale");
-  url.searchParams.set("bl_preview_token", token.value);
   url.searchParams.set("_t", Date.now().toString());
 
+  const expiresAt = new Date(Date.now() + DESKTOP_TOKEN_TTL_MS);
+
   return {
-    expiresAt:
-      typeof token.expiresAt === "string" ? token.expiresAt : token.expiresAt.toISOString(),
+    expiresAt: expiresAt.toISOString(),
     sandboxId: ensuredSandbox.externalId,
     sandboxStatus: ensuredSandbox.status,
     url: url.toString(),
@@ -1363,7 +1177,10 @@ export const makeSandboxesService = (
     record: SandboxRecord,
     allowUnavailableRecovery = true,
   ): Promise<EnsuredSandbox> => {
-    const allowRetryFromError = record.status === "error" && isRetryableSandboxError(record.error);
+    const allowRetryFromError =
+      record.status === "error" &&
+      (isRetryableSandboxError(record.error) ||
+        isRetryableSandboxUnavailableError(record.error));
 
     if (record.status === "error" && !allowRetryFromError) {
       throw new Error(inferBrokenMessage(record.organizationId, record.error));
@@ -1462,6 +1279,7 @@ export const makeSandboxesService = (
   };
 
   const ensureSandbox = async (organizationId: string) => {
+    console.info("[sandboxes] ensuring sandbox", { organizationId });
     const row =
       (await store.getByOrganizationId(organizationId)) ??
       (await store.createPending(organizationId));
@@ -1478,6 +1296,10 @@ export const makeSandboxesService = (
       async (sandboxRef) => {
         const sandbox = await sandboxHandleProvider.getSandboxHandle(sandboxRef.externalId);
         await ensureWorkspaceScaffold(sandbox);
+        console.info("[sandboxes] workspace scaffold ready", {
+          organizationId,
+          sandboxId: sandboxRef.externalId,
+        });
         return sandboxRef;
       },
     );
@@ -1498,6 +1320,7 @@ export const makeSandboxesService = (
   };
 
   const ensureDesktopSession = async (organizationId: string): Promise<DesktopSession> => {
+    console.info("[sandboxes] ensuring desktop session", { organizationId });
     const ensuredSandbox = await ensureSandbox(organizationId);
 
     return await withUnavailableSandboxRecovery(
@@ -1505,6 +1328,10 @@ export const makeSandboxesService = (
       ensuredSandbox,
       async (sandboxRef) => {
         const sandbox = await sandboxHandleProvider.getSandboxHandle(sandboxRef.externalId);
+        console.info("[sandboxes] ensuring desktop runtime", {
+          organizationId,
+          sandboxId: sandboxRef.externalId,
+        });
         await ensureDesktopRunning(sandbox, runtimeOptions);
         return await createDesktopSession(sandbox, sandboxRef);
       },

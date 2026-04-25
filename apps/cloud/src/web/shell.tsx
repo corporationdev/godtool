@@ -1,8 +1,9 @@
-import { Link, Outlet, useLocation } from "@tanstack/react-router";
+import { Link, Outlet, useLocation, useMatches } from "@tanstack/react-router";
 import type { CSSProperties } from "react";
 import { useRef, useState } from "react";
 import { useAtomValue, useAtomSet, Result } from "@effect-atom/atom-react";
 import {
+  ArrowLeft,
   ChevronsUpDown,
   CreditCard,
   Database,
@@ -10,6 +11,7 @@ import {
   KeyRound,
   Link2,
   Monitor,
+  Settings,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -60,9 +62,18 @@ const navItems = [
   { to: "/files", label: "Files", icon: Files },
   { to: "/desktop", label: "Desktop", icon: Monitor },
   { to: "/connections", label: "Connections", icon: Link2 },
-  { to: "/billing", label: "Billing", icon: CreditCard },
   { to: "/secrets", label: "Secrets", icon: KeyRound },
 ] as const;
+
+const settingsNavItems = [
+  { to: "/settings/billing", label: "Billing", icon: CreditCard },
+] as const;
+
+declare module "@tanstack/react-router" {
+  interface StaticDataRouteOption {
+    shellSidebar?: "app" | "settings";
+  }
+}
 
 const brandMarkStyle = {
   WebkitMask: "url('/favicon.svg') center / contain no-repeat",
@@ -247,6 +258,13 @@ function UserFooter() {
                   )}
                 </div>
               </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild className="text-xs">
+                <Link to="/settings/billing">
+                  <Settings />
+                  Settings
+                </Link>
+              </DropdownMenuItem>
               <DropdownMenuItem asChild variant="destructive" className="text-xs">
                 {/* oxlint-disable-next-line react/forbid-elements */}
                 <a href={AUTH_PATHS.logout} className="w-full">
@@ -307,11 +325,58 @@ function AppSidebar(props: { pathname: string }) {
   );
 }
 
+function SettingsSidebar(props: { pathname: string }) {
+  const isActive = (to: string) =>
+    props.pathname === to || props.pathname.startsWith(to + "/");
+
+  return (
+    <Sidebar collapsible="none" className="h-svh border-r border-sidebar-border">
+      <SidebarHeader>
+        <div className="flex h-10 items-center gap-2 px-2">
+          <Link
+            to="/"
+            className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            aria-label="Back to dashboard"
+          >
+            <ArrowLeft className="size-4" />
+          </Link>
+          <span className="font-display text-base tracking-tight text-foreground">Settings</span>
+        </div>
+      </SidebarHeader>
+
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {settingsNavItems.map(({ to, label, icon: Icon }) => (
+                <SidebarMenuItem key={to}>
+                  <SidebarMenuButton asChild isActive={isActive(to)}>
+                    <Link to={to}>
+                      <Icon />
+                      <span>{label}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
+
+      <UserFooter />
+    </Sidebar>
+  );
+}
+
 // ── Shell ─────────────────────────────────────────────────────────────────
 
 export function Shell() {
   const location = useLocation();
+  const matches = useMatches();
   const pathname = location.pathname;
+  const shellSidebar = matches.some((match) => match.staticData.shellSidebar === "settings")
+    ? "settings"
+    : "app";
   const lastPathname = useRef(pathname);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   if (lastPathname.current !== pathname) {
@@ -322,7 +387,11 @@ export function Shell() {
   return (
     <SidebarProvider>
       <CommandPalette sourcePlugins={sourcePlugins} />
-      <AppSidebar pathname={pathname} />
+      {shellSidebar === "settings" ? (
+        <SettingsSidebar pathname={pathname} />
+      ) : (
+        <AppSidebar pathname={pathname} />
+      )}
 
       <main className="flex min-h-0 flex-1 flex-col min-w-0 overflow-hidden">
         <Outlet />

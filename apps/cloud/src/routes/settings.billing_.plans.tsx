@@ -8,14 +8,11 @@ import { ensurePersistentSandbox } from "../web/files";
 
 type Plan = NonNullable<ReturnType<typeof useListPlans>["data"]>[number];
 
-export const Route = createFileRoute("/billing_/plans")({
+export const Route = createFileRoute("/settings/billing_/plans")({
   component: PlansPage,
 });
 
-const PLAN_META: Record<
-  string,
-  { tagline: string; inherits?: string; features: string[] }
-> = {
+const PLAN_META: Record<string, { tagline: string; inherits?: string; features: string[] }> = {
   free: {
     tagline: "For stateless execution",
     features: [
@@ -26,11 +23,7 @@ const PLAN_META: Record<
   },
   pro: {
     tagline: "For a persistent sandbox environment",
-    features: [
-      "Unlimited executions",
-      "Persistent sandbox environment",
-      "Unlimited sources",
-    ],
+    features: ["Unlimited executions", "Persistent sandbox environment", "Unlimited sources"],
   },
 };
 
@@ -43,12 +36,7 @@ const ACTION_LABELS: Record<string, string> = {
 };
 
 function PlansPage() {
-  const {
-    data: customer,
-    attach,
-    openCustomerPortal,
-    isLoading: customerLoading,
-  } = useCustomer();
+  const { data: customer, attach, openCustomerPortal, isLoading: customerLoading } = useCustomer();
   const { data: plans, isLoading: plansLoading, isFetching } = useListPlans();
   const provisionSandbox = useAtomSet(ensurePersistentSandbox, { mode: "promise" });
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
@@ -56,7 +44,9 @@ function PlansPage() {
 
   const isLoading = customerLoading || plansLoading;
 
-  const visiblePlans = (plans ?? ([] as Plan[])).filter((p: Plan) => p.id === "free" || p.id === "pro");
+  const visiblePlans = (plans ?? ([] as Plan[])).filter(
+    (p: Plan) => p.id === "free" || p.id === "pro",
+  );
 
   const hasActivePro =
     customer?.subscriptions?.some(
@@ -81,7 +71,7 @@ function PlansPage() {
       <div className="mx-auto max-w-5xl px-6 py-10 lg:px-10 lg:py-14">
         <div className="mb-8">
           <Link
-            to="/billing"
+            to="/settings/billing"
             className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors mb-4"
           >
             <svg viewBox="0 0 16 16" fill="none" className="size-3.5">
@@ -216,20 +206,14 @@ function PlansPage() {
                             : "border border-border bg-background text-foreground hover:bg-muted",
                         ].join(" ")}
                       >
-                        {loadingPlan === plan.id ? "Loading…" : label}
+                        {loadingPlan === plan.id ? "Loading..." : label}
                       </Button>
                     )}
                   </div>
 
-                  <ul
-                    role="list"
-                    className="mt-5 space-y-2"
-                  >
+                  <ul role="list" className="mt-5 space-y-2">
                     {meta.features.map((f) => (
-                      <li
-                        key={f}
-                        className="flex items-start gap-2 text-xs text-muted-foreground"
-                      >
+                      <li key={f} className="flex items-start gap-2 text-xs text-muted-foreground">
                         <svg
                           viewBox="0 0 16 16"
                           fill="none"

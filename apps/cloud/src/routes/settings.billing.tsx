@@ -1,3 +1,4 @@
+import React from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCustomer, useListPlans } from "autumn-js/react";
 import { Button } from "@executor/react/components/button";
@@ -5,7 +6,7 @@ import { Badge } from "@executor/react/components/badge";
 
 type Plan = NonNullable<ReturnType<typeof useListPlans>["data"]>[number];
 
-export const Route = createFileRoute("/billing")({
+export const Route = createFileRoute("/settings/billing")({
   component: BillingPage,
 });
 
@@ -45,6 +46,7 @@ function BillingPage() {
   const planId = displayPlan?.id ?? "free";
   const planName = displayPlan?.name ?? "Free";
   const tagline = PLAN_TAGLINES[planId] ?? "";
+  const showExecutionLimit = planId !== "pro";
 
   const sub = customer?.subscriptions?.find(
     (s) =>
@@ -60,13 +62,10 @@ function BillingPage() {
           Billing
         </h1>
 
-        {/* Current plan */}
         <div className="flex items-center justify-between py-4">
           <div>
             <div className="flex items-center gap-2">
-              <p className="text-sm font-medium text-foreground leading-none">
-                {planName}
-              </p>
+              <p className="text-sm font-medium text-foreground leading-none">{planName}</p>
               {isSwitching && (
                 <Badge className="bg-amber-500/10 text-amber-600 dark:text-amber-400">
                   Switching
@@ -100,7 +99,7 @@ function BillingPage() {
               </Button>
             )}
             <Link
-              to="/billing/plans"
+              to="/settings/billing/plans"
               className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
             >
               Manage
@@ -108,23 +107,23 @@ function BillingPage() {
           </div>
         </div>
 
-        {/* Divider */}
         <div className="h-px bg-border/50 my-2" />
 
-        {/* Usage */}
         {executions && (
           <div className="py-4">
             <div className="flex items-center justify-between mb-2">
               <p className="text-sm font-medium text-foreground">Executions</p>
               <p className="text-sm tabular-nums text-muted-foreground">
                 {executions.usage.toLocaleString()}
-                <span className="text-muted-foreground">
-                  {" / "}
-                  {executions.granted.toLocaleString()} this month
-                </span>
+                {showExecutionLimit && (
+                  <span className="text-muted-foreground">
+                    {" / "}
+                    {executions.granted.toLocaleString()} this month
+                  </span>
+                )}
               </p>
             </div>
-            {!executions.unlimited && executions.granted > 0 && (
+            {showExecutionLimit && executions.granted > 0 && (
               <div className="h-1.5 w-full overflow-hidden rounded-full bg-border">
                 <div
                   className="h-full rounded-full bg-primary transition-all duration-300"
