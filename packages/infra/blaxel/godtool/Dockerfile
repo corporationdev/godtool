@@ -22,6 +22,7 @@ RUN apt-get update \
     fonts-noto-color-emoji \
     git \
     gnupg \
+    hicolor-icon-theme \
     jq \
     libasound2 \
     nano \
@@ -94,11 +95,13 @@ RUN apt-get update \
       > /etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-session.xml; \
   fi \
   && useradd --create-home --shell /bin/bash desktop \
+  && chown -R desktop:desktop /home/desktop \
   && chmod +x /usr/local/bin/sandbox-api \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
 
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+COPY desktop-runtime.sh /usr/local/bin/godtool-desktop-runtime
+RUN chmod +x /entrypoint.sh /usr/local/bin/godtool-desktop-runtime
 
 ENTRYPOINT ["/entrypoint.sh"]

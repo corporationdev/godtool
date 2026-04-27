@@ -31,6 +31,8 @@ const CODE_SERVER_CONFIG_DIRECTORY = "/root/.config/code-server";
 const CODE_SERVER_CONFIG_PATH = `${CODE_SERVER_CONFIG_DIRECTORY}/config.yaml`;
 const CODE_SERVER_TOKEN_TTL_MS = 1000 * 60 * 30;
 const DESKTOP_PORT = 6080;
+const DESKTOP_RUNTIME_PROCESS_NAME = "godtool-desktop-runtime";
+const DESKTOP_RUNTIME_COMMAND_PATH = "/usr/local/bin/godtool-desktop-runtime";
 const DESKTOP_PREVIEW_NAME = "desktop-vnc-public";
 const DESKTOP_START_POLL_MS = 500;
 const DESKTOP_START_TIMEOUT_MS = 60_000;
@@ -121,6 +123,18 @@ export interface SandboxResponse {
   readonly text?: () => Promise<string>;
 }
 
+interface SandboxPreview {
+  readonly spec: {
+    readonly url?: string;
+  };
+  readonly tokens: {
+    readonly create: (expiresAt: Date) => Promise<{
+      readonly expiresAt: string | Date;
+      readonly value: string;
+    }>;
+  };
+}
+
 export interface SandboxHandle {
   readonly fetch: (
     port: number,
@@ -151,6 +165,7 @@ export interface SandboxHandle {
         }>;
       };
     }>;
+    readonly get: (name: string) => Promise<SandboxPreview>;
   };
   readonly fs: {
     readonly mkdir: (path: string) => Promise<unknown>;
@@ -573,6 +588,41 @@ const isRetryableSandboxUnavailableError = (error: unknown): boolean => {
   return false;
 };
 
+const includesResourceAlreadyExistsMarker = (value: string): boolean =>
+  /Resource already exists/i.test(value) || /"code"\s*:\s*409/.test(value);
+
+const isResourceAlreadyExistsError = (error: unknown): boolean => {
+  if (typeof error === "string") {
+    return includesResourceAlreadyExistsMarker(error);
+  }
+
+  if (error instanceof Error) {
+    return includesResourceAlreadyExistsMarker(error.message) || isResourceAlreadyExistsError(error.cause);
+  }
+
+  if (hasOwn(error, "code") && error.code === 409) {
+    return true;
+  }
+
+  if (hasOwn(error, "status") && error.status === 409) {
+    return true;
+  }
+
+  if (hasOwn(error, "message") && typeof error.message === "string") {
+    return includesResourceAlreadyExistsMarker(error.message);
+  }
+
+  if (hasOwn(error, "error")) {
+    return isResourceAlreadyExistsError(error.error);
+  }
+
+  if (hasOwn(error, "cause")) {
+    return isResourceAlreadyExistsError(error.cause);
+  }
+
+  return false;
+};
+
 const throwSandboxFailure = async (
   store: ReturnType<typeof makeSandboxStore>,
   organizationId: string,
@@ -594,6 +644,30 @@ const throwSandboxFailure = async (
     organizationId,
   });
   throw new Error(inferBrokenMessage(organizationId, broken.error));
+};
+
+const ensureSandboxPreview = async (
+  sandbox: SandboxHandle,
+  args: Parameters<SandboxHandle["previews"]["createIfNotExists"]>[0],
+  description: string,
+): Promise<SandboxPreview> => {
+  try {
+    return await withTimeout(
+      sandbox.previews.createIfNotExists(args),
+      BLAXEL_OPERATION_TIMEOUT_MS,
+      description,
+    );
+  } catch (error) {
+    if (!isResourceAlreadyExistsError(error)) {
+      throw error;
+    }
+
+    return await withTimeout(
+      sandbox.previews.get(args.metadata.name),
+      BLAXEL_OPERATION_TIMEOUT_MS,
+      `${description} conflict get(${args.metadata.name})`,
+    );
+  }
 };
 
 const quoteShellArgument = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
@@ -973,8 +1047,9 @@ const createCodeServerSession = async (
   sandbox: SandboxHandle,
   ensuredSandbox: EnsuredSandbox,
 ): Promise<CodeServerSession> => {
-  const preview = await withTimeout(
-    sandbox.previews.createIfNotExists({
+  const preview = await ensureSandboxPreview(
+    sandbox,
+    {
       metadata: {
         name: CODE_SERVER_PREVIEW_NAME,
       },
@@ -982,8 +1057,7 @@ const createCodeServerSession = async (
         port: CODE_SERVER_PORT,
         public: false,
       },
-    }),
-    BLAXEL_OPERATION_TIMEOUT_MS,
+    },
     "Blaxel code-server preview createIfNotExists",
   );
   const previewUrl = preview.spec.url?.trim();
@@ -1058,13 +1132,56 @@ const waitForDesktopHealth = async (
   throw new Error("Timed out waiting for the desktop stream to become healthy.");
 };
 
+const stopDesktopRuntimeProcess = async (sandbox: SandboxHandle): Promise<void> => {
+  try {
+    await sandbox.process.stop(DESKTOP_RUNTIME_PROCESS_NAME);
+    return;
+  } catch {
+    // Process may not be running or may require a kill.
+  }
+
+  try {
+    await sandbox.process.kill(DESKTOP_RUNTIME_PROCESS_NAME);
+  } catch {
+    // Process does not exist.
+  }
+};
+
 const ensureDesktopRunning = async (
   sandbox: SandboxHandle,
   options?: SandboxesServiceOptions,
 ): Promise<void> => {
-  console.info("[sandboxes] waiting for template desktop health");
+  const health = await fetchDesktopHealth(sandbox);
+  if (health.ok) {
+    console.info("[sandboxes] desktop runtime already healthy", {
+      status: health.status,
+    });
+    return;
+  }
+
+  console.info("[sandboxes] starting desktop runtime process", {
+    status: health.status,
+  });
+  await stopDesktopRuntimeProcess(sandbox);
+
+  try {
+    await sandbox.process.exec({
+      command: DESKTOP_RUNTIME_COMMAND_PATH,
+      maxRestarts: 5,
+      name: DESKTOP_RUNTIME_PROCESS_NAME,
+      restartOnFailure: true,
+      waitForCompletion: false,
+      workingDir: SANDBOX_WORKSPACE_DIRECTORY,
+    });
+  } catch (error) {
+    if (!isProcessAlreadyRunningError(error, DESKTOP_RUNTIME_PROCESS_NAME)) {
+      throw error;
+    }
+  }
+
+  console.info("[sandboxes] waiting for desktop health");
   await waitForDesktopHealth(sandbox, options);
-  console.info("[sandboxes] template desktop healthy");
+  console.info("[sandboxes] desktop runtime healthy");
 };
 
 const createDesktopSession = async (
@@ -1074,8 +1191,9 @@ const createDesktopSession = async (
   console.info("[sandboxes] creating desktop preview", {
     sandboxId: ensuredSandbox.externalId,
   });
-  const preview = await withTimeout(
-    sandbox.previews.createIfNotExists({
+  const preview = await ensureSandboxPreview(
+    sandbox,
+    {
       metadata: {
         name: DESKTOP_PREVIEW_NAME,
       },
@@ -1083,8 +1201,7 @@ const createDesktopSession = async (
         port: DESKTOP_PORT,
         public: true,
       },
-    }),
-    BLAXEL_OPERATION_TIMEOUT_MS,
+    },
     "Blaxel desktop preview createIfNotExists",
   );
   const previewUrl = preview.spec.url?.trim();
