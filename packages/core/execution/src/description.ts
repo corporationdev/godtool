@@ -81,7 +81,7 @@ const formatDescription = (
       "",
       "## Persistent workspace",
       "",
-      "At the start of every conversation you must read both `/workspace/SYSTEM.md` and `/workspace/MEMORY.md`.",
+      "Before any task-specific work, your first execution must read both `/workspace/SYSTEM.md` and `/workspace/MEMORY.md`.",
       "",
       "```ts",
       'const systemMd = await Bun.file("/workspace/SYSTEM.md").text();',
