@@ -33,6 +33,10 @@ import { DbService, combinedSchema } from "./services/db";
 import { createScopedExecutor } from "./services/executor";
 import { makeExecutionStack } from "./services/execution-stack";
 import { formatSandboxToolCallErrorValue } from "./services/sandbox-tool-call-errors";
+import {
+  currentExecutionArtifactContext,
+  type ExecutionArtifactContext,
+} from "./services/execution-artifacts";
 import { DoTelemetryLive } from "./services/telemetry";
 
 // ---------------------------------------------------------------------------
@@ -121,6 +125,7 @@ type SessionMeta = {
 };
 
 type ActiveSandboxRun = {
+  readonly artifactContext: ExecutionArtifactContext;
   readonly runPromise: <A, E>(effect: Effect.Effect<A, E, never>) => Promise<A>;
   readonly token: string;
   readonly toolInvoker: SandboxToolInvoker;
@@ -325,8 +330,8 @@ export class McpSessionDO extends DurableObject {
       );
       const codeExecutor = makeBlaxelCodeExecutor({
         activeRuns: {
-          register: ({ runId, runPromise, token, toolInvoker }) => {
-            self.activeSandboxRuns.set(runId, { runPromise, token, toolInvoker });
+          register: ({ artifactContext, runId, runPromise, token, toolInvoker }) => {
+            self.activeSandboxRuns.set(runId, { artifactContext, runPromise, token, toolInvoker });
           },
           unregister: (runId) => {
             self.activeSandboxRuns.delete(runId);
@@ -752,7 +757,12 @@ export class McpSessionDO extends DurableObject {
       const invocation = activeRun.toolInvoker.invoke({
         path: body.path,
         args: body.args,
-      }) as Effect.Effect<unknown, unknown, never>;
+      }).pipe(
+        Effect.locally(
+          currentExecutionArtifactContext,
+          activeRun.artifactContext,
+        ),
+      ) as Effect.Effect<unknown, unknown, never>;
 
       const result = yield* Effect.promise(() =>
         activeRun.runPromise(

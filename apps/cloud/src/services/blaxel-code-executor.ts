@@ -11,6 +11,7 @@ import {
 
 import type { DrizzleDb } from "./db";
 import { SANDBOX_SCAFFOLD_ROOT_DIRECTORY, sandboxScaffoldFiles } from "./sandbox-scaffold";
+import type { ExecutionArtifactContext } from "./execution-artifacts";
 
 export const INTERNAL_TOOL_CALL_PATH_PREFIX = "/mcp/internal/tool-call/";
 export const SANDBOX_TOOL_CALL_TOKEN_HEADER = "x-executor-callback-token";
@@ -23,6 +24,7 @@ export class BlaxelExecutionError extends Data.TaggedError("BlaxelExecutionError
 
 type ActiveRunRegistry = {
   readonly register: (input: {
+    readonly artifactContext: ExecutionArtifactContext;
     readonly runId: string;
     readonly runPromise: <A, E>(effect: Effect.Effect<A, E, never>) => Promise<A>;
     readonly token: string;
@@ -78,6 +80,7 @@ export const buildExecutorModule = (args: {
   readonly callbackToken: string;
   readonly callbackUrl: string;
   readonly code: string;
+  readonly returnDirectory: string;
   readonly runId: string;
   readonly timeoutMs: number;
 }): string => {
@@ -85,14 +88,17 @@ export const buildExecutorModule = (args: {
 
   return [
     'import { $ } from "bun";',
-    'import { mkdir } from "node:fs/promises";',
-    'import { dirname, join } from "node:path";',
+    'import { mkdir, readdir, readFile, stat } from "node:fs/promises";',
+    'import { basename, dirname, extname, join } from "node:path";',
     "",
     `const __callbackUrl = ${JSON.stringify(args.callbackUrl)};`,
     `const __callbackToken = ${JSON.stringify(args.callbackToken)};`,
+    `const __returnDirectory = ${JSON.stringify(args.returnDirectory)};`,
     `const __runId = ${JSON.stringify(args.runId)};`,
     `const __workspaceRoot = ${JSON.stringify(SANDBOX_SCAFFOLD_ROOT_DIRECTORY)};`,
     `const __scaffoldFiles = ${JSON.stringify(sandboxScaffoldFiles)};`,
+    "process.env.GODTOOL_RETURN_DIR = __returnDirectory;",
+    "process.env.EXECUTOR_RETURN_DIR = __returnDirectory;",
     "",
     "export default async function execute() {",
     "  const __logs = [];",
@@ -175,8 +181,78 @@ export const buildExecutorModule = (args: {
     "      await Bun.write(targetPath, file.content);",
     "    }",
     "  };",
+    "  const __mimeFromPath = (path) => {",
+    "    const ext = extname(path).toLowerCase();",
+    "    const types = {",
+    "      '.apng': 'image/apng',",
+    "      '.avif': 'image/avif',",
+    "      '.csv': 'text/csv',",
+    "      '.gif': 'image/gif',",
+    "      '.htm': 'text/html',",
+    "      '.html': 'text/html',",
+    "      '.jpeg': 'image/jpeg',",
+    "      '.jpg': 'image/jpeg',",
+    "      '.json': 'application/json',",
+    "      '.jsonl': 'application/x-ndjson',",
+    "      '.md': 'text/markdown',",
+    "      '.pdf': 'application/pdf',",
+    "      '.png': 'image/png',",
+    "      '.svg': 'image/svg+xml',",
+    "      '.txt': 'text/plain',",
+    "      '.webp': 'image/webp',",
+    "      '.xml': 'application/xml',",
+    "      '.yaml': 'application/yaml',",
+    "      '.yml': 'application/yaml',",
+    "    };",
+    "    return types[ext] ?? 'application/octet-stream';",
+    "  };",
+    "  const __isTextMime = (mimeType) =>",
+    "    mimeType.startsWith('text/') ||",
+    "    ['application/json', 'application/xml', 'application/yaml', 'application/x-ndjson'].includes(mimeType);",
+    "  const __walkFiles = async (directory) => {",
+    "    const entries = await readdir(directory, { withFileTypes: true }).catch(() => []);",
+    "    const files = [];",
+    "    for (const entry of entries) {",
+    "      const path = join(directory, entry.name);",
+    "      if (entry.isDirectory()) {",
+    "        files.push(...await __walkFiles(path));",
+    "      } else if (entry.isFile()) {",
+    "        files.push(path);",
+    "      }",
+    "    }",
+    "    return files;",
+    "  };",
+    "  const __collectArtifacts = async () => {",
+    "    const maxInlineBytes = 8 * 1024 * 1024;",
+    "    const files = await __walkFiles(__returnDirectory);",
+    "    const artifacts = [];",
+    "    const content = [];",
+    "    for (const path of files) {",
+    "      const info = await stat(path).catch(() => null);",
+    "      if (!info || !info.isFile()) continue;",
+    "      const mimeType = __mimeFromPath(path);",
+    "      const name = basename(path);",
+    "      const uri = `file://${path}`;",
+    "      const artifact = { name, path, uri, mimeType, size: info.size };",
+    "      artifacts.push(artifact);",
+    "      if (info.size > maxInlineBytes) {",
+    "        content.push({ type: 'resource_link', uri, name, mimeType });",
+    "        continue;",
+    "      }",
+    "      const bytes = await readFile(path);",
+    "      if (mimeType.startsWith('image/')) {",
+    "        content.push({ type: 'image', data: bytes.toString('base64'), mimeType });",
+    "      } else if (__isTextMime(mimeType)) {",
+    "        content.push({ type: 'resource', resource: { uri, mimeType, text: bytes.toString('utf8') } });",
+    "      } else {",
+    "        content.push({ type: 'resource', resource: { uri, mimeType, blob: bytes.toString('base64') } });",
+    "      }",
+    "    }",
+    "    return { artifacts, content };",
+    "  };",
     "  try {",
     "    await __ensureScaffold();",
+    "    await mkdir(__returnDirectory, { recursive: true });",
     "    const result = await Promise.race([",
     "      (async () => {",
     body,
@@ -185,9 +261,11 @@ export const buildExecutorModule = (args: {
     `        setTimeout(() => reject(new Error("Execution timed out after ${args.timeoutMs}ms")), ${args.timeoutMs})`,
     "      ),",
     "    ]);",
-    "    return { result, logs: __logs };",
+    "    const __attached = await __collectArtifacts();",
+    "    return { result, logs: __logs, artifacts: __attached.artifacts, content: __attached.content };",
     "  } catch (error) {",
-    "    return { result: null, error: __renderMessage(error), logs: __logs };",
+    "    const __attached = await __collectArtifacts().catch(() => ({ artifacts: [], content: [] }));",
+    "    return { result: null, error: __renderMessage(error), logs: __logs, artifacts: __attached.artifacts, content: __attached.content };",
     "  } finally {",
     "    console.log = __originalConsole.log;",
     "    console.warn = __originalConsole.warn;",
@@ -207,6 +285,8 @@ export const makeBlaxelCodeExecutor = (
       Effect.gen(function* () {
         const runId = `run_${crypto.randomUUID()}`;
         const callbackToken = crypto.randomUUID();
+        const returnDirectory = `/tmp/godtool-execution-returns/${runId}`;
+        const artifactContext: ExecutionArtifactContext = { returnDirectory, runId };
         const runtime = yield* Effect.runtime<never>();
         const callbackOrigin =
           typeof options.callbackOrigin === "function"
@@ -217,12 +297,14 @@ export const makeBlaxelCodeExecutor = (
           callbackToken,
           callbackUrl,
           code,
+          returnDirectory,
           runId,
           timeoutMs,
         });
 
         yield* Effect.sync(() => {
           options.activeRuns.register({
+            artifactContext,
             runId,
             runPromise: Runtime.runPromise(runtime),
             token: callbackToken,

@@ -20,6 +20,7 @@ import {
   createExecutionEngine,
   formatExecuteResult,
   formatPausedExecution,
+  type ExecuteContentBlock,
   type ExecutionEngine,
   type ExecutionEngineConfig,
 } from "@executor/execution";
@@ -208,13 +209,16 @@ const makeMcpElicitationHandler =
 // ---------------------------------------------------------------------------
 
 type McpToolResult = {
-  content: Array<{ type: "text"; text: string }>;
+  content: ExecuteContentBlock[];
   structuredContent?: Record<string, unknown>;
   isError?: boolean;
 };
 
 const toMcpResult = (formatted: ReturnType<typeof formatExecuteResult>): McpToolResult => ({
-  content: [{ type: "text", text: formatted.text }],
+  content: [
+    { type: "text", text: formatted.text },
+    ...formatted.content,
+  ],
   structuredContent: formatted.structured,
   isError: formatted.isError || undefined,
 });

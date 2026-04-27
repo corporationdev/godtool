@@ -9,7 +9,13 @@ import type {
   ElicitationContext,
 } from "@executor/sdk";
 import { CodeExecutionError } from "@executor/codemode-core";
-import type { CodeExecutor, ExecuteResult, SandboxToolInvoker } from "@executor/codemode-core";
+import type {
+  CodeExecutor,
+  ExecuteArtifact,
+  ExecuteContentBlock,
+  ExecuteResult,
+  SandboxToolInvoker,
+} from "@executor/codemode-core";
 
 import {
   makeExecutorToolInvoker,
@@ -57,44 +63,218 @@ export type ResumeResponse = {
 // ---------------------------------------------------------------------------
 
 const MAX_PREVIEW_CHARS = 30_000;
+const ARTIFACT_MARKER = "__executorArtifact";
+const CONTENT_MARKER = "__executorContent";
 
 const truncate = (value: string, max: number): string =>
   value.length > max
     ? `${value.slice(0, max)}\n... [truncated ${value.length - max} chars]`
     : value;
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const isContentBlock = (value: unknown): value is ExecuteContentBlock => {
+  if (!isRecord(value) || typeof value.type !== "string") return false;
+  if (value.type === "text") return typeof value.text === "string";
+  if (value.type === "image" || value.type === "audio") {
+    return typeof value.data === "string" && typeof value.mimeType === "string";
+  }
+  if (value.type === "resource_link") {
+    return typeof value.uri === "string" && typeof value.name === "string";
+  }
+  if (value.type === "resource") {
+    return isRecord(value.resource) && typeof value.resource.uri === "string";
+  }
+  return false;
+};
+
+const isArtifactEnvelope = (
+  value: unknown,
+): value is {
+  readonly [ARTIFACT_MARKER]: true;
+  readonly artifact: ExecuteArtifact;
+  readonly content: ExecuteContentBlock;
+} =>
+  isRecord(value) &&
+  value[ARTIFACT_MARKER] === true &&
+  isRecord(value.artifact) &&
+  isContentBlock(value.content);
+
+const isContentEnvelope = (
+  value: unknown,
+): value is { readonly [CONTENT_MARKER]: true; readonly content: ExecuteContentBlock } =>
+  isRecord(value) && value[CONTENT_MARKER] === true && isContentBlock(value.content);
+
+const collectAttachedContent = (
+  value: unknown,
+  seen = new WeakSet<object>(),
+): { readonly content: ExecuteContentBlock[]; readonly artifacts: ExecuteArtifact[] } => {
+  if (Array.isArray(value)) {
+    const content: ExecuteContentBlock[] = [];
+    const artifacts: ExecuteArtifact[] = [];
+    for (const item of value) {
+      const nested = collectAttachedContent(item, seen);
+      content.push(...nested.content);
+      artifacts.push(...nested.artifacts);
+    }
+    return { content, artifacts };
+  }
+
+  if (!isRecord(value)) return { content: [], artifacts: [] };
+  if (seen.has(value)) return { content: [], artifacts: [] };
+  seen.add(value);
+
+  const content: ExecuteContentBlock[] = [];
+  const artifacts: ExecuteArtifact[] = [];
+
+  if (isArtifactEnvelope(value)) {
+    content.push(value.content);
+    artifacts.push(value.artifact);
+  } else if (isContentEnvelope(value)) {
+    content.push(value.content);
+  }
+
+  for (const child of Object.values(value)) {
+    if (isRecord(child)) {
+      const nested = collectAttachedContent(child, seen);
+      content.push(...nested.content);
+      artifacts.push(...nested.artifacts);
+      continue;
+    }
+    if (Array.isArray(child)) {
+      for (const item of child) {
+        const nested = collectAttachedContent(item, seen);
+        content.push(...nested.content);
+        artifacts.push(...nested.artifacts);
+      }
+    }
+  }
+
+  return { content, artifacts };
+};
+
+const sanitizeForPreview = (value: unknown, seen = new WeakSet<object>()): unknown => {
+  if (!isRecord(value)) {
+    if (Array.isArray(value)) return value.map((item) => sanitizeForPreview(item, seen));
+    return value;
+  }
+  if (seen.has(value)) return "[Circular]";
+  seen.add(value);
+
+  if (isArtifactEnvelope(value)) {
+    return {
+      attachedArtifact: value.artifact,
+    };
+  }
+
+  if (isContentEnvelope(value)) {
+    return {
+      attachedContent: {
+        type: value.content.type,
+        mimeType:
+          "mimeType" in value.content
+            ? value.content.mimeType
+            : value.content.type === "resource"
+              ? value.content.resource.mimeType
+              : undefined,
+      },
+    };
+  }
+
+  const output: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(value)) {
+    output[key] = Array.isArray(child)
+      ? child.map((item) => sanitizeForPreview(item, seen))
+      : sanitizeForPreview(child, seen);
+  }
+  return output;
+};
+
+const dedupeContent = (content: readonly ExecuteContentBlock[]): ExecuteContentBlock[] => {
+  const seen = new Set<string>();
+  const result: ExecuteContentBlock[] = [];
+  for (const item of content) {
+    const key = JSON.stringify(
+      item.type === "image" || item.type === "audio"
+        ? { type: item.type, mimeType: item.mimeType, data: item.data.slice(0, 80) }
+        : item,
+    );
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(item);
+  }
+  return result;
+};
+
+const dedupeArtifacts = (artifacts: readonly ExecuteArtifact[]): ExecuteArtifact[] => {
+  const seen = new Set<string>();
+  const result: ExecuteArtifact[] = [];
+  for (const artifact of artifacts) {
+    const key = artifact.uri;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(artifact);
+  }
+  return result;
+};
+
 export const formatExecuteResult = (
   result: ExecuteResult,
 ): {
   text: string;
+  content: ExecuteContentBlock[];
   structured: Record<string, unknown>;
   isError: boolean;
 } => {
+  const extracted = collectAttachedContent(result.result);
+  const content = dedupeContent([...(result.content ?? []), ...extracted.content]);
+  const artifacts = dedupeArtifacts([...(result.artifacts ?? []), ...extracted.artifacts]);
+  const sanitizedResult = sanitizeForPreview(result.result);
   const resultText =
-    result.result != null
-      ? typeof result.result === "string"
-        ? result.result
-        : JSON.stringify(result.result, null, 2)
+    sanitizedResult != null
+      ? typeof sanitizedResult === "string"
+        ? sanitizedResult
+        : JSON.stringify(sanitizedResult, null, 2)
       : null;
 
   const logText = result.logs && result.logs.length > 0 ? result.logs.join("\n") : null;
+  const artifactText =
+    artifacts.length > 0
+      ? `Attached artifacts:\n${artifacts
+          .map((artifact) => `- ${artifact.name} (${artifact.mimeType}, ${artifact.size} bytes)`)
+          .join("\n")}`
+      : null;
 
   if (result.error) {
-    const parts = [`Error: ${result.error}`, ...(logText ? [`\nLogs:\n${logText}`] : [])];
+    const parts = [
+      `Error: ${result.error}`,
+      ...(artifactText ? [`\n${artifactText}`] : []),
+      ...(logText ? [`\nLogs:\n${logText}`] : []),
+    ];
     return {
       text: truncate(parts.join("\n"), MAX_PREVIEW_CHARS),
-      structured: { status: "error", error: result.error, logs: result.logs ?? [] },
+      content,
+      structured: { status: "error", error: result.error, logs: result.logs ?? [], artifacts },
       isError: true,
     };
   }
 
   const parts = [
-    ...(resultText ? [truncate(resultText, MAX_PREVIEW_CHARS)] : ["(no result)"]),
+    ...(resultText ? [truncate(resultText, MAX_PREVIEW_CHARS)] : []),
+    ...(artifactText ? [artifactText] : []),
+    ...(!resultText && !artifactText ? ["(no result)"] : []),
     ...(logText ? [`\nLogs:\n${logText}`] : []),
   ];
   return {
     text: parts.join("\n"),
-    structured: { status: "completed", result: result.result ?? null, logs: result.logs ?? [] },
+    content,
+    structured: {
+      status: "completed",
+      result: sanitizedResult ?? null,
+      logs: result.logs ?? [],
+      artifacts,
+    },
     isError: false,
   };
 };
@@ -140,9 +320,6 @@ export const formatPausedExecution = (
 // ---------------------------------------------------------------------------
 // Full invoker (base + discover + describe)
 // ---------------------------------------------------------------------------
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 const readOptionalLimit = (value: unknown, toolName: string): number | ExecutionToolError => {
   if (value === undefined) {

@@ -1,6 +1,15 @@
 import { Effect } from "effect";
 
+import type {
+  ExecuteArtifact,
+  ExecuteContentBlock,
+} from "@executor/codemode-core";
 import { definePlugin } from "@executor/sdk";
+
+import {
+  getCurrentExecutionArtifactContext,
+  makeArtifactEnvelope,
+} from "./execution-artifacts";
 
 export interface ComputerCommandResult {
   readonly exitCode: number;
@@ -194,6 +203,40 @@ const parseMaybeJson = (stdout: string): unknown => {
   }
 };
 
+const estimateBase64Size = (data: string): number => {
+  const padding = data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0;
+  return Math.max(0, Math.floor((data.length * 3) / 4) - padding);
+};
+
+const basename = (path: string): string => path.split("/").filter(Boolean).at(-1) ?? path;
+
+const attachInlineContent = (input: {
+  readonly data: string | null;
+  readonly mimeType: string;
+  readonly path: string;
+}): ReturnType<typeof makeArtifactEnvelope> | null => {
+  const artifact: ExecuteArtifact = {
+    name: basename(input.path),
+    path: input.path,
+    uri: `file://${input.path}`,
+    mimeType: input.mimeType,
+    size: input.data ? estimateBase64Size(input.data) : 0,
+  };
+  const content: ExecuteContentBlock = input.data
+    ? {
+        type: "image",
+        data: input.data,
+        mimeType: input.mimeType,
+      }
+    : {
+        type: "resource_link",
+        uri: artifact.uri,
+        name: artifact.name,
+        mimeType: artifact.mimeType,
+      };
+  return makeArtifactEnvelope({ artifact, content });
+};
+
 const windowListScript = [
   "set -e",
   "ids=$(xdotool search --onlyvisible --name . 2>/dev/null || true)",
@@ -234,7 +277,6 @@ export const computerUsePlugin = (options: ComputerUsePluginOptions) =>
               ...objectSchema,
               properties: {
                 path: { type: "string" },
-                includeImage: { type: "boolean" },
                 format: { type: "string", enum: ["png", "jpg"] },
                 timeoutSeconds: { type: "number" },
               },
@@ -244,41 +286,40 @@ export const computerUsePlugin = (options: ComputerUsePluginOptions) =>
               properties: {
                 path: { type: "string" },
                 mimeType: { type: "string" },
-                imageBase64: { type: ["string", "null"] },
                 exitCode: { type: "number" },
+                attachment: {},
               },
-              required: ["path", "mimeType", "imageBase64", "exitCode"],
+              required: ["path", "mimeType", "exitCode", "attachment"],
             },
             handler: ({ args }) =>
               Effect.gen(function* () {
                 const input = record(args);
+                const context = yield* getCurrentExecutionArtifactContext;
                 const format = input.format === "jpg" ? "jpg" : "png";
                 const path =
                   optionalString(input.path) ??
-                  `${DESKTOP_SCREENSHOT_DIRECTORY}/screenshot-${Date.now().toString(36)}.${format}`;
-                const includeImage = optionalBoolean(input.includeImage, true);
+                  `${
+                    context?.returnDirectory ?? DESKTOP_SCREENSHOT_DIRECTORY
+                  }/desktop-screenshot-${Date.now().toString(36)}.${format}`;
                 const mimeType = format === "jpg" ? "image/jpeg" : "image/png";
                 const timeoutSeconds = readTimeoutSeconds(input.timeoutSeconds);
                 const capture = [
-                  `mkdir -p ${shellQuote(DESKTOP_SCREENSHOT_DIRECTORY)}`,
+                  `mkdir -p ${shellQuote(path.split("/").slice(0, -1).join("/") || ".")}`,
                   `scrot -z ${shellQuote(path)}`,
-                  includeImage
-                    ? `printf '\\n__GODTOOL_IMAGE__\\n'; base64 -w 0 ${shellQuote(path)}`
-                    : "true",
+                  `printf '\\n__GODTOOL_IMAGE__\\n'; base64 -w 0 ${shellQuote(path)}`,
                 ].join(" && ");
                 const result = failOnNonZero(
                   yield* run(options.backend, { command: capture, timeoutSeconds }),
                 );
                 const marker = "\n__GODTOOL_IMAGE__\n";
                 const markerIndex = result.stdout.indexOf(marker);
+                const data =
+                  markerIndex >= 0 ? result.stdout.slice(markerIndex + marker.length).trim() : null;
                 return {
                   path,
                   mimeType,
-                  imageBase64:
-                    includeImage && markerIndex >= 0
-                      ? result.stdout.slice(markerIndex + marker.length).trim()
-                      : null,
                   exitCode: result.exitCode,
+                  attachment: attachInlineContent({ data, mimeType, path }),
                 };
               }),
           },
@@ -704,6 +745,68 @@ export const computerUsePlugin = (options: ComputerUsePluginOptions) =>
                     timeoutSeconds,
                   }),
                 );
+              }),
+          },
+          {
+            name: "browser.screenshot",
+            description:
+              "Take a screenshot of the visible Chrome page via agent-browser and attach it to the result so the model can inspect it.",
+            inputSchema: {
+              ...objectSchema,
+              properties: {
+                path: { type: "string" },
+                fullPage: { type: "boolean" },
+                timeoutSeconds: { type: "number" },
+              },
+            },
+            outputSchema: {
+              type: "object",
+              properties: {
+                path: { type: "string" },
+                mimeType: { type: "string" },
+                result: commandResultSchema,
+                attachment: {},
+              },
+              required: ["path", "mimeType", "result", "attachment"],
+            },
+            handler: ({ args }) =>
+              Effect.gen(function* () {
+                const input = record(args);
+                const context = yield* getCurrentExecutionArtifactContext;
+                const path =
+                  optionalString(input.path) ??
+                  `${
+                    context?.returnDirectory ?? DESKTOP_SCREENSHOT_DIRECTORY
+                  }/browser-screenshot-${Date.now().toString(36)}.png`;
+                const timeoutSeconds = readTimeoutSeconds(input.timeoutSeconds);
+                const result = failOnNonZero(
+                  yield* runBrowser(options.backend, {
+                    args: [
+                      "--json",
+                      "screenshot",
+                      path,
+                      ...(optionalBoolean(input.fullPage, false) ? ["--full"] : []),
+                    ],
+                    timeoutSeconds,
+                  }),
+                );
+                const read = failOnNonZero(
+                  yield* run(options.backend, {
+                    command: `base64 -w 0 ${shellQuote(path)}`,
+                    timeoutSeconds,
+                  }),
+                );
+                const mimeType = "image/png";
+                return {
+                  path,
+                  mimeType,
+                  result,
+                  attachment: attachInlineContent({
+                    data: read.stdout.trim(),
+                    mimeType,
+                    path,
+                  }),
+                };
               }),
           },
           {

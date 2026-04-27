@@ -59,6 +59,7 @@ describe("computerUsePlugin", () => {
           "computer.desktop.clipboard.get",
           "computer.browser.run",
           "computer.browser.snapshot",
+          "computer.browser.screenshot",
         ]),
       );
     }),

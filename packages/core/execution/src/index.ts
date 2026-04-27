@@ -11,6 +11,7 @@ export {
 
 export { buildExecuteDescription } from "./description";
 export { ExecutionToolError } from "./errors";
+export type { ExecuteContentBlock } from "@executor/codemode-core";
 export {
   makeExecutorToolInvoker,
   searchTools,

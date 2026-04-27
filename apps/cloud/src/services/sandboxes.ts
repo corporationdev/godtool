@@ -1260,6 +1260,27 @@ const runDesktopSandboxCommand = async (
   return normalizeProcessResult(result, name, command);
 };
 
+const runSandboxCommand = async (
+  sandbox: SandboxHandle,
+  command: string,
+  options?: {
+    readonly env?: Record<string, string>;
+    readonly timeoutSeconds?: number;
+  },
+): Promise<SandboxProcessResult> => {
+  const name = `godtool-sandbox-command-${crypto.randomUUID()}`;
+  const result = await sandbox.process.exec({
+    command,
+    env: options?.env,
+    name,
+    restartOnFailure: false,
+    timeout: Math.max(1, Math.floor(options?.timeoutSeconds ?? 30)),
+    waitForCompletion: true,
+    workingDir: SANDBOX_WORKSPACE_DIRECTORY,
+  });
+  return normalizeProcessResult(result, name, command);
+};
+
 const createDesktopSession = async (
   sandbox: SandboxHandle,
   ensuredSandbox: EnsuredSandbox,
@@ -1555,6 +1576,29 @@ export const makeSandboxesService = (
     );
   };
 
+  const runCommand = async (
+    organizationId: string,
+    input: {
+      readonly command: string;
+      readonly env?: Record<string, string>;
+      readonly timeoutSeconds?: number;
+    },
+  ): Promise<SandboxProcessResult> => {
+    const ensuredSandbox = await ensureSandbox(organizationId);
+
+    return await withUnavailableSandboxRecovery(
+      organizationId,
+      ensuredSandbox,
+      async (sandboxRef) => {
+        const sandbox = await sandboxHandleProvider.getSandboxHandle(sandboxRef.externalId);
+        return await runSandboxCommand(sandbox, input.command, {
+          env: input.env,
+          timeoutSeconds: input.timeoutSeconds,
+        });
+      },
+    );
+  };
+
   const ensureExecuteRuntimeRunning = async (
     organizationId: string,
   ): Promise<EnsuredExecuteRuntime> => {
@@ -1592,6 +1636,7 @@ export const makeSandboxesService = (
     ensureExecuteRuntimeRunning,
     ensureSandbox,
     getSandbox: (organizationId: string) => store.getByOrganizationId(organizationId),
+    runCommand,
     runDesktopCommand,
   };
 };
