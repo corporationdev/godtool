@@ -21,8 +21,8 @@ export function McpInstallCard(props: { className?: string }) {
   }, []);
 
   const command = serverOrigin
-    ? `npx add-mcp "${serverOrigin}/mcp" --transport http --name "GOD TOOL"`
-    : 'npx add-mcp "<this-server>/mcp" --transport http --name "GOD TOOL"';
+    ? `npx add-mcp "${serverOrigin}/mcp" --transport http --name "god-tool"`
+    : 'npx add-mcp "<this-server>/mcp" --transport http --name "god-tool"';
 
   const subtitle = "Connect to GOD TOOL as a remote MCP server over streamable HTTP.";
 

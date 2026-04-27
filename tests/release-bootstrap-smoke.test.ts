@@ -231,11 +231,19 @@ describe("release bootstrap smoke", () => {
         // Verify code execution works end-to-end in the compiled binary
         const callResult = await runCommand(
           installedBinaryPath,
-          ["call", "return 2+2"],
+          [
+            "call",
+            "--base-url",
+            `http://127.0.0.1:${webPort}`,
+            "executor",
+            "sources",
+            "list",
+            '{"limit":1}',
+          ],
           installedPackageDir,
         );
         expect(callResult.exitCode, `call failed:\n${callResult.stderr}`).toBe(0);
-        expect(callResult.stdout.trim()).toContain("4");
+        expect(callResult.stdout.trim()).toContain('"id"');
 
         const secondRun = await runCommand(
           process.execPath,

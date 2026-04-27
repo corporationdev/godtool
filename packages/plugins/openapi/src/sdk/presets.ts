@@ -74,7 +74,7 @@ export const openApiPresets: readonly OpenApiPreset[] = [
     name: "OpenAI",
     summary: "Models, files, responses, and fine-tuning.",
     url: "https://app.stainless.com/api/spec/documented/openai/openapi.documented.yml",
-    icon: "https://openai.com/favicon.ico",
+    icon: "https://raw.githubusercontent.com/lobehub/lobe-icons/master/packages/static-svg/icons/openai.svg",
     featured: true,
   },
   {

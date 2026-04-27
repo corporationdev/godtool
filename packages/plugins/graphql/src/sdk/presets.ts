@@ -15,6 +15,15 @@ export interface GraphqlPreset {
 
 export const graphqlPresets: readonly GraphqlPreset[] = [
   {
+    id: "github-graphql",
+    name: "GitHub GraphQL",
+    summary: "Repos, issues, pull requests, actions, and users.",
+    url: "https://api.github.com/graphql",
+    icon: "https://github.com/favicon.ico",
+    featured: true,
+    composio: { app: "github" },
+  },
+  {
     id: "gitlab",
     name: "GitLab",
     summary: "Projects, merge requests, pipelines, and users.",
