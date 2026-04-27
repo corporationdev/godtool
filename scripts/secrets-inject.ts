@@ -11,8 +11,13 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
-import { resolveRuntimeContext } from "@executor/config/runtime";
-import { deriveEnvTier, resolveStage, type StageMode } from "@executor/config/stage";
+import {
+  deriveEnvTier,
+  getStageKind,
+  resolveStage,
+  type StageKind,
+  type StageMode,
+} from "@executor/config/stage";
 import { parse as parseDotEnv } from "dotenv";
 
 const repoRoot = resolve(import.meta.dirname, "..");
@@ -48,19 +53,11 @@ if (!existsSync(templatePath)) {
 const stageMode: StageMode = "dev";
 const stage = explicitStage ?? resolveStage(stageMode);
 const envTier = deriveEnvTier(stage);
-const runtime = resolveRuntimeContext(stage);
+const stageKind = getStageKind(stage);
 const template = readFileSync(templatePath, "utf8")
   .replace(stageVariableRegex, stage)
   .replace(envTierVariableRegex, envTier);
-const runtimeOverrides = getRuntimeOverrides(runtime.stageKind);
-const secrets = {
-  ...normalizeEnvValues(parseDotEnv(injectSecretsTemplate(template))),
-  ...runtimeOverrides,
-  VITE_PUBLIC_SITE_URL: runtime.appUrl,
-  VITE_SERVER_URL: runtime.serverUrl,
-  MCP_AUTHKIT_DOMAIN: runtime.authkitDomain,
-  MCP_RESOURCE_ORIGIN: runtime.serverUrl,
-};
+const secrets = normalizeEnvValues(parseDotEnv(injectSecretsTemplate(template)));
 const envExamples = findEnvExamples(repoRoot);
 
 if (envExamples.length === 0) {
@@ -92,7 +89,7 @@ for (const examplePath of envExamples) {
 
     const existingValue = normalizeEnvValue(existingEnv[key]);
     const resolvedValue =
-      shouldPreserveExistingValue(key, runtime.stageKind) && existingValue
+      shouldPreserveExistingValue(key, stageKind) && existingValue
         ? existingValue
         : (secrets[key] ?? existingValue ?? exampleValue);
     return `${prefix}${key}${equals}${resolvedValue}`;
@@ -181,26 +178,6 @@ function normalizeEnvValue(value: string | undefined): string | undefined {
   return value === undefined || value.length === 0 ? undefined : value;
 }
 
-function shouldPreserveExistingValue(
-  key: string,
-  stageKind: (typeof runtime)["stageKind"],
-): boolean {
+function shouldPreserveExistingValue(key: string, stageKind: StageKind): boolean {
   return key === "DATABASE_URL" && stageKind === "dev";
-}
-
-function getRuntimeOverrides(stageKind: (typeof runtime)["stageKind"]): Record<string, string> {
-  const overrides: Record<string, string> = {
-    BLAXEL_REGION: runtime.blaxelRegion,
-    BLAXEL_TEMPLATE_IMAGE: runtime.blaxelTemplateImage,
-    BLAXEL_WORKSPACE: runtime.blaxelWorkspace,
-  };
-
-  if (stageKind === "preview") {
-    const previewDatabaseUrl = normalizeEnvValue(process.env.DATABASE_URL);
-    if (previewDatabaseUrl) {
-      overrides.DATABASE_URL = previewDatabaseUrl;
-    }
-  }
-
-  return overrides;
 }

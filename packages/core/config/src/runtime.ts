@@ -1,7 +1,8 @@
-import { getStageKind, type StageKind } from "./stage-kind";
+import { getStageKind, type StageKind } from "@executor/config/stage-kind";
 
 const defaultBlaxelRegion = "us-pdx-1";
-const defaultBlaxelTemplateImage = "sandbox/godtool:latest";
+const defaultBlaxelTemplateImage = "sandbox/godtool";
+const developmentBlaxelWorkspace = "godtool-dev";
 const defaultBlaxelWorkspace = "godtool";
 const previewSubdomainPrefix = "preview-pr-";
 const productionSubdomain = "app";
@@ -115,7 +116,12 @@ export function getStageAuthkitDomain(stage: string): string {
 }
 
 export function getStageBlaxelWorkspace(stage: string): string {
-  assertSupportedRuntimeStage(stage);
+  const stageKind = assertSupportedRuntimeStage(stage);
+
+  if (stageKind === "dev" || stageKind === "preview") {
+    return developmentBlaxelWorkspace;
+  }
+
   return defaultBlaxelWorkspace;
 }
 

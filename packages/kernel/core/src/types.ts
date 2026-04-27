@@ -26,9 +26,67 @@ export interface SandboxToolInvoker {
   invoke(input: { path: string; args: unknown }): Effect.Effect<unknown, unknown>;
 }
 
+export type ExecuteContentAnnotations = {
+  readonly audience?: ("user" | "assistant")[];
+  readonly priority?: number;
+  readonly lastModified?: string;
+};
+
+export type ExecuteContentBlock =
+  | {
+      readonly type: "text";
+      readonly text: string;
+      readonly annotations?: ExecuteContentAnnotations;
+    }
+  | {
+      readonly type: "image";
+      readonly data: string;
+      readonly mimeType: string;
+      readonly annotations?: ExecuteContentAnnotations;
+    }
+  | {
+      readonly type: "audio";
+      readonly data: string;
+      readonly mimeType: string;
+      readonly annotations?: ExecuteContentAnnotations;
+    }
+  | {
+      readonly type: "resource_link";
+      readonly uri: string;
+      readonly name: string;
+      readonly description?: string;
+      readonly mimeType?: string;
+      readonly annotations?: ExecuteContentAnnotations;
+    }
+  | {
+      readonly type: "resource";
+      readonly resource:
+        | {
+            readonly uri: string;
+            readonly mimeType?: string;
+            readonly text: string;
+          }
+        | {
+            readonly uri: string;
+            readonly mimeType?: string;
+            readonly blob: string;
+          };
+      readonly annotations?: ExecuteContentAnnotations;
+    };
+
+export type ExecuteArtifact = {
+  readonly name: string;
+  readonly path: string;
+  readonly uri: string;
+  readonly mimeType: string;
+  readonly size: number;
+};
+
 /** Result of executing code in a sandbox */
 export type ExecuteResult = {
   result: unknown;
+  content?: ExecuteContentBlock[];
+  artifacts?: ExecuteArtifact[];
   error?: string;
   logs?: string[];
 };

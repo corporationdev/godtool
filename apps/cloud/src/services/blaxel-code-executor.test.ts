@@ -8,6 +8,7 @@ describe("buildExecutorModule", () => {
       callbackToken: "token",
       callbackUrl: "https://example.com/callback",
       code: 'return await $`pwd`.text();',
+      returnDirectory: "/tmp/godtool-execution-returns/run_123",
       runId: "run_123",
       timeoutMs: 5_000,
     });
@@ -21,6 +22,7 @@ describe("buildExecutorModule", () => {
       callbackToken: "token",
       callbackUrl: "https://example.com/callback",
       code: "return 'ok';",
+      returnDirectory: "/tmp/godtool-execution-returns/run_123",
       runId: "run_123",
       timeoutMs: 5_000,
     });

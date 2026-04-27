@@ -13,6 +13,7 @@ import { Effect } from "effect";
 import {
   Scope,
   ScopeId,
+  type AnyPlugin,
   collectSchemas,
   createExecutor,
 } from "@executor/sdk";
@@ -28,7 +29,15 @@ import { rawPlugin } from "@executor/plugin-raw";
 import { workosVaultPlugin } from "@executor/plugin-workos-vault";
 
 import { env } from "cloudflare:workers";
-import { DbService } from "./db";
+import type {
+  ExecuteArtifact,
+  ExecuteContentBlock,
+} from "@executor/codemode-core";
+import { artifactsPlugin, type ArtifactsBackend } from "./artifacts-plugin";
+import { computerUsePlugin, type ComputerUseBackend } from "./computer-use-plugin";
+import { makeSandboxesService } from "./sandboxes";
+import { AutumnService, type IAutumnService } from "./autumn";
+import { DbService, type DrizzleDb } from "./db";
 
 // ---------------------------------------------------------------------------
 // Plugin list — one place, used for both the runtime and the CLI config
@@ -40,8 +49,229 @@ import { DbService } from "./db";
 // real credentials from the env.
 // ---------------------------------------------------------------------------
 
-const createOrgPlugins = () =>
-  [
+export interface CreateScopedExecutorOptions {
+  readonly computerUseEnabled?: boolean;
+}
+
+const quoteShellArgument = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
+
+const attachFileScript = String.raw`
+import base64
+import json
+import mimetypes
+import os
+import pathlib
+import shutil
+import sys
+
+spec = json.loads(os.environ["GODTOOL_ATTACH_FILE_INPUT"])
+source = pathlib.Path(spec["path"]).expanduser()
+
+if not source.exists():
+    raise SystemExit(f"File does not exist: {source}")
+if not source.is_file():
+    raise SystemExit(f"Path is not a file: {source}")
+
+name = spec.get("name") or source.name
+mime_type = spec.get("mimeType") or mimetypes.guess_type(name)[0] or "application/octet-stream"
+return_directory = spec.get("returnDirectory")
+target = source
+
+if return_directory:
+    target_directory = pathlib.Path(return_directory)
+    target_directory.mkdir(parents=True, exist_ok=True)
+    target = target_directory / name
+    if source.resolve() != target.resolve():
+        shutil.copy2(source, target)
+
+data = target.read_bytes()
+size = len(data)
+output = {
+    "artifact": {
+        "name": name,
+        "path": str(target),
+        "uri": "file://" + str(target),
+        "mimeType": mime_type,
+        "size": size,
+    }
+}
+
+if size <= 8 * 1024 * 1024:
+    if mime_type.startswith("text/") or mime_type in {
+        "application/json",
+        "application/xml",
+        "application/yaml",
+        "application/x-ndjson",
+    }:
+        output["text"] = data.decode("utf-8", "replace")
+    else:
+        output["blob"] = base64.b64encode(data).decode("ascii")
+
+print(json.dumps(output))
+`;
+
+const parseAttachedFile = (stdout: string): {
+  readonly artifact: ExecuteArtifact;
+  readonly content: ExecuteContentBlock;
+} => {
+  const parsed = JSON.parse(stdout.trim()) as {
+    readonly artifact: ExecuteArtifact;
+    readonly blob?: string;
+    readonly text?: string;
+  };
+  const artifact = parsed.artifact;
+
+  if (typeof parsed.text === "string") {
+    return {
+      artifact,
+      content: {
+        type: "resource",
+        resource: {
+          uri: artifact.uri,
+          mimeType: artifact.mimeType,
+          text: parsed.text,
+        },
+      },
+    };
+  }
+
+  if (typeof parsed.blob === "string") {
+    if (artifact.mimeType.startsWith("image/")) {
+      return {
+        artifact,
+        content: {
+          type: "image",
+          data: parsed.blob,
+          mimeType: artifact.mimeType,
+        },
+      };
+    }
+
+    return {
+      artifact,
+      content: {
+        type: "resource",
+        resource: {
+          uri: artifact.uri,
+          mimeType: artifact.mimeType,
+          blob: parsed.blob,
+        },
+      },
+    };
+  }
+
+  return {
+    artifact,
+    content: {
+      type: "resource_link",
+      uri: artifact.uri,
+      name: artifact.name,
+      mimeType: artifact.mimeType,
+    },
+  };
+};
+
+const createComputerUseBackend = (args: {
+  readonly computerUseEnabled: boolean;
+  readonly db: DrizzleDb;
+  readonly organizationId: string;
+  readonly autumn: IAutumnService;
+}): ComputerUseBackend => {
+  const sandboxes = makeSandboxesService(args.db);
+
+  const assertComputerUseEnabled = async () => {
+    if (!args.computerUseEnabled) {
+      throw new Error("Computer use is available on the Pro plan.");
+    }
+
+    const hasAccess = await Effect.runPromise(
+      args.autumn.hasPersistentSandbox(args.organizationId),
+    );
+    if (!hasAccess) {
+      throw new Error("Computer use is available on the Pro plan.");
+    }
+  };
+
+  const runDesktopCommand: ComputerUseBackend["runDesktopCommand"] = async (input) => {
+    await assertComputerUseEnabled();
+    return sandboxes.runDesktopCommand(args.organizationId, {
+      command: input.command,
+      timeoutSeconds: input.timeoutSeconds,
+    });
+  };
+
+  return {
+    runAgentBrowser: async (input) => {
+      await assertComputerUseEnabled();
+      return sandboxes.runDesktopCommand(args.organizationId, {
+        command: ["agent-browser", "--cdp", "9222", ...input.args.map(quoteShellArgument)].join(
+          " ",
+        ),
+        timeoutSeconds: input.timeoutSeconds,
+      });
+    },
+    runDesktopCommand,
+  };
+};
+
+const createArtifactsBackend = (args: {
+  readonly computerUseEnabled: boolean;
+  readonly db: DrizzleDb;
+  readonly organizationId: string;
+  readonly autumn: IAutumnService;
+}): ArtifactsBackend => {
+  const sandboxes = makeSandboxesService(args.db);
+
+  const assertArtifactsEnabled = async () => {
+    if (!args.computerUseEnabled) {
+      throw new Error("File attachments from the sandbox are available on the Pro plan.");
+    }
+
+    const hasAccess = await Effect.runPromise(
+      args.autumn.hasPersistentSandbox(args.organizationId),
+    );
+    if (!hasAccess) {
+      throw new Error("File attachments from the sandbox are available on the Pro plan.");
+    }
+  };
+
+  return {
+    attachFile: async (input) => {
+      await assertArtifactsEnabled();
+      const result = await sandboxes.runCommand(args.organizationId, {
+        command: `python3 - <<'PY'\n${attachFileScript}\nPY`,
+        env: {
+          GODTOOL_ATTACH_FILE_INPUT: JSON.stringify({
+            path: input.path,
+            name: input.name,
+            mimeType: input.mimeType,
+            returnDirectory: input.returnDirectory,
+          }),
+        },
+        timeoutSeconds: input.timeoutSeconds,
+      });
+
+      if (result.exitCode !== 0) {
+        const detail = [result.stderr.trim(), result.stdout.trim()]
+          .filter((part) => part.length > 0)
+          .join("\n");
+        throw new Error(
+          detail.length > 0
+            ? `Failed to attach file with exit code ${result.exitCode}:\n${detail}`
+            : `Failed to attach file with exit code ${result.exitCode}.`,
+        );
+      }
+
+      return parseAttachedFile(result.stdout);
+    },
+  };
+};
+
+const createOrgPlugins = (options: {
+  readonly artifactsBackend?: ArtifactsBackend;
+  readonly computerUseBackend?: ComputerUseBackend;
+}) => {
+  const plugins: AnyPlugin[] = [
     openApiPlugin({ composioApiKey: env.COMPOSIO_API_KEY || undefined }),
     mcpPlugin({ dangerouslyAllowStdioMCP: false }),
     googleDiscoveryPlugin({ composioApiKey: env.COMPOSIO_API_KEY || undefined }),
@@ -53,7 +283,17 @@ const createOrgPlugins = () =>
         clientId: env.WORKOS_CLIENT_ID,
       },
     }),
-  ] as const;
+  ];
+
+  if (options.computerUseBackend) {
+    plugins.push(computerUsePlugin({ backend: options.computerUseBackend }));
+  }
+  if (options.artifactsBackend) {
+    plugins.push(artifactsPlugin({ backend: options.artifactsBackend }));
+  }
+
+  return plugins;
+};
 
 // ---------------------------------------------------------------------------
 // Create a fresh executor for a (user, org) pair (stateless, per-request).
@@ -74,11 +314,30 @@ export const createScopedExecutor = (
   userId: string,
   organizationId: string,
   organizationName: string,
+  options: CreateScopedExecutorOptions = {},
 ) =>
   Effect.gen(function* () {
     const { db } = yield* DbService;
+    const autumn = yield* AutumnService;
 
-    const plugins = createOrgPlugins();
+    const plugins = createOrgPlugins({
+      artifactsBackend: options.computerUseEnabled
+        ? createArtifactsBackend({
+            autumn,
+            computerUseEnabled: true,
+            db,
+            organizationId,
+          })
+        : undefined,
+      computerUseBackend: options.computerUseEnabled
+        ? createComputerUseBackend({
+            autumn,
+            computerUseEnabled: true,
+            db,
+            organizationId,
+          })
+        : undefined,
+    });
     const schema = collectSchemas(plugins);
     const adapter = makePostgresAdapter({ db, schema });
     const blobs = makePostgresBlobStore({ db });

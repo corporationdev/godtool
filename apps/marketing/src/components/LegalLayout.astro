@@ -1,5 +1,6 @@
 ---
 import Layout from "../layouts/Layout.astro";
+import BrandLogo from "./BrandLogo.astro";
 
 interface Props {
   title: string;
@@ -13,9 +14,7 @@ const { title, description, lastUpdated } = Astro.props;
 <Layout title={`${title} — Godtool`} description={description}>
   <nav class="fixed top-0 z-50 w-full bg-surface/80 backdrop-blur-lg">
     <div class="mx-auto flex h-14 max-w-[1200px] items-center justify-between border-b border-rule px-6 sm:px-10">
-      <a href="/" class="font-display text-xl italic tracking-tight text-ink transition-colors hover:text-teal">
-        godtool
-      </a>
+      <BrandLogo />
       <div class="flex items-center gap-5 sm:gap-8">
         <a href="https://app.godtool.dev" class="hidden text-[13px] text-ink-muted transition-colors hover:text-ink sm:block">
           App

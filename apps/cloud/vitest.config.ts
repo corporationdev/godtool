@@ -9,7 +9,14 @@ export default defineConfig({
   ],
   test: {
     include: ["src/**/*.test.ts"],
-    exclude: ["src/**/*.node.test.ts", "**/node_modules/**"],
+    exclude: [
+      "src/**/*.node.test.ts",
+      // The real HTTP MCP path is covered by mcp-miniflare.e2e.node.test.ts.
+      // Keeping the older workerd-pool duplicate enabled crashes workerd during
+      // module instantiation before tests can run.
+      "src/mcp-flow.test.ts",
+      "**/node_modules/**",
+    ],
     globalSetup: ["./scripts/test-globalsetup.ts"],
     // postgres.js's Cloudflare polyfill leaves a couple of `.then()` chains
     // on `writer.ready` uncaught when the socket tears down before the

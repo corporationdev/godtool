@@ -26,6 +26,7 @@ declare global {
       BLAXEL_WORKSPACE?: string;
       BLAXEL_REGION?: string;
       BLAXEL_TEMPLATE_IMAGE?: string;
+      STAGE?: string;
 
       // MCP
       MCP_SESSION_REQUEST_SCOPED_RUNTIME?: string;

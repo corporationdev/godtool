@@ -79,6 +79,8 @@ const mcpSession = DurableObjectNamespace("mcp-session", {
 
 const bindings: Bindings = {
   ASSETS: assets,
+  BL_REGION: runtime.blaxelRegion,
+  BL_WORKSPACE: runtime.blaxelWorkspace,
   HYPERDRIVE: hyperdrive,
   MCP_SESSION: mcpSession,
   LOADER: WorkerLoader(),
@@ -89,12 +91,16 @@ const bindings: Bindings = {
   VITE_SERVER_URL: serverUrl.origin,
   MCP_AUTHKIT_DOMAIN: runtime.authkitDomain,
   MCP_RESOURCE_ORIGIN: serverUrl.origin,
+  STAGE: stage,
 };
 
 addOptionalSecretBinding(bindings, "AUTUMN_SECRET_KEY");
 addOptionalSecretBinding(bindings, "SENTRY_DSN");
 addOptionalSecretBinding(bindings, "AXIOM_TOKEN");
 addOptionalSecretBinding(bindings, "BLAXEL_API_KEY");
+if (optionalEnv("BLAXEL_API_KEY")) {
+  bindings.BL_API_KEY = alchemy.secret(requireEnv("BLAXEL_API_KEY"));
+}
 addOptionalSecretBinding(bindings, "COMPOSIO_API_KEY");
 
 addOptionalStringBinding(bindings, "VITE_PUBLIC_SENTRY_DSN");
@@ -102,9 +108,9 @@ addOptionalStringBinding(bindings, "AXIOM_DATASET");
 addOptionalStringBinding(bindings, "AXIOM_TRACES_URL");
 addOptionalStringBinding(bindings, "AXIOM_TRACES_SAMPLE_RATIO");
 addOptionalStringBinding(bindings, "EXECUTOR_MCP_DEBUG");
-addOptionalStringBinding(bindings, "BLAXEL_WORKSPACE");
-addOptionalStringBinding(bindings, "BLAXEL_REGION");
-addOptionalStringBinding(bindings, "BLAXEL_TEMPLATE_IMAGE");
+bindings.BLAXEL_WORKSPACE = runtime.blaxelWorkspace;
+bindings.BLAXEL_REGION = runtime.blaxelRegion;
+bindings.BLAXEL_TEMPLATE_IMAGE = runtime.blaxelTemplateImage;
 
 export const cloud = await Worker("cloud", {
   name: runtime.cloudWorkerName,

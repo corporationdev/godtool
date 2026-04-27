@@ -11,7 +11,7 @@ import { OnboardingPage } from "../web/pages/onboarding";
 import { Shell } from "../web/shell";
 import appCss from "@executor/react/globals.css?url";
 
-const faviconVersion = "godtool-hammer";
+const faviconVersion = "godtool-hammer-wings";
 
 if (typeof window !== "undefined" && import.meta.env.VITE_PUBLIC_SENTRY_DSN) {
   Sentry.init({
@@ -33,7 +33,11 @@ export const Route = createRootRoute({
     links: [
       { rel: "icon", type: "image/svg+xml", href: `/favicon.svg?v=${faviconVersion}` },
       { rel: "icon", href: `/favicon.ico?v=${faviconVersion}`, sizes: "48x48" },
-      { rel: "apple-touch-icon", sizes: "180x180", href: `/apple-touch-icon.png?v=${faviconVersion}` },
+      {
+        rel: "apple-touch-icon",
+        sizes: "180x180",
+        href: `/apple-touch-icon.png?v=${faviconVersion}`,
+      },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {

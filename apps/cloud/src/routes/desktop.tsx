@@ -2,24 +2,24 @@ import { useEffect, useState } from "react";
 import { useAtomSet } from "@effect-atom/atom-react";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useCustomer } from "autumn-js/react";
-import { filesWriteKeys } from "@executor/react/api/reactivity-keys";
+import { desktopWriteKeys } from "@executor/react/api/reactivity-keys";
 import { Spinner } from "@executor/react/components/spinner";
 
-import { createFilesSession } from "../web/files";
+import { createDesktopSession } from "../web/desktop";
 
-type FilesSession = {
+type DesktopSession = {
   expiresAt: string;
   sandboxId: string;
   sandboxStatus: "created" | "reused";
   url: string;
 };
 
-export const Route = createFileRoute("/files")({
-  component: FilesPage,
+export const Route = createFileRoute("/desktop")({
+  component: DesktopPage,
 });
 
-function FilesPage() {
-  const requestSession = useAtomSet(createFilesSession, { mode: "promise" });
+function DesktopPage() {
+  const requestSession = useAtomSet(createDesktopSession, { mode: "promise" });
   const { data: customer, isLoading: customerLoading } = useCustomer();
   const [error, setError] = useState<string | null>(null);
   const [iframeUrl, setIframeUrl] = useState<string | null>(null);
@@ -53,8 +53,8 @@ function FilesPage() {
 
       try {
         const session = (await requestSession({
-          reactivityKeys: filesWriteKeys,
-        })) as FilesSession;
+          reactivityKeys: desktopWriteKeys,
+        })) as DesktopSession;
         if (cancelled) {
           return;
         }
@@ -65,7 +65,7 @@ function FilesPage() {
           return;
         }
 
-        setError(cause instanceof Error ? cause.message : "Failed to load sandbox files.");
+        setError(cause instanceof Error ? cause.message : "Failed to load sandbox desktop.");
       } finally {
         if (!cancelled) {
           setLoading(false);
@@ -92,9 +92,9 @@ function FilesPage() {
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center bg-background px-6">
         <div className="max-w-md text-center">
-          <h1 className="font-display text-2xl tracking-tight text-foreground">Files</h1>
+          <h1 className="font-display text-2xl tracking-tight text-foreground">Desktop</h1>
           <p className="mt-3 text-sm text-muted-foreground">
-            Persistent filesystem is only available on Pro.
+            Persistent desktop is only available on Pro.
           </p>
           <Link
             to="/settings/billing/plans"
@@ -111,7 +111,11 @@ function FilesPage() {
     <div className="flex min-h-0 flex-1 flex-col bg-background">
       <div className="relative min-h-0 flex-1">
         {iframeUrl ? (
-          <iframe className="h-full w-full border-0 bg-background" src={iframeUrl} title="Files" />
+          <iframe
+            className="h-full w-full border-0 bg-background"
+            src={iframeUrl}
+            title="Desktop"
+          />
         ) : null}
 
         {loading ? (
@@ -123,7 +127,7 @@ function FilesPage() {
         {!loading && error ? (
           <div className="absolute inset-0 flex items-center justify-center bg-background px-6">
             <div className="max-w-md text-center">
-              <h1 className="font-display text-2xl tracking-tight text-foreground">Files</h1>
+              <h1 className="font-display text-2xl tracking-tight text-foreground">Desktop</h1>
               <p className="mt-3 text-sm text-destructive">{error}</p>
             </div>
           </div>

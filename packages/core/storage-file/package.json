@@ -22,7 +22,7 @@
     "@effect/vitest": "catalog:",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "catalog:",
-    "better-sqlite3": "^11.8.1",
+    "better-sqlite3": "^12.9.0",
     "bun-types": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"

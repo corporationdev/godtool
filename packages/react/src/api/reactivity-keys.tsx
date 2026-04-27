@@ -24,6 +24,7 @@ export const ReactivityKey = {
   connections: "connections",
   scope: "scope",
   files: "files",
+  desktop: "desktop",
   // cloud-only resources
   orgMembers: "org:members",
   orgDomains: "org:domains",
@@ -41,16 +42,16 @@ export const secretWriteKeys = [ReactivityKey.secrets] as const;
  *  because connection-owned secret rows are filtered out of the secrets
  *  list — signing out should unhide them (in the future) or remove
  *  them, and either way the secrets page needs to re-query. */
-export const connectionWriteKeys = [
-  ReactivityKey.connections,
-  ReactivityKey.secrets,
-] as const;
+export const connectionWriteKeys = [ReactivityKey.connections, ReactivityKey.secrets] as const;
 
 /** Mutations that change scope membership/info. */
 export const scopeWriteKeys = [ReactivityKey.scope] as const;
 
 /** Sandbox file session mutations. */
 export const filesWriteKeys = [ReactivityKey.files] as const;
+
+/** Sandbox desktop session mutations. */
+export const desktopWriteKeys = [ReactivityKey.desktop] as const;
 
 /** Cloud-only: org membership mutations. */
 export const orgMemberWriteKeys = [ReactivityKey.orgMembers] as const;
