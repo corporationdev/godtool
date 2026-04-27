@@ -113,8 +113,20 @@ export interface SandboxProcessExecOptions {
   readonly maxRestarts?: number;
   readonly name: string;
   readonly restartOnFailure?: boolean;
+  readonly timeout?: number;
   readonly waitForCompletion?: boolean;
   readonly workingDir?: string;
+}
+
+export interface SandboxProcessResult {
+  readonly command: string;
+  readonly exitCode: number;
+  readonly logs: string;
+  readonly name: string;
+  readonly pid: string;
+  readonly status: string;
+  readonly stderr: string;
+  readonly stdout: string;
 }
 
 export interface SandboxResponse {
@@ -173,7 +185,7 @@ export interface SandboxHandle {
     readonly write: (path: string, content: string) => Promise<unknown>;
   };
   readonly process: {
-    readonly exec: (options: SandboxProcessExecOptions) => Promise<unknown>;
+    readonly exec: (options: SandboxProcessExecOptions) => Promise<SandboxProcessResult>;
     readonly kill: (name: string) => Promise<unknown>;
     readonly logs: (name: string, scope: "all") => Promise<string>;
     readonly stop: (name: string) => Promise<unknown>;
@@ -671,6 +683,46 @@ const ensureSandboxPreview = async (
 };
 
 const quoteShellArgument = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
+
+const readProcessResultString = (
+  result: Partial<SandboxProcessResult>,
+  key: "command" | "logs" | "name" | "pid" | "status" | "stderr" | "stdout",
+): string => {
+  const value = result[key];
+  return typeof value === "string" ? value : "";
+};
+
+const normalizeProcessResult = (
+  result: Partial<SandboxProcessResult>,
+  fallbackName: string,
+  fallbackCommand: string,
+): SandboxProcessResult => ({
+  command: readProcessResultString(result, "command") || fallbackCommand,
+  exitCode:
+    typeof result.exitCode === "number" && Number.isFinite(result.exitCode)
+      ? result.exitCode
+      : 0,
+  logs: readProcessResultString(result, "logs"),
+  name: readProcessResultString(result, "name") || fallbackName,
+  pid: readProcessResultString(result, "pid"),
+  status: readProcessResultString(result, "status"),
+  stderr: readProcessResultString(result, "stderr"),
+  stdout: readProcessResultString(result, "stdout"),
+});
+
+const buildDesktopCommandEnvironment = (): Record<string, string> => ({
+  CHROME_DEBUGGING_PORT: "9222",
+  DESKTOP_SESSION: "xfce",
+  DISPLAY: ":0",
+  HOME: "/home/desktop",
+  ICEAUTHORITY: "/tmp/desktop.ICEauthority",
+  XAUTHORITY: "/tmp/desktop.Xauthority",
+  XDG_CONFIG_DIRS: "/etc/xdg:/etc",
+  XDG_CURRENT_DESKTOP: "XFCE",
+  XDG_DATA_DIRS: "/usr/local/share:/usr/share",
+  XDG_RUNTIME_DIR: "/tmp/xdg-runtime-desktop",
+  XDG_SESSION_TYPE: "x11",
+});
 
 const withTimeout = async <A>(
   promise: Promise<A>,
@@ -1184,6 +1236,30 @@ const ensureDesktopRunning = async (
   console.info("[sandboxes] desktop runtime healthy");
 };
 
+const runDesktopSandboxCommand = async (
+  sandbox: SandboxHandle,
+  command: string,
+  options?: {
+    readonly env?: Record<string, string>;
+    readonly timeoutSeconds?: number;
+  },
+): Promise<SandboxProcessResult> => {
+  const name = `godtool-computer-use-${crypto.randomUUID()}`;
+  const result = await sandbox.process.exec({
+    command,
+    env: {
+      ...buildDesktopCommandEnvironment(),
+      ...(options?.env ?? {}),
+    },
+    name,
+    restartOnFailure: false,
+    timeout: Math.max(1, Math.floor(options?.timeoutSeconds ?? 30)),
+    waitForCompletion: true,
+    workingDir: SANDBOX_WORKSPACE_DIRECTORY,
+  });
+  return normalizeProcessResult(result, name, command);
+};
+
 const createDesktopSession = async (
   sandbox: SandboxHandle,
   ensuredSandbox: EnsuredSandbox,
@@ -1455,6 +1531,30 @@ export const makeSandboxesService = (
     );
   };
 
+  const runDesktopCommand = async (
+    organizationId: string,
+    input: {
+      readonly command: string;
+      readonly env?: Record<string, string>;
+      readonly timeoutSeconds?: number;
+    },
+  ): Promise<SandboxProcessResult> => {
+    const ensuredSandbox = await ensureSandbox(organizationId);
+
+    return await withUnavailableSandboxRecovery(
+      organizationId,
+      ensuredSandbox,
+      async (sandboxRef) => {
+        const sandbox = await sandboxHandleProvider.getSandboxHandle(sandboxRef.externalId);
+        await ensureDesktopRunning(sandbox, runtimeOptions);
+        return await runDesktopSandboxCommand(sandbox, input.command, {
+          env: input.env,
+          timeoutSeconds: input.timeoutSeconds,
+        });
+      },
+    );
+  };
+
   const ensureExecuteRuntimeRunning = async (
     organizationId: string,
   ): Promise<EnsuredExecuteRuntime> => {
@@ -1492,5 +1592,6 @@ export const makeSandboxesService = (
     ensureExecuteRuntimeRunning,
     ensureSandbox,
     getSandbox: (organizationId: string) => store.getByOrganizationId(organizationId),
+    runDesktopCommand,
   };
 };

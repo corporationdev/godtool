@@ -13,6 +13,7 @@ import { Effect } from "effect";
 import {
   Scope,
   ScopeId,
+  type AnyPlugin,
   collectSchemas,
   createExecutor,
 } from "@executor/sdk";
@@ -28,7 +29,10 @@ import { rawPlugin } from "@executor/plugin-raw";
 import { workosVaultPlugin } from "@executor/plugin-workos-vault";
 
 import { env } from "cloudflare:workers";
-import { DbService } from "./db";
+import { computerUsePlugin, type ComputerUseBackend } from "./computer-use-plugin";
+import { makeSandboxesService } from "./sandboxes";
+import { AutumnService, type IAutumnService } from "./autumn";
+import { DbService, type DrizzleDb } from "./db";
 
 // ---------------------------------------------------------------------------
 // Plugin list — one place, used for both the runtime and the CLI config
@@ -40,8 +44,59 @@ import { DbService } from "./db";
 // real credentials from the env.
 // ---------------------------------------------------------------------------
 
-const createOrgPlugins = () =>
-  [
+export interface CreateScopedExecutorOptions {
+  readonly computerUseEnabled?: boolean;
+}
+
+const quoteShellArgument = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
+
+const createComputerUseBackend = (args: {
+  readonly computerUseEnabled: boolean;
+  readonly db: DrizzleDb;
+  readonly organizationId: string;
+  readonly autumn: IAutumnService;
+}): ComputerUseBackend => {
+  const sandboxes = makeSandboxesService(args.db);
+
+  const assertComputerUseEnabled = async () => {
+    if (!args.computerUseEnabled) {
+      throw new Error("Computer use is available on the Pro plan.");
+    }
+
+    const hasAccess = await Effect.runPromise(
+      args.autumn.hasPersistentSandbox(args.organizationId),
+    );
+    if (!hasAccess) {
+      throw new Error("Computer use is available on the Pro plan.");
+    }
+  };
+
+  const runDesktopCommand: ComputerUseBackend["runDesktopCommand"] = async (input) => {
+    await assertComputerUseEnabled();
+    return sandboxes.runDesktopCommand(args.organizationId, {
+      command: input.command,
+      timeoutSeconds: input.timeoutSeconds,
+    });
+  };
+
+  return {
+    runAgentBrowser: async (input) => {
+      await assertComputerUseEnabled();
+      return sandboxes.runDesktopCommand(args.organizationId, {
+        command: ["agent-browser", "--cdp", "9222", ...input.args.map(quoteShellArgument)].join(
+          " ",
+        ),
+        timeoutSeconds: input.timeoutSeconds,
+      });
+    },
+    runDesktopCommand,
+  };
+};
+
+const createOrgPlugins = (options: {
+  readonly computerUseBackend?: ComputerUseBackend;
+}) => {
+  const plugins: AnyPlugin[] = [
     openApiPlugin({ composioApiKey: env.COMPOSIO_API_KEY || undefined }),
     mcpPlugin({ dangerouslyAllowStdioMCP: false }),
     googleDiscoveryPlugin({ composioApiKey: env.COMPOSIO_API_KEY || undefined }),
@@ -53,7 +108,14 @@ const createOrgPlugins = () =>
         clientId: env.WORKOS_CLIENT_ID,
       },
     }),
-  ] as const;
+  ];
+
+  if (options.computerUseBackend) {
+    plugins.push(computerUsePlugin({ backend: options.computerUseBackend }));
+  }
+
+  return plugins;
+};
 
 // ---------------------------------------------------------------------------
 // Create a fresh executor for a (user, org) pair (stateless, per-request).
@@ -74,11 +136,22 @@ export const createScopedExecutor = (
   userId: string,
   organizationId: string,
   organizationName: string,
+  options: CreateScopedExecutorOptions = {},
 ) =>
   Effect.gen(function* () {
     const { db } = yield* DbService;
+    const autumn = yield* AutumnService;
 
-    const plugins = createOrgPlugins();
+    const plugins = createOrgPlugins({
+      computerUseBackend: options.computerUseEnabled
+        ? createComputerUseBackend({
+            autumn,
+            computerUseEnabled: true,
+            db,
+            organizationId,
+          })
+        : undefined,
+    });
     const schema = collectSchemas(plugins);
     const adapter = makePostgresAdapter({ db, schema });
     const blobs = makePostgresBlobStore({ db });

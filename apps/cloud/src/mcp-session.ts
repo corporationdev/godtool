@@ -318,6 +318,7 @@ export class McpSessionDO extends DurableObject {
         sessionMeta.userId,
         sessionMeta.organizationId,
         sessionMeta.organizationName,
+        { computerUseEnabled: true },
       ).pipe(Effect.withSpan("McpSessionDO.createScopedExecutor"));
       const { makeBlaxelCodeExecutor } = yield* Effect.promise(
         () => import("./services/blaxel-code-executor"),
