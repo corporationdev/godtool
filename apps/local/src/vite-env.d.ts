@@ -39,6 +39,8 @@ interface Window {
         readonly busy?: boolean;
         readonly pinned?: boolean;
       }) => Promise<BrowserSessionSnapshot>;
+      readonly activateViewport: () => Promise<boolean>;
+      readonly deactivateViewport: () => Promise<boolean>;
       readonly show: (sessionId: string, bounds: BrowserBounds) => Promise<BrowserSessionSnapshot>;
       readonly setBounds: (
         sessionId: string,

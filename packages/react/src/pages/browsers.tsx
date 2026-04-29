@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { PlusIcon } from "lucide-react";
 
 import { Button } from "../components/button";
 import { Badge } from "../components/badge";
@@ -37,6 +38,8 @@ interface BrowserApi {
     readonly busy?: boolean;
     readonly pinned?: boolean;
   }) => Promise<BrowserSessionSnapshot>;
+  readonly activateViewport: () => Promise<boolean>;
+  readonly deactivateViewport: () => Promise<boolean>;
   readonly show: (sessionId: string, bounds: BrowserBounds) => Promise<BrowserSessionSnapshot>;
   readonly setBounds: (sessionId: string, bounds: BrowserBounds) => Promise<BrowserSessionSnapshot>;
   readonly hide: (sessionId: string) => Promise<BrowserSessionSnapshot>;
@@ -82,6 +85,20 @@ const createHttpBrowserApi = (): BrowserApi => {
           body: JSON.stringify(input),
         })
       ).session,
+    activateViewport: async () =>
+      (
+        await request<{ readonly ok: boolean }>("/viewport/activate", {
+          method: "POST",
+          body: "{}",
+        })
+      ).ok,
+    deactivateViewport: async () =>
+      (
+        await request<{ readonly ok: boolean }>("/viewport/deactivate", {
+          method: "POST",
+          body: "{}",
+        })
+      ).ok,
     show: async (sessionId, bounds) =>
       (
         await request<{ readonly session: BrowserSessionSnapshot }>(
@@ -205,6 +222,7 @@ export function BrowsersPage() {
   const showSession = useCallback(
     async (sessionId: string) => {
       if (!viewportRef.current) return;
+      await api.activateViewport();
       const bounds = boundsForElement(viewportRef.current);
       await api.show(sessionId, bounds);
       setSelectedId(sessionId);
@@ -270,6 +288,13 @@ export function BrowsersPage() {
   }, [api, refresh]);
 
   useEffect(() => {
+    void api.activateViewport();
+    return () => {
+      void api.deactivateViewport();
+    };
+  }, [api]);
+
+  useEffect(() => {
     if (!selected) {
       setAddress("");
       return;
@@ -300,11 +325,11 @@ export function BrowsersPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background">
-      <div className="shrink-0 border-b border-border px-5 py-4">
+      <div className="shrink-0 border-b border-border px-5 py-2">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-lg font-semibold tracking-normal">Browsers</h1>
-            <p className="text-sm text-muted-foreground">
+          <div className="flex min-w-0 items-baseline gap-3">
+            <h1 className="truncate text-base font-semibold tracking-normal">Browsers</h1>
+            <p className="shrink-0 text-sm text-muted-foreground">
               {sessions.length} active session{sessions.length === 1 ? "" : "s"}
             </p>
           </div>
@@ -317,15 +342,16 @@ export function BrowsersPage() {
             />
             <Button
               type="button"
-              size="sm"
+              size="icon-sm"
+              aria-label="New browser"
               onClick={createSession}
               disabled={loading || !agentId.trim()}
             >
-              New Browser
+              <PlusIcon aria-hidden className="size-4" />
             </Button>
           </div>
         </div>
-        {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
+        {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[320px_minmax(0,1fr)]">
@@ -477,11 +503,8 @@ export function BrowsersPage() {
               </Button>
             )}
           </div>
-          <div className="min-h-0 flex-1 p-4">
-            <div
-              ref={viewportRef}
-              className="h-full min-h-[360px] overflow-hidden rounded-md border border-border bg-muted/30"
-            >
+          <div className="min-h-0 flex-1">
+            <div ref={viewportRef} className="h-full min-h-[360px] overflow-hidden bg-muted/30">
               {!selected && (
                 <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
                   Browser view

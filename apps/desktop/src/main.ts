@@ -621,6 +621,18 @@ const setupIPC = (): void => {
     return browserSessionManager.ensure(input);
   });
 
+  ipcMain.handle("browser-sessions:activate-viewport", () => {
+    if (!browserSessionManager) throw new Error("Browser host is not running");
+    browserSessionManager.activateViewport();
+    return true;
+  });
+
+  ipcMain.handle("browser-sessions:deactivate-viewport", () => {
+    if (!browserSessionManager) throw new Error("Browser host is not running");
+    browserSessionManager.deactivateViewport();
+    return true;
+  });
+
   ipcMain.handle("browser-sessions:show", (_event, sessionId: string, bounds: BrowserBounds) => {
     if (!browserSessionManager) throw new Error("Browser host is not running");
     return browserSessionManager.show(sessionId, bounds);

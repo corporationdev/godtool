@@ -57,6 +57,7 @@ const normalizeNavigationUrl = (value: string): string => {
 export class BrowserSessionManager {
   private readonly sessions = new Map<string, BrowserSessionState>();
   private visibleSessionId: string | null = null;
+  private viewportActive = false;
 
   constructor(private readonly options: BrowserSessionManagerOptions) {}
 
@@ -141,6 +142,7 @@ export class BrowserSessionManager {
   }
 
   show(id: string, bounds: BrowserBounds): BrowserSessionSnapshot {
+    this.assertViewportActive();
     const session = this.get(id);
     this.hideVisible();
 
@@ -159,6 +161,7 @@ export class BrowserSessionManager {
   }
 
   setBounds(id: string, bounds: BrowserBounds): BrowserSessionSnapshot {
+    this.assertViewportActive();
     const session = this.get(id);
     session.view.setBounds(normalizeBounds(bounds));
     session.lastUsedAt = Date.now();
@@ -228,6 +231,16 @@ export class BrowserSessionManager {
     this.emitChanged();
   }
 
+  activateViewport(): void {
+    this.viewportActive = true;
+  }
+
+  deactivateViewport(): void {
+    this.viewportActive = false;
+    this.hideVisible();
+    this.emitChanged();
+  }
+
   private async makeRoom(): Promise<void> {
     if (this.sessions.size < this.options.maxSessions) return;
 
@@ -262,6 +275,12 @@ export class BrowserSessionManager {
     const current = this.sessions.get(this.visibleSessionId);
     if (current) this.moveToHidden(current);
     this.visibleSessionId = null;
+  }
+
+  private assertViewportActive(): void {
+    if (!this.viewportActive) {
+      throw new Error("Browser viewport is not active");
+    }
   }
 
   private moveToHidden(session: BrowserSessionState): void {

@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   browsers: {
     list: () => ipcRenderer.invoke("browser-sessions:list"),
     ensure: (input: unknown) => ipcRenderer.invoke("browser-sessions:ensure", input),
+    activateViewport: () => ipcRenderer.invoke("browser-sessions:activate-viewport"),
+    deactivateViewport: () => ipcRenderer.invoke("browser-sessions:deactivate-viewport"),
     show: (sessionId: string, bounds: unknown) =>
       ipcRenderer.invoke("browser-sessions:show", sessionId, bounds),
     setBounds: (sessionId: string, bounds: unknown) =>

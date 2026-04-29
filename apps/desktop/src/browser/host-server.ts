@@ -63,6 +63,18 @@ export const startBrowserHostServer = async (
         return;
       }
 
+      if (request.method === "POST" && url.pathname === "/viewport/activate") {
+        options.manager.activateViewport();
+        sendJson(response, 200, { ok: true });
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/viewport/deactivate") {
+        options.manager.deactivateViewport();
+        sendJson(response, 200, { ok: true });
+        return;
+      }
+
       if (parts[0] === "sessions" && parts[1]) {
         const sessionId = decodeURIComponent(parts[1]);
         const action = parts[2];
