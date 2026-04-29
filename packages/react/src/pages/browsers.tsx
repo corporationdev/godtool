@@ -4,6 +4,7 @@ import { PlusIcon } from "lucide-react";
 import { Button } from "../components/button";
 import { Badge } from "../components/badge";
 import { Input } from "../components/input";
+import { Popover, PopoverContent, PopoverTrigger } from "../components/popover";
 
 interface BrowserSessionSnapshot {
   readonly id: string;
@@ -202,6 +203,7 @@ export function BrowsersPage() {
   const [address, setAddress] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const selected = sessions.find((session) => session.id === selectedId) ?? null;
 
@@ -238,6 +240,7 @@ export function BrowsersPage() {
       setSelectedId(session.id);
       await refresh();
       await showSession(session.id);
+      setCreateOpen(false);
       setError(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -325,37 +328,52 @@ export function BrowsersPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background">
-      <div className="shrink-0 border-b border-border px-5 py-2">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-0 items-baseline gap-3">
-            <h1 className="truncate text-base font-semibold tracking-normal">Browsers</h1>
-            <p className="shrink-0 text-sm text-muted-foreground">
-              {sessions.length} active session{sessions.length === 1 ? "" : "s"}
-            </p>
-          </div>
-          <div className="flex min-w-0 items-center gap-2">
-            <Input
-              value={agentId}
-              onChange={(event) => setAgentId(event.target.value)}
-              className="h-8 w-44"
-              placeholder="Agent id"
-            />
-            <Button
-              type="button"
-              size="icon-sm"
-              aria-label="New browser"
-              onClick={createSession}
-              disabled={loading || !agentId.trim()}
-            >
-              <PlusIcon aria-hidden className="size-4" />
-            </Button>
-          </div>
-        </div>
-        {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
-      </div>
-
       <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[320px_minmax(0,1fr)]">
         <div className="min-h-0 overflow-y-auto border-b border-border md:border-r md:border-b-0">
+          <div className="sticky top-0 z-10 flex h-12 items-center justify-between gap-3 border-b border-border bg-background px-4">
+            <div className="flex min-w-0 items-baseline gap-2">
+              <h1 className="truncate text-sm font-semibold tracking-normal">Browsers</h1>
+              <p className="shrink-0 text-xs text-muted-foreground">{sessions.length} active</p>
+            </div>
+            <Popover open={createOpen} onOpenChange={setCreateOpen}>
+              <PopoverTrigger asChild>
+                <Button type="button" size="icon-xs" aria-label="New browser">
+                  <PlusIcon aria-hidden className="size-3.5" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-72 p-3">
+                <form
+                  className="space-y-3"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void createSession();
+                  }}
+                >
+                  <div className="space-y-1.5">
+                    <label htmlFor="browser-agent-id" className="text-sm font-medium">
+                      New browser
+                    </label>
+                    <Input
+                      id="browser-agent-id"
+                      value={agentId}
+                      onChange={(event) => setAgentId(event.target.value)}
+                      className="h-8"
+                      placeholder="Agent id"
+                    />
+                  </div>
+                  <Button
+                    type="submit"
+                    size="sm"
+                    className="w-full"
+                    disabled={loading || !agentId.trim()}
+                  >
+                    Create
+                  </Button>
+                  {error && <p className="text-xs text-destructive">{error}</p>}
+                </form>
+              </PopoverContent>
+            </Popover>
+          </div>
           {sessions.length === 0 ? (
             <div className="p-5 text-sm text-muted-foreground">No browser sessions yet.</div>
           ) : (
@@ -384,11 +402,8 @@ export function BrowsersPage() {
                   <p className="mt-1 truncate text-xs text-muted-foreground">
                     {session.title || session.url || session.id}
                   </p>
-                  <div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <div className="mt-2 text-xs text-muted-foreground">
                     <span>Used {formatAge(session.lastUsedAt)}</span>
-                    <span className="truncate font-mono">
-                      {session.targetId ?? "target pending"}
-                    </span>
                   </div>
                 </button>
               ))}

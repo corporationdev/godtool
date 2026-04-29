@@ -203,7 +203,7 @@ function StdioReadOnly(props: {
       <div>
         <h1 className="text-xl font-semibold text-foreground">Edit MCP Source</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Stdio MCP sources cannot be edited in the UI. Modify the executor.jsonc config file
+          Stdio MCP sources cannot be edited in the UI. Modify the godtool.jsonc config file
           directly.
         </p>
       </div>

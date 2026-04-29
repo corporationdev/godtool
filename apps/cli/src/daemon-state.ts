@@ -45,7 +45,7 @@ export const canonicalDaemonHost = (hostname: string): string => {
 };
 
 export const currentDaemonScopeId = (): string => {
-  const explicitScope = process.env.EXECUTOR_SCOPE_DIR?.trim();
+  const explicitScope = process.env.GODTOOL_SCOPE_DIR?.trim();
   if (explicitScope && explicitScope.length > 0) {
     return `scope:${explicitScope}`;
   }
@@ -57,7 +57,7 @@ export const currentDaemonScopeId = (): string => {
 // ---------------------------------------------------------------------------
 
 const resolveDaemonDataDir = (path: Path.Path): string =>
-  process.env.EXECUTOR_DATA_DIR ?? path.join(homedir(), ".executor");
+  process.env.GODTOOL_DATA_DIR ?? path.join(homedir(), ".godtool");
 
 const sanitizeHostForPath = (hostname: string): string => hostname.replaceAll(/[^a-z0-9.-]+/gi, "_");
 const sanitizeScopeForPath = (scopeId: string): string => scopeId.replaceAll(/[^a-z0-9.-]+/gi, "_");

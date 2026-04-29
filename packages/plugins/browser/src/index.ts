@@ -49,7 +49,7 @@ interface RuntimeEvaluateResult<T> {
 }
 
 const hostUrlFromConfig = (config?: BrowserPluginConfig): string =>
-  (config?.hostUrl ?? process.env.EXECUTOR_BROWSER_HOST_URL ?? "http://127.0.0.1:14789").replace(
+  (config?.hostUrl ?? process.env.GODTOOL_BROWSER_HOST_URL ?? "http://127.0.0.1:14789").replace(
     /\/+$/,
     "",
   );

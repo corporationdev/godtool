@@ -540,14 +540,14 @@ const runDaemonSession = (input: {
       hostname: daemonHost,
       port: daemonPort,
       pid: process.pid,
-      scopeDir: process.env.EXECUTOR_SCOPE_DIR ?? null,
+      scopeDir: process.env.GODTOOL_SCOPE_DIR ?? null,
     });
     yield* writeDaemonPointer({
       hostname: daemonHost,
       port: daemonPort,
       pid: process.pid,
       scopeId,
-      scopeDir: process.env.EXECUTOR_SCOPE_DIR ?? null,
+      scopeDir: process.env.GODTOOL_SCOPE_DIR ?? null,
       token,
     });
 
@@ -599,12 +599,12 @@ const runStdioMcpSession = () =>
 
 const scope = Options.text("scope").pipe(
   Options.optional,
-  Options.withDescription("Path to workspace directory containing executor.jsonc"),
+  Options.withDescription("Path to workspace directory containing godtool.jsonc"),
 );
 
 const applyScope = (s: Option.Option<string>) => {
   const dir = Option.getOrUndefined(s);
-  if (dir) process.env.EXECUTOR_SCOPE_DIR = resolve(dir);
+  if (dir) process.env.GODTOOL_SCOPE_DIR = resolve(dir);
 };
 
 const parseOptionalJsonObject = (raw: string | undefined): Effect.Effect<
@@ -892,7 +892,7 @@ const applyCallHelpChildFilters = (input: {
 
 const runCallHelp = (args: ParsedCallHelpArgs): Effect.Effect<void, Error, FileSystem.FileSystem | PlatformPath.Path> =>
   Effect.gen(function* () {
-    if (args.scopeDir) process.env.EXECUTOR_SCOPE_DIR = resolve(args.scopeDir);
+    if (args.scopeDir) process.env.GODTOOL_SCOPE_DIR = resolve(args.scopeDir);
 
     const daemonUrl = yield* ensureDaemon(args.baseUrl);
     const client = yield* makeApiClient(daemonUrl);

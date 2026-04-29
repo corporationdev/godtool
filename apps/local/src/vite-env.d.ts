@@ -27,10 +27,7 @@ interface BrowserBounds {
 
 interface Window {
   readonly electronAPI?: {
-    readonly selectScope: () => Promise<string | null>;
     readonly getCurrentScope: () => Promise<string | null>;
-    readonly getRecentScopes: () => Promise<readonly string[]>;
-    readonly switchScope: (scopePath: string) => Promise<string | null>;
     readonly browsers?: {
       readonly list: () => Promise<readonly BrowserSessionSnapshot[]>;
       readonly ensure: (input: {

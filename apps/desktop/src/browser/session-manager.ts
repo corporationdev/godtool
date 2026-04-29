@@ -331,10 +331,11 @@ export class BrowserSessionManager {
   }
 
   private snapshot(session: BrowserSessionState): BrowserSessionSnapshot {
+    const url = session.view.webContents.getURL();
     return {
       id: session.id,
       agentId: session.agentId,
-      url: session.view.webContents.getURL(),
+      url: url === session.markerUrl ? "about:blank" : url,
       title: session.view.webContents.getTitle(),
       canGoBack: session.view.webContents.navigationHistory.canGoBack(),
       canGoForward: session.view.webContents.navigationHistory.canGoForward(),

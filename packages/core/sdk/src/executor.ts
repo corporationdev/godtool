@@ -352,7 +352,7 @@ const staticDeclToTool = (
 
 // Upsert shape: delete any existing source + tools + definitions for
 // `input.id` before creating fresh rows. Keeps replayable — boot-time
-// sync from executor.jsonc can call register() on rows that already
+// sync from godtool.jsonc can call register() on rows that already
 // exist without tripping a UNIQUE constraint.
 const writeSourceInput = (
   core: TypedAdapter<CoreSchema>,

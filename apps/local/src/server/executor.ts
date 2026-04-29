@@ -57,7 +57,7 @@ interface ResolvedDb {
 }
 
 const resolveDbPath = (): ResolvedDb => {
-  const dataDir = process.env.EXECUTOR_DATA_DIR ?? join(homedir(), ".executor");
+  const dataDir = process.env.GODTOOL_DATA_DIR ?? join(homedir(), ".godtool");
   fs.mkdirSync(dataDir, { recursive: true });
   const dbPath = `${dataDir}/data.db`;
   // DBs written by pre-scope-refactor versions of the CLI have a schema
@@ -122,7 +122,7 @@ const createLocalExecutorLayer = () => {
       const db = drizzle(sqlite, { schema: executorSchema });
       migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
 
-      const cwd = process.env.EXECUTOR_SCOPE_DIR || process.cwd();
+      const cwd = process.env.GODTOOL_SCOPE_DIR || process.cwd();
       const scopeId = makeScopeId(cwd);
       // Reinstate pre-scope secret routing rows once migrations have
       // created the new `secret` table. INSERT OR IGNORE makes this
@@ -159,7 +159,7 @@ const createLocalExecutorLayer = () => {
         plugins,
       });
 
-      // Sync sources from executor.jsonc (idempotent — plugins upsert).
+      // Sync sources from godtool.jsonc (idempotent — plugins upsert).
       // Runs after plugins are wired so sources added here round-trip
       // back through configFile — harmless because the file already
       // contains them.

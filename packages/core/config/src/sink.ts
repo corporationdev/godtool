@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// ConfigFileSink — best-effort write-back of source changes to executor.jsonc.
+// ConfigFileSink — best-effort write-back of source changes to godtool.jsonc.
 //
 // Plugins (openapi, graphql, mcp) call `sink.upsertSource` after their DB
 // writes so the committable file stays in sync with runtime state. Errors

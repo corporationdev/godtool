@@ -34,14 +34,14 @@
 
 ## Migration path — what's next
 
-### The plan: re-derive sources from executor.jsonc
+### The plan: re-derive sources from godtool.jsonc
 
-The `@executor/config` package already maintains `executor.jsonc` as a source of truth for source configurations. The `config-store.ts` decorator intercepts `putSource`/`removeSource` on each plugin and mirrors to this file. So for existing users, `executor.jsonc` already has everything.
+The `@executor/config` package already maintains `godtool.jsonc` as a source of truth for source configurations. The `config-store.ts` decorator intercepts `putSource`/`removeSource` on each plugin and mirrors to this file. So for existing users, `godtool.jsonc` already has everything.
 
 ### Local app migration
 1. On first run, `migrate()` creates all tables from the initial migration
 2. Add a **sync-from-config step** after executor creation:
-   - `loadConfig(configPath)` reads `executor.jsonc`
+   - `loadConfig(configPath)` reads `godtool.jsonc`
    - For each source, call the plugin's add method (`executor.openapi.addSpec()`, `executor.mcp.addSource()`, etc.)
    - This re-fetches specs, re-parses tools, populates typed tables
 3. Secrets survive untouched — they live in keychain/1password/file-secrets, not in the DB. The `secret` routing table gets re-populated when sources are added.
@@ -62,7 +62,7 @@ The `@executor/config` package already maintains `executor.jsonc` as a source of
 | `packages/core/cli/src/commands/generate.ts` | CLI generate command |
 | `packages/core/cli/src/generators/drizzle.ts` | Drizzle schema generator |
 | `packages/core/sdk/src/config.ts` | `defineExecutorConfig` helper |
-| `packages/core/config/src/schema.ts` | `executor.jsonc` schema |
+| `packages/core/config/src/schema.ts` | `godtool.jsonc` schema |
 | `packages/core/config/src/config-store.ts` | Plugin store → config file decorator |
 | `packages/core/config/src/load.ts` | Config loading |
 | `apps/cloud/executor.config.ts` | Cloud config for CLI |

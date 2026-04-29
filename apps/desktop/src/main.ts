@@ -1,7 +1,6 @@
 import {
   app,
   BrowserWindow,
-  dialog,
   ipcMain,
   Menu,
   nativeTheme,
@@ -30,23 +29,24 @@ import type { BrowserBounds } from "./browser/types";
 // ---------------------------------------------------------------------------
 
 const DEFAULT_PORT = 14788;
-const DEV_SERVER_URL = process.env.EXECUTOR_DEV_URL || "http://127.0.0.1:1355";
-const BROWSER_HOST_PORT = Number(process.env.EXECUTOR_BROWSER_HOST_PORT ?? "14789");
-const BROWSER_DEBUGGING_PORT = Number(process.env.EXECUTOR_BROWSER_DEBUGGING_PORT ?? "9333");
-const BROWSER_MAX_SESSIONS = Number(process.env.EXECUTOR_BROWSER_MAX_SESSIONS ?? "5");
+const DEV_SERVER_URL = process.env.GODTOOL_DEV_URL || "http://127.0.0.1:1355";
+const BROWSER_HOST_PORT = Number(process.env.GODTOOL_BROWSER_HOST_PORT ?? "14789");
+const BROWSER_DEBUGGING_PORT = Number(process.env.GODTOOL_BROWSER_DEBUGGING_PORT ?? "9333");
+const BROWSER_MAX_SESSIONS = Number(process.env.GODTOOL_BROWSER_MAX_SESSIONS ?? "5");
 const SERVER_STARTUP_TIMEOUT_MS = 30_000;
-const SETTINGS_DIR = join(homedir(), ".executor");
+const SETTINGS_DIR = join(homedir(), ".godtool");
 const SETTINGS_PATH = join(SETTINGS_DIR, "desktop-settings.json");
+const DEFAULT_WORKSPACE_DIR = join(SETTINGS_DIR, "workspace");
 
 const CLI_BIN_DIR = join(SETTINGS_DIR, "bin");
-const CLI_BIN_PATH = join(CLI_BIN_DIR, process.platform === "win32" ? "executor.exe" : "executor");
+const CLI_BIN_PATH = join(CLI_BIN_DIR, process.platform === "win32" ? "godtool.exe" : "godtool");
 
 app.commandLine.appendSwitch("remote-debugging-address", "127.0.0.1");
 app.commandLine.appendSwitch("remote-debugging-port", String(BROWSER_DEBUGGING_PORT));
 app.commandLine.appendSwitch("remote-allow-origins", DEV_SERVER_URL);
 
 // ---------------------------------------------------------------------------
-// CLI install — copy sidecar to ~/.executor/bin and patch shell PATH
+// CLI install — copy sidecar to ~/.godtool/bin and patch shell PATH
 // ---------------------------------------------------------------------------
 
 const getInstalledCliVersion = (): string | null => {
@@ -97,7 +97,7 @@ const installCli = (): void => {
     chmodSync(CLI_BIN_PATH, 0o755);
   } catch {}
   console.log(
-    `Installed executor CLI ${appVersion} to ${CLI_BIN_PATH}` +
+    `Installed godtool CLI ${appVersion} to ${CLI_BIN_PATH}` +
       (installedVersion ? ` (was ${installedVersion})` : ""),
   );
 
@@ -118,7 +118,7 @@ const installCli = (): void => {
       // Anything else (2 = access denied, etc.) is an unexpected failure —
       // bail rather than risk writing a malformed PATH.
       if (code !== 0 && code !== 1) {
-        console.warn(`executor: reg query failed (code ${code}), skipping PATH update`);
+        console.warn(`godtool: reg query failed (code ${code}), skipping PATH update`);
         return;
       }
       let current = "";
@@ -127,7 +127,7 @@ const installCli = (): void => {
         if (!match) {
           // reg query succeeded but the output didn't parse — this means the
           // format changed and we can't safely rewrite PATH. Bail.
-          console.warn("executor: could not parse reg query output, skipping PATH update");
+          console.warn("godtool: could not parse reg query output, skipping PATH update");
           return;
         }
         current = match[1].trim();
@@ -181,8 +181,6 @@ const installCli = (): void => {
 // ---------------------------------------------------------------------------
 
 interface Settings {
-  recentScopes: string[];
-  lastScope: string | null;
   windowBounds?: { x: number; y: number; width: number; height: number };
 }
 
@@ -192,21 +190,12 @@ const loadSettings = (): Settings => {
       return JSON.parse(readFileSync(SETTINGS_PATH, "utf-8"));
     }
   } catch {}
-  return { recentScopes: [], lastScope: null };
+  return {};
 };
 
 const saveSettings = (settings: Settings): void => {
   mkdirSync(SETTINGS_DIR, { recursive: true });
   writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2));
-};
-
-const addRecentScope = (settings: Settings, scopePath: string): void => {
-  settings.recentScopes = [
-    scopePath,
-    ...settings.recentScopes.filter((s) => s !== scopePath),
-  ].slice(0, 10);
-  settings.lastScope = scopePath;
-  saveSettings(settings);
 };
 
 // ---------------------------------------------------------------------------
@@ -225,7 +214,7 @@ const isDev = !app.isPackaged;
 const binaryName = process.platform === "win32" ? "executor.exe" : "executor";
 
 const resolveAgentBrowserPath = (): string => {
-  if (process.env.EXECUTOR_AGENT_BROWSER_PATH) return process.env.EXECUTOR_AGENT_BROWSER_PATH;
+  if (process.env.GODTOOL_AGENT_BROWSER_PATH) return process.env.GODTOOL_AGENT_BROWSER_PATH;
   if (isDev) return "agent-browser";
 
   const platform = process.platform === "win32" ? "win32" : process.platform;
@@ -312,9 +301,9 @@ const startServer = async (scopePath: string, port: number): Promise<void> => {
     stdio: ["ignore", "pipe", "pipe"],
     env: {
       ...process.env,
-      EXECUTOR_SCOPE_DIR: scopePath,
-      EXECUTOR_BROWSER_HOST_URL: `http://127.0.0.1:${BROWSER_HOST_PORT}`,
-      EXECUTOR_AGENT_BROWSER_PATH: resolveAgentBrowserPath(),
+      GODTOOL_SCOPE_DIR: scopePath,
+      GODTOOL_BROWSER_HOST_URL: `http://127.0.0.1:${BROWSER_HOST_PORT}`,
+      GODTOOL_AGENT_BROWSER_PATH: resolveAgentBrowserPath(),
     },
   });
 
@@ -478,14 +467,13 @@ const stopBrowserHost = (): void => {
 const loadScope = async (scopePath: string): Promise<void> => {
   if (!mainWindow) return;
 
-  mainWindow.setTitle(`Executor — ${basename(scopePath)}`);
+  mainWindow.setTitle(`Godtool — ${basename(scopePath)}`);
 
   if (isDev) {
     // In dev mode, the Vite dev server handles both UI and API.
     // Just set the scope env var and load the dev URL.
     currentScope = scopePath;
-    process.env.EXECUTOR_SCOPE_DIR = scopePath;
-    addRecentScope(settings, scopePath);
+    process.env.GODTOOL_SCOPE_DIR = scopePath;
     buildMenu();
     mainWindow.loadURL(DEV_SERVER_URL);
     return;
@@ -496,7 +484,6 @@ const loadScope = async (scopePath: string): Promise<void> => {
 
   try {
     await startServer(scopePath, currentPort);
-    addRecentScope(settings, scopePath);
     buildMenu();
     mainWindow.loadURL(`http://127.0.0.1:${currentPort}`);
   } catch (err) {
@@ -504,31 +491,11 @@ const loadScope = async (scopePath: string): Promise<void> => {
   }
 };
 
-const selectFolder = async (): Promise<void> => {
-  if (!mainWindow) return;
-
-  const result = await dialog.showOpenDialog(mainWindow, {
-    properties: ["openDirectory"],
-    title: "Select Scope Directory",
-    message: "Choose a folder to use as the executor scope",
-  });
-
-  if (result.canceled || result.filePaths.length === 0) return;
-
-  await loadScope(result.filePaths[0]);
-};
-
 // ---------------------------------------------------------------------------
 // Menu
 // ---------------------------------------------------------------------------
 
 const buildMenu = (): void => {
-  const recentItems: MenuItemConstructorOptions[] = settings.recentScopes.map((scopePath) => ({
-    label: `${basename(scopePath)}  —  ${scopePath}`,
-    click: () => loadScope(scopePath),
-    enabled: scopePath !== currentScope,
-  }));
-
   const template: MenuItemConstructorOptions[] = [
     {
       role: "appMenu",
@@ -547,28 +514,6 @@ const buildMenu = (): void => {
     {
       label: "File",
       submenu: [
-        {
-          label: "Open Scope...",
-          accelerator: "CmdOrCtrl+O",
-          click: selectFolder,
-        },
-        { type: "separator" },
-        ...(recentItems.length > 0
-          ? [
-              { label: "Recent Scopes", enabled: false } as MenuItemConstructorOptions,
-              ...recentItems,
-              { type: "separator" as const },
-              {
-                label: "Clear Recent",
-                click: () => {
-                  settings.recentScopes = [];
-                  saveSettings(settings);
-                  buildMenu();
-                },
-              } as MenuItemConstructorOptions,
-            ]
-          : []),
-        { type: "separator" },
         { role: "close" as const },
       ],
     },
@@ -598,21 +543,7 @@ const buildMenu = (): void => {
 // ---------------------------------------------------------------------------
 
 const setupIPC = (): void => {
-  ipcMain.handle("select-scope", async () => {
-    await selectFolder();
-    return currentScope;
-  });
-
   ipcMain.handle("get-current-scope", () => currentScope);
-
-  ipcMain.handle("get-recent-scopes", () => settings.recentScopes);
-
-  ipcMain.handle("switch-scope", async (_event, scopePath: string) => {
-    if (existsSync(scopePath)) {
-      await loadScope(scopePath);
-    }
-    return currentScope;
-  });
 
   ipcMain.handle("browser-sessions:list", () => browserSessionManager?.list() ?? []);
 
@@ -789,7 +720,7 @@ const loadingHTML = (scopePath: string): string => {
 </head>
 <body>
   <div class="container">
-    <div class="wordmark">executor</div>
+    <div class="wordmark">godtool</div>
     <div class="bar-wrap"><div class="bar"></div></div>
     <div class="scope">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3">
@@ -822,104 +753,15 @@ const errorHTML = (message: string): string => `<!DOCTYPE html>
     padding: 12px; border-radius: 8px; text-align: left;
     overflow-x: auto; white-space: pre-wrap; word-break: break-all;
   }
-  button {
-    margin-top: 16px; padding: 8px 20px;
-    background: ${nativeTheme.shouldUseDarkColors ? "#333" : "#e5e5e5"};
-    border: none; border-radius: 6px; cursor: pointer;
-    font-size: 13px; color: inherit;
-    -webkit-app-region: no-drag;
-  }
-  button:hover { opacity: 0.8; }
 </style>
 </head>
 <body>
   <div class="container">
     <h2>Failed to start server</h2>
     <pre>${message.replace(/</g, "&lt;")}</pre>
-    <button onclick="window.electronAPI.selectScope()">Choose Different Folder</button>
   </div>
 </body>
 </html>`;
-
-// ---------------------------------------------------------------------------
-// Welcome screen
-// ---------------------------------------------------------------------------
-
-const welcomeHTML = (): string => {
-  const isDark = nativeTheme.shouldUseDarkColors;
-  const bg = isDark ? "#0a0a0a" : "#ffffff";
-  const fg = isDark ? "#e5e5e5" : "#171717";
-  const muted = isDark ? "#666" : "#999";
-  const cardBg = isDark ? "#141414" : "#f9f9f9";
-  const borderColor = isDark ? "#262626" : "#e5e5e5";
-
-  const recentItems = settings.recentScopes
-    .map(
-      (s) =>
-        `<button class="scope-btn" onclick="window.electronAPI.switchScope('${s.replace(/'/g, "\\'")}')">
-          <span class="name">${basename(s)}</span>
-          <span class="path">${s}</span>
-        </button>`,
-    )
-    .join("");
-
-  return `<!DOCTYPE html>
-<html>
-<head>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-    display: flex; align-items: center; justify-content: center;
-    height: 100vh; background: ${bg}; color: ${fg};
-    -webkit-app-region: drag;
-  }
-  .container { text-align: center; max-width: 420px; width: 100%; padding: 24px; }
-  h1 { font-size: 24px; font-weight: 600; margin-bottom: 6px; }
-  .subtitle { font-size: 14px; color: ${muted}; margin-bottom: 32px; }
-  .open-btn {
-    display: inline-flex; align-items: center; gap: 8px;
-    padding: 10px 24px; font-size: 14px; font-weight: 500;
-    background: ${fg}; color: ${bg};
-    border: none; border-radius: 8px; cursor: pointer;
-    -webkit-app-region: no-drag;
-  }
-  .open-btn:hover { opacity: 0.9; }
-  .shortcut { font-size: 12px; color: ${muted}; margin-top: 8px; }
-  .recent { margin-top: 32px; text-align: left; }
-  .recent-label { font-size: 12px; font-weight: 500; color: ${muted}; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
-  .scope-btn {
-    display: block; width: 100%; text-align: left;
-    padding: 10px 14px; margin-bottom: 4px;
-    background: ${cardBg}; border: 1px solid ${borderColor};
-    border-radius: 8px; cursor: pointer; color: ${fg};
-    -webkit-app-region: no-drag; transition: background 0.1s;
-  }
-  .scope-btn:hover { background: ${borderColor}; }
-  .scope-btn .name { display: block; font-size: 14px; font-weight: 500; }
-  .scope-btn .path { display: block; font-size: 12px; color: ${muted}; margin-top: 2px; }
-</style>
-</head>
-<body>
-  <div class="container">
-    <h1>Executor</h1>
-    <p class="subtitle">Select a folder to set as your scope</p>
-    <button class="open-btn" onclick="window.electronAPI.selectScope()">
-      Open Folder
-    </button>
-    <p class="shortcut">\u2318O</p>
-    ${
-      recentItems
-        ? `<div class="recent">
-            <div class="recent-label">Recent</div>
-            ${recentItems}
-          </div>`
-        : ""
-    }
-  </div>
-</body>
-</html>`;
-};
 
 // ---------------------------------------------------------------------------
 // App lifecycle
@@ -929,7 +771,7 @@ app.whenReady().then(async () => {
   // Clear cached web content so we always load the latest UI
   await session.defaultSession.clearCache();
 
-  // Install/update CLI binary to ~/.executor/bin
+  // Install/update CLI binary to ~/.godtool/bin
   installCli();
 
   settings = loadSettings();
@@ -939,12 +781,8 @@ app.whenReady().then(async () => {
   mainWindow = createWindow();
   await startBrowserHost();
 
-  // If we have a last scope and it still exists, open it directly
-  if (settings.lastScope && existsSync(settings.lastScope)) {
-    await loadScope(settings.lastScope);
-  } else {
-    mainWindow.loadURL(`data:text/html,${encodeURIComponent(welcomeHTML())}`);
-  }
+  mkdirSync(DEFAULT_WORKSPACE_DIR, { recursive: true });
+  await loadScope(DEFAULT_WORKSPACE_DIR);
 });
 
 app.on("window-all-closed", () => {
@@ -976,6 +814,7 @@ process.on("exit", () => {
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     mainWindow = createWindow();
-    mainWindow.loadURL(`data:text/html,${encodeURIComponent(welcomeHTML())}`);
+    mkdirSync(DEFAULT_WORKSPACE_DIR, { recursive: true });
+    void loadScope(DEFAULT_WORKSPACE_DIR);
   }
 });

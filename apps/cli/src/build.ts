@@ -699,7 +699,7 @@ if (process.env.EXECUTOR_BIN_PATH) run(process.env.EXECUTOR_BIN_PATH);
 const scriptDir = path.dirname(fs.realpathSync(__filename));
 const binary = process.platform === "win32" ? "executor.exe" : "executor";
 const runtimeBinary = path.join(scriptDir, "runtime", binary);
-const legacyCached = path.join(scriptDir, process.platform === "win32" ? ".executor.exe" : ".executor");
+const legacyCached = path.join(scriptDir, process.platform === "win32" ? ".godtool.exe" : ".godtool");
 
 const resolveInstalledBinary = () => {
   if (fs.existsSync(runtimeBinary)) {
@@ -777,7 +777,7 @@ const platform = platformMap[os.platform()] || os.platform();
 const arch = os.arch() === "arm64" ? "arm64" : "x64";
 const binary = platform === "windows" ? "executor.exe" : "executor";
 const cachedBinary = path.join(runtimeDir, binary);
-const legacyCachedBinary = path.join(binDir, platform === "windows" ? ".executor.exe" : ".executor");
+const legacyCachedBinary = path.join(binDir, platform === "windows" ? ".godtool.exe" : ".godtool");
 
 const isMusl = (() => {
   if (platform !== "linux") return false;

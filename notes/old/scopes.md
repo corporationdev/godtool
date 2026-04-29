@@ -94,8 +94,8 @@ Writes land in exactly one scope chosen by the caller.
   "user"` — forces this: secret lookup refuses to return
   workspace-level tokens even if one existed.
 
-- **Local global + per-folder.** `~/.executor/global` holds the outer
-  scope; the current folder's `executor.jsonc` holds the inner. Run
+- **Local global + per-folder.** `~/.godtool/global` holds the outer
+  scope; the current folder's `godtool.jsonc` holds the inner. Run
   `executor` in folder A and you see folder A's sources layered on the
   global set. Run in folder B, same global base, different inner.
 
@@ -157,9 +157,9 @@ The storage layer and every plugin are untouched by that change.
 `apps/local` derives a single scope id from `cwd` today. Layering is
 additive:
 
-- Outer scope: `~/.executor/global` (or a named profile).
+- Outer scope: `~/.godtool/global` (or a named profile).
 - Inner scope: the current folder, same derivation as today.
-- `executor.jsonc` sync writes to the inner (folder) scope by default;
+- `godtool.jsonc` sync writes to the inner (folder) scope by default;
   a `--global` flag or explicit file location targets the outer.
 
 ## What NOT to do
