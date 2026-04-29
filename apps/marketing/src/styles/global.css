@@ -1,0 +1,233 @@
+@import "tailwindcss";
+
+@source "../**/*.astro";
+
+@theme {
+  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Instrument Serif", Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --color-surface: #0c0f0e;
+  --color-surface-raised: #141917;
+  --color-surface-overlay: #1a1f1d;
+
+  --color-ink: #e4e8e6;
+  --color-ink-muted: #8a9490;
+  --color-ink-faint: #4a5552;
+
+  --color-teal: #3dd8b5;
+  --color-teal-dim: #2aaa8e;
+  --color-teal-faint: rgba(61, 216, 181, 0.08);
+  --color-teal-glow: rgba(61, 216, 181, 0.15);
+
+  --color-rule: rgba(255, 255, 255, 0.06);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --color-surface: #fafbfb;
+    --color-surface-raised: #f0f2f1;
+    --color-surface-overlay: #e5e8e7;
+
+    --color-ink: #1a1f1d;
+    --color-ink-muted: #5a6560;
+    --color-ink-faint: #9ca5a0;
+
+    --color-teal: #0d9b7a;
+    --color-teal-dim: #0a8068;
+    --color-teal-faint: rgba(13, 155, 122, 0.06);
+    --color-teal-glow: rgba(13, 155, 122, 0.1);
+
+    --color-rule: rgba(0, 0, 0, 0.08);
+  }
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 256px 256px;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: light) {
+  body {
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.015'/%3E%3C/svg%3E");
+  }
+}
+
+/* Staggered fade-in for page load */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.rise {
+  animation: rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.rise-d1 {
+  animation: rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.08s both;
+}
+.rise-d2 {
+  animation: rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.16s both;
+}
+.rise-d3 {
+  animation: rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.24s both;
+}
+.rise-d4 {
+  animation: rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.32s both;
+}
+
+/* Typing cursor blink for code block */
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+.cursor-blink {
+  animation: blink 1s step-end infinite;
+}
+
+/* Smooth scroll-triggered reveals via IntersectionObserver */
+.reveal {
+  opacity: 0;
+  transform: translateY(20px);
+  transition:
+    opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Thin scrollbar for catalog */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
+}
+.scrollbar-thin::-webkit-scrollbar {
+  width: 4px;
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+}
+
+@media (prefers-color-scheme: light) {
+  .scrollbar-thin {
+    scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.12);
+  }
+}
+
+.legal-prose {
+  color: color-mix(in srgb, var(--color-ink) 85%, transparent);
+  line-height: 1.75;
+  font-size: 15.5px;
+}
+
+.legal-prose > :first-child {
+  margin-top: 0;
+}
+
+.legal-prose > :first-child::first-letter {
+  font-family: var(--font-display);
+  font-size: 3.4em;
+  float: left;
+  line-height: 0.85;
+  padding: 0.32rem 0.6rem 0 0;
+  color: var(--color-teal);
+}
+
+.legal-prose h2 {
+  position: relative;
+  margin-top: 3rem;
+  margin-bottom: 0.85rem;
+  padding-top: 1.6rem;
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 1.05rem;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: -0.005em;
+  border-top: 1px solid var(--color-rule);
+}
+
+.legal-prose > h2:first-of-type {
+  margin-top: 2.4rem;
+}
+
+.legal-prose h3 {
+  margin-top: 1.6rem;
+  margin-bottom: 0.5rem;
+  color: var(--color-ink);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.legal-prose p,
+.legal-prose ul {
+  margin: 0.85rem 0;
+}
+
+.legal-prose ul {
+  list-style: none;
+  padding-left: 0;
+}
+
+.legal-prose li {
+  position: relative;
+  margin: 0.5rem 0;
+  padding-left: 1.25rem;
+}
+
+.legal-prose li::before {
+  content: "";
+  position: absolute;
+  left: 0.15rem;
+  top: 0.72rem;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--color-teal);
+  opacity: 0.7;
+}
+
+.legal-prose a {
+  color: var(--color-teal);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--color-teal) 35%, transparent);
+  text-underline-offset: 3px;
+  transition: color 0.15s ease, text-decoration-color 0.15s ease;
+}
+
+.legal-prose a:hover {
+  color: var(--color-teal-dim);
+  text-decoration-color: var(--color-teal-dim);
+}
+
+.legal-prose strong {
+  color: var(--color-ink);
+  font-weight: 600;
+}
+

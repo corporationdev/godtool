@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "types": ["@cloudflare/workers-types", "@cloudflare/vitest-pool-workers"],
+    "outDir": "dist",
+    "rootDir": ".",
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": true,
+    "jsx": "react-jsx",
+    "plugins": [
+      {
+        "name": "@effect/language-service",
+        "diagnosticSeverity": {}
+      }
+    ]
+  },
+  "include": ["src", "vite.config.ts", "worker-configuration.d.ts", "test-types.d.ts"]
+}
