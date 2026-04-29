@@ -36,12 +36,18 @@ const KIND_TO_PLUGIN_KEY: Record<string, string> = {
 const isConnectedSource = (source: { id: string; runtime?: boolean }) =>
   !source.runtime || source.id === "browser_use";
 
+const supportsUrlSourceDetection = (plugin: SourcePlugin) => plugin.key !== "computer_use";
+
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
 export function SourcesPage(props: { sourcePlugins: readonly SourcePlugin[] }) {
   const { sourcePlugins } = props;
+  const urlSourcePlugins = useMemo(
+    () => sourcePlugins.filter(supportsUrlSourceDetection),
+    [sourcePlugins],
+  );
   const [url, setUrl] = useState("");
   const [detecting, setDetecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -129,7 +135,7 @@ export function SourcesPage(props: { sourcePlugins: readonly SourcePlugin[] }) {
                   </div>
                   <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                     Or add manually:{" "}
-                    {sourcePlugins.map((p) => (
+                    {urlSourcePlugins.map((p) => (
                       <Link
                         key={p.key}
                         to="/sources/add/$pluginKey"
