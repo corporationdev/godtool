@@ -32,6 +32,7 @@ import { computerUsePlugin } from "@executor/plugin-computer-use";
 import { keychainPlugin } from "@executor/plugin-keychain";
 import { fileSecretsPlugin } from "@executor/plugin-file-secrets";
 import { onepasswordPlugin } from "@executor/plugin-onepassword";
+import { workspacePlugin } from "@executor/plugin-workspace";
 
 // In dev mode the drizzle folder sits next to the source tree. In a compiled
 // binary the files are inlined via the build-time gen module below, and we
@@ -95,6 +96,7 @@ const createLocalPlugins = (configFile: ConfigFileSink) =>
     graphqlPlugin({ configFile }),
     browserPlugin(),
     computerUsePlugin(),
+    workspacePlugin(),
     keychainPlugin(),
     fileSecretsPlugin(),
     onepasswordPlugin(),

@@ -20,7 +20,7 @@ import {
   chmodSync,
   appendFileSync,
 } from "node:fs";
-import { lstat, readdir, readFile, rename, writeFile } from "node:fs/promises";
+import { copyFile, lstat, mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { BrowserSessionManager } from "./browser/session-manager";
 import { startBrowserHostServer } from "./browser/host-server";
@@ -381,6 +381,65 @@ const moveWorkspaceFile = async (
   return { path: toWorkspaceRelativePath(destinationPath) };
 };
 
+const copyExternalPath = async (sourcePath: string, destinationPath: string): Promise<void> => {
+  const sourceStat = await lstat(sourcePath);
+  if (sourceStat.isSymbolicLink()) {
+    throw new Error("Symlinks cannot be imported into the workspace");
+  }
+
+  if (sourceStat.isDirectory()) {
+    const nestedDestination = relative(sourcePath, destinationPath);
+    if (
+      nestedDestination === "" ||
+      (!nestedDestination.startsWith("..") && nestedDestination !== "")
+    ) {
+      throw new Error("Cannot import a folder into itself");
+    }
+    if (existsSync(destinationPath)) {
+      throw new Error(`A folder named ${basename(destinationPath)} already exists`);
+    }
+    await mkdir(destinationPath);
+    const entries = await readdir(sourcePath, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isSymbolicLink()) continue;
+      await copyExternalPath(join(sourcePath, entry.name), join(destinationPath, entry.name));
+    }
+    return;
+  }
+
+  if (!sourceStat.isFile()) {
+    throw new Error("Only files and folders can be imported");
+  }
+  if (existsSync(destinationPath)) {
+    throw new Error(`A file named ${basename(destinationPath)} already exists`);
+  }
+  await copyFile(sourcePath, destinationPath);
+};
+
+const importWorkspacePaths = async (
+  sourcePaths: readonly string[],
+  destinationDirectoryWorkspaceRelativePath: string,
+): Promise<{ paths: readonly string[] }> => {
+  const destinationDirectoryPath = resolveWorkspacePath(destinationDirectoryWorkspaceRelativePath);
+  const destinationDirectoryStat = await lstat(destinationDirectoryPath);
+  if (!destinationDirectoryStat.isDirectory()) {
+    throw new Error("Drop target is not a folder");
+  }
+
+  const importedPaths: string[] = [];
+  for (const sourcePath of sourcePaths) {
+    if (!sourcePath || sourcePath.includes("\0")) {
+      throw new Error("Invalid dropped file");
+    }
+    const resolvedSourcePath = resolve(sourcePath);
+    const destinationPath = join(destinationDirectoryPath, basename(resolvedSourcePath));
+    await copyExternalPath(resolvedSourcePath, destinationPath);
+    importedPaths.push(toWorkspaceRelativePath(destinationPath));
+  }
+
+  return { paths: importedPaths };
+};
+
 const readWorkspaceTree = async (dir: string): Promise<readonly WorkspaceFileNode[]> => {
   const entries = await readdir(dir, { withFileTypes: true });
   const nodes = await Promise.all(
@@ -547,6 +606,7 @@ const startServer = async (scopePath: string, port: number): Promise<void> => {
     env: {
       ...process.env,
       GODTOOL_SCOPE_DIR: scopePath,
+      GODTOOL_WORKSPACE_DIR: DEFAULT_WORKSPACE_DIR,
       GODTOOL_BROWSER_HOST_URL: `http://127.0.0.1:${BROWSER_HOST_PORT}`,
       GODTOOL_AGENT_BROWSER_PATH: resolveAgentBrowserPath(),
       GODTOOL_COMPUTER_USE_HOST_URL: `http://127.0.0.1:${COMPUTER_USE_HOST_PORT}`,
@@ -763,6 +823,7 @@ const loadScope = async (scopePath: string): Promise<void> => {
     // Just set the scope env var and load the dev URL.
     currentScope = scopePath;
     process.env.GODTOOL_SCOPE_DIR = scopePath;
+    process.env.GODTOOL_WORKSPACE_DIR = DEFAULT_WORKSPACE_DIR;
     buildMenu();
     mainWindow.loadURL(DEV_SERVER_URL);
     return;
@@ -895,6 +956,15 @@ const setupIPC = (): void => {
       sourceWorkspaceRelativePath: string,
       destinationDirectoryWorkspaceRelativePath: string,
     ) => moveWorkspaceFile(sourceWorkspaceRelativePath, destinationDirectoryWorkspaceRelativePath),
+  );
+
+  ipcMain.handle(
+    "workspace-files:import-paths",
+    async (
+      _event,
+      sourcePaths: readonly string[],
+      destinationDirectoryWorkspaceRelativePath: string,
+    ) => importWorkspacePaths(sourcePaths, destinationDirectoryWorkspaceRelativePath),
   );
 
   ipcMain.handle(

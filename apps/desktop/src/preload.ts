@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 
 contextBridge.exposeInMainWorld("electronAPI", {
   getCurrentScope: () => ipcRenderer.invoke("get-current-scope"),
@@ -12,6 +12,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
     createDirectory: (path: string) => ipcRenderer.invoke("workspace-files:create-directory", path),
     moveFile: (sourcePath: string, destinationDirectoryPath: string) =>
       ipcRenderer.invoke("workspace-files:move-file", sourcePath, destinationDirectoryPath),
+    getDroppedFilePaths: (files: File[]) =>
+      files.map((file) => webUtils.getPathForFile(file)).filter((path) => path.length > 0),
+    importPaths: (sourcePaths: string[], destinationDirectoryPath: string) =>
+      ipcRenderer.invoke("workspace-files:import-paths", sourcePaths, destinationDirectoryPath),
     open: (
       path: string,
       target:

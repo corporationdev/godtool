@@ -73,6 +73,7 @@ export const makeExecutorToolInvoker = (
       return yield* Effect.fail((r as { error: unknown }).error);
     }
     if (
+      !path.startsWith("workspace.") &&
       r !== null &&
       typeof r === "object" &&
       "data" in r &&

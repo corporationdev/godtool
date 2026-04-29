@@ -148,6 +148,7 @@
         "@executor/plugin-mcp": "workspace:*",
         "@executor/plugin-onepassword": "workspace:*",
         "@executor/plugin-openapi": "workspace:*",
+        "@executor/plugin-workspace": "workspace:*",
         "@executor/react": "workspace:*",
         "@executor/runtime-quickjs": "workspace:*",
         "@executor/sdk": "workspace:*",
@@ -818,6 +819,20 @@
         "react",
       ],
     },
+    "packages/plugins/workspace": {
+      "name": "@executor/plugin-workspace",
+      "version": "0.0.1",
+      "dependencies": {
+        "@executor/sdk": "workspace:*",
+        "effect": "catalog:",
+      },
+      "devDependencies": {
+        "@types/node": "catalog:",
+        "bun-types": "catalog:",
+        "tsup": "catalog:",
+        "vitest": "catalog:",
+      },
+    },
     "packages/react": {
       "name": "@executor/react",
       "version": "1.4.3",
@@ -1348,6 +1363,8 @@
     "@executor/plugin-openapi": ["@executor/plugin-openapi@workspace:packages/plugins/openapi"],
 
     "@executor/plugin-workos-vault": ["@executor/plugin-workos-vault@workspace:packages/plugins/workos-vault"],
+
+    "@executor/plugin-workspace": ["@executor/plugin-workspace@workspace:packages/plugins/workspace"],
 
     "@executor/react": ["@executor/react@workspace:packages/react"],
 

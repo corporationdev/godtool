@@ -79,6 +79,13 @@ interface Window {
       ) => Promise<{
         readonly path: string;
       }>;
+      readonly getDroppedFilePaths: (files: readonly File[]) => readonly string[];
+      readonly importPaths: (
+        sourcePaths: readonly string[],
+        destinationDirectoryPath: string,
+      ) => Promise<{
+        readonly paths: readonly string[];
+      }>;
       readonly open: (path: string, target: WorkspaceOpenTarget) => Promise<boolean>;
     };
     readonly browsers?: {

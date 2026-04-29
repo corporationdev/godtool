@@ -18,6 +18,7 @@ import {
   FolderOpenIcon,
   RotateCwIcon,
   SearchIcon,
+  UploadIcon,
   XIcon,
 } from "lucide-react";
 import {
@@ -99,6 +100,13 @@ type WorkspaceFilesApi = {
     destinationDirectoryPath: string,
   ) => Promise<{
     readonly path: string;
+  }>;
+  readonly getDroppedFilePaths: (files: readonly File[]) => readonly string[];
+  readonly importPaths: (
+    sourcePaths: readonly string[],
+    destinationDirectoryPath: string,
+  ) => Promise<{
+    readonly paths: readonly string[];
   }>;
   readonly open: (path: string, target: WorkspaceOpenTarget) => Promise<boolean>;
 };
@@ -240,6 +248,10 @@ const joinWorkspacePath = (parentPath: string, name: string): string => {
   const cleanName = name.replace(/^\/+|\/+$/g, "");
   return parentPath ? `${parentPath}/${cleanName}` : cleanName;
 };
+
+const isExternalFileDrop = (event: DragEvent<HTMLElement>): boolean =>
+  Array.from(event.dataTransfer.types).includes("Files") &&
+  !Array.from(event.dataTransfer.types).includes(WORKSPACE_FILE_DRAG_TYPE);
 
 function OpenTargetIcon(props: { target: WorkspaceOpenTarget; className?: string }) {
   if (props.target === "default") {
@@ -570,6 +582,7 @@ function FilesSidebar(props: {
   const [actionError, setActionError] = useState<string | null>(null);
   const [draggingPath, setDraggingPath] = useState<string | null>(null);
   const [dropTargetPath, setDropTargetPath] = useState<string | null>(null);
+  const [externalDropTargetPath, setExternalDropTargetPath] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const createInputRef = useRef<HTMLInputElement>(null);
   const selectedRowRef = useRef<HTMLButtonElement>(null);
@@ -732,12 +745,100 @@ function FilesSidebar(props: {
   const clearFileDrag = () => {
     setDraggingPath(null);
     setDropTargetPath(null);
+    setExternalDropTargetPath(null);
+  };
+
+  const importDroppedFiles = async (
+    event: DragEvent<HTMLElement>,
+    destinationDirectoryPath: string,
+  ) => {
+    if (!props.filesApi) return;
+    setActionError(null);
+
+    const files = Array.from(event.dataTransfer.files);
+    const sourcePaths = props.filesApi.getDroppedFilePaths(files);
+    if (sourcePaths.length === 0) {
+      setActionError("Drop local files or folders from your computer");
+      return;
+    }
+
+    try {
+      const result = await props.filesApi.importPaths(sourcePaths, destinationDirectoryPath);
+      setActionError(null);
+      if (destinationDirectoryPath) {
+        setManualOpen((prev) => new Set(prev).add(destinationDirectoryPath));
+      }
+      props.onRefresh();
+      const firstEditablePath = result.paths.find((path) => EDITABLE_FILE_PATTERN.test(path));
+      if (firstEditablePath) props.onSelect(firstEditablePath);
+    } catch (error) {
+      setActionError(getErrorMessage(error));
+    }
+  };
+
+  const handleTreeDragOver = (event: DragEvent<HTMLDivElement>) => {
+    if (isExternalFileDrop(event)) {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+      if (externalDropTargetPath === null) setExternalDropTargetPath("");
+      return;
+    }
+
+    if (!draggingPath || dirnameFromPath(draggingPath) === "") return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    if (dropTargetPath !== "") setDropTargetPath("");
+  };
+
+  const handleTreeDragLeave = (event: DragEvent<HTMLDivElement>) => {
+    const relatedTarget = event.relatedTarget;
+    if (relatedTarget instanceof Node && event.currentTarget.contains(relatedTarget)) return;
+    setExternalDropTargetPath(null);
+    if (dropTargetPath === "") setDropTargetPath(null);
+  };
+
+  const handleTreeDrop = async (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    if (!props.filesApi) return;
+
+    if (isExternalFileDrop(event)) {
+      const destinationDirectoryPath = externalDropTargetPath ?? "";
+      setExternalDropTargetPath(null);
+      await importDroppedFiles(event, destinationDirectoryPath);
+      return;
+    }
+
+    const sourcePath = event.dataTransfer.getData(WORKSPACE_FILE_DRAG_TYPE) || draggingPath;
+    clearFileDrag();
+    if (!sourcePath || dirnameFromPath(sourcePath) === "") return;
+
+    try {
+      if (props.selectedPath === sourcePath) {
+        await props.onBeforeMoveSelected();
+      }
+      const result = await props.filesApi.moveFile(sourcePath, "");
+      props.onRefresh();
+      if (props.selectedPath === sourcePath) {
+        props.onSelect(result.path);
+      }
+    } catch (error) {
+      setActionError(getErrorMessage(error));
+    }
   };
 
   const handleDirectoryDragOver = (
     event: DragEvent<HTMLButtonElement>,
     destinationDirectoryPath: string,
   ) => {
+    if (isExternalFileDrop(event)) {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+      if (externalDropTargetPath !== destinationDirectoryPath) {
+        setExternalDropTargetPath(destinationDirectoryPath);
+      }
+      return;
+    }
+
     if (!draggingPath || dirnameFromPath(draggingPath) === destinationDirectoryPath) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
@@ -753,6 +854,12 @@ function FilesSidebar(props: {
     event.preventDefault();
     event.stopPropagation();
     if (!props.filesApi) return;
+    if (isExternalFileDrop(event)) {
+      setExternalDropTargetPath(null);
+      await importDroppedFiles(event, destinationDirectoryPath);
+      return;
+    }
+
     const sourcePath = event.dataTransfer.getData(WORKSPACE_FILE_DRAG_TYPE) || draggingPath;
     clearFileDrag();
     if (!sourcePath || dirnameFromPath(sourcePath) === destinationDirectoryPath) return;
@@ -842,7 +949,22 @@ function FilesSidebar(props: {
         </div>
       )}
 
-      <div className="min-h-0 flex-1 overflow-y-auto py-1">
+      <div
+        className={cn(
+          "relative min-h-0 flex-1 overflow-y-auto py-1",
+          externalDropTargetPath === "" && "bg-primary/5 ring-1 ring-inset ring-primary/35",
+          dropTargetPath === "" && "bg-primary/5 ring-1 ring-inset ring-primary/35",
+        )}
+        onDragOver={handleTreeDragOver}
+        onDragLeave={handleTreeDragLeave}
+        onDrop={(event) => void handleTreeDrop(event)}
+      >
+        {externalDropTargetPath === "" && (
+          <div className="pointer-events-none absolute inset-x-3 top-3 z-10 flex items-center gap-2 rounded-md border border-primary/35 bg-background/95 px-3 py-2 text-xs text-foreground shadow-sm">
+            <UploadIcon className="size-3.5 text-primary" />
+            <span>Drop to add files</span>
+          </div>
+        )}
         {props.state.status === "loading" && (
           <div className="p-4 text-xs text-muted-foreground">Loading workspace files...</div>
         )}
@@ -881,15 +1003,22 @@ function FilesSidebar(props: {
                     depth={row.depth}
                     open={row.open}
                     onToggle={() => toggleDirectory(row.node.path)}
-                    dropActive={dropTargetPath === row.node.path}
+                    dropActive={
+                      dropTargetPath === row.node.path || externalDropTargetPath === row.node.path
+                    }
                     onDragEnter={() => {
                       if (!draggingPath) return;
                       setDropTargetPath(row.node.path);
                       setManualOpen((prev) => new Set(prev).add(row.node.path));
                     }}
+                    onExternalDragEnter={() => {
+                      setExternalDropTargetPath(row.node.path);
+                      setManualOpen((prev) => new Set(prev).add(row.node.path));
+                    }}
                     onDragOver={(event) => handleDirectoryDragOver(event, row.node.path)}
                     onDragLeave={() => {
                       if (dropTargetPath === row.node.path) setDropTargetPath(null);
+                      if (externalDropTargetPath === row.node.path) setExternalDropTargetPath(null);
                     }}
                     onDrop={(event) => void handleDirectoryDrop(event, row.node.path)}
                     onCreateFile={() => startCreate("file", row.node.path)}
@@ -1014,6 +1143,7 @@ function DirectoryRow(props: {
   dropActive: boolean;
   onToggle: () => void;
   onDragEnter: () => void;
+  onExternalDragEnter: () => void;
   onDragOver: (event: DragEvent<HTMLButtonElement>) => void;
   onDragLeave: () => void;
   onDrop: (event: DragEvent<HTMLButtonElement>) => void;
@@ -1034,7 +1164,10 @@ function DirectoryRow(props: {
           variant="ghost"
           aria-expanded={props.open}
           onClick={props.onToggle}
-          onDragEnter={props.onDragEnter}
+          onDragEnter={(event) => {
+            if (isExternalFileDrop(event)) props.onExternalDragEnter();
+            else props.onDragEnter();
+          }}
           onDragOver={props.onDragOver}
           onDragLeave={props.onDragLeave}
           onDrop={props.onDrop}
