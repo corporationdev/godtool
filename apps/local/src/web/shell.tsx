@@ -228,9 +228,7 @@ function SourceList(props: { pathname: string; onNavigate?: () => void }) {
   const sources = useSourcesWithPending(scopeId);
 
   return Result.match(sources, {
-    onInitial: () => (
-      <div className="px-2.5 py-2 text-xs text-muted-foreground">Loading…</div>
-    ),
+    onInitial: () => <div className="px-2.5 py-2 text-xs text-muted-foreground">Loading…</div>,
     onFailure: () => (
       <div className="px-2.5 py-2 text-xs text-muted-foreground">No sources yet</div>
     ),
@@ -306,6 +304,7 @@ function SidebarContent(props: {
   const isHome = props.pathname === "/";
   const isSecrets = props.pathname === "/secrets";
   const isConnections = props.pathname === "/connections";
+  const isBrowsers = props.pathname === "/browsers";
 
   return (
     <>
@@ -320,7 +319,18 @@ function SidebarContent(props: {
       <nav className="flex flex-1 flex-col overflow-y-auto p-2">
         <ScopeLabel />
         <NavItem to="/" label="Sources" active={isHome} onNavigate={props.onNavigate} />
-        <NavItem to="/connections" label="Connections" active={isConnections} onNavigate={props.onNavigate} />
+        <NavItem
+          to="/browsers"
+          label="Browsers"
+          active={isBrowsers}
+          onNavigate={props.onNavigate}
+        />
+        <NavItem
+          to="/connections"
+          label="Connections"
+          active={isConnections}
+          onNavigate={props.onNavigate}
+        />
         <NavItem to="/secrets" label="Secrets" active={isSecrets} onNavigate={props.onNavigate} />
 
         {/* Sources list */}

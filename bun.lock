@@ -139,6 +139,7 @@
         "@executor/config": "workspace:*",
         "@executor/execution": "workspace:*",
         "@executor/host-mcp": "workspace:*",
+        "@executor/plugin-browser": "workspace:*",
         "@executor/plugin-file-secrets": "workspace:*",
         "@executor/plugin-google-discovery": "workspace:*",
         "@executor/plugin-graphql": "workspace:*",
@@ -509,6 +510,20 @@
         "@effect/vitest": "catalog:",
         "@types/node": "catalog:",
         "bun-types": "catalog:",
+        "vitest": "catalog:",
+      },
+    },
+    "packages/plugins/browser": {
+      "name": "@executor/plugin-browser",
+      "version": "0.0.1",
+      "dependencies": {
+        "@executor/sdk": "workspace:*",
+        "effect": "catalog:",
+      },
+      "devDependencies": {
+        "@types/node": "catalog:",
+        "bun-types": "catalog:",
+        "tsup": "catalog:",
         "vitest": "catalog:",
       },
     },
@@ -1261,6 +1276,8 @@
     "@executor/local": ["@executor/local@workspace:apps/local"],
 
     "@executor/marketing": ["@executor/marketing@workspace:apps/marketing"],
+
+    "@executor/plugin-browser": ["@executor/plugin-browser@workspace:packages/plugins/browser"],
 
     "@executor/plugin-file-secrets": ["@executor/plugin-file-secrets@workspace:packages/plugins/file-secrets"],
 

@@ -16,16 +16,8 @@ import {
 } from "./db-upgrade";
 import { migrateLegacyConnections } from "./migrate-connections";
 
-import {
-  Scope,
-  ScopeId,
-  collectSchemas,
-  createExecutor,
-} from "@executor/sdk";
-import {
-  makeSqliteAdapter,
-  makeSqliteBlobStore,
-} from "@executor/storage-file";
+import { Scope, ScopeId, collectSchemas, createExecutor } from "@executor/sdk";
+import { makeSqliteAdapter, makeSqliteBlobStore } from "@executor/storage-file";
 import { NodeFileSystem } from "@effect/platform-node";
 import { makeFileConfigSink, type ConfigFileSink } from "@executor/config";
 import * as executorSchema from "./executor-schema";
@@ -35,6 +27,7 @@ import { openApiPlugin } from "@executor/plugin-openapi";
 import { mcpPlugin } from "@executor/plugin-mcp";
 import { googleDiscoveryPlugin } from "@executor/plugin-google-discovery";
 import { graphqlPlugin } from "@executor/plugin-graphql";
+import { browserPlugin } from "@executor/plugin-browser";
 import { keychainPlugin } from "@executor/plugin-keychain";
 import { fileSecretsPlugin } from "@executor/plugin-file-secrets";
 import { onepasswordPlugin } from "@executor/plugin-onepassword";
@@ -99,6 +92,7 @@ const createLocalPlugins = (configFile: ConfigFileSink) =>
     mcpPlugin({ dangerouslyAllowStdioMCP: true, configFile }),
     googleDiscoveryPlugin(),
     graphqlPlugin({ configFile }),
+    browserPlugin(),
     keychainPlugin(),
     fileSecretsPlugin(),
     onepasswordPlugin(),

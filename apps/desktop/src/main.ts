@@ -9,6 +9,7 @@ import {
   type MenuItemConstructorOptions,
 } from "electron";
 import { spawn, type ChildProcess } from "node:child_process";
+import type { Server } from "node:http";
 import { join, resolve, basename } from "node:path";
 import {
   existsSync,
@@ -20,6 +21,9 @@ import {
   appendFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
+import { BrowserSessionManager } from "./browser/session-manager";
+import { startBrowserHostServer } from "./browser/host-server";
+import type { BrowserBounds } from "./browser/types";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -27,12 +31,19 @@ import { homedir } from "node:os";
 
 const DEFAULT_PORT = 14788;
 const DEV_SERVER_URL = process.env.EXECUTOR_DEV_URL || "http://127.0.0.1:1355";
+const BROWSER_HOST_PORT = Number(process.env.EXECUTOR_BROWSER_HOST_PORT ?? "14789");
+const BROWSER_DEBUGGING_PORT = Number(process.env.EXECUTOR_BROWSER_DEBUGGING_PORT ?? "9333");
+const BROWSER_MAX_SESSIONS = Number(process.env.EXECUTOR_BROWSER_MAX_SESSIONS ?? "5");
 const SERVER_STARTUP_TIMEOUT_MS = 30_000;
 const SETTINGS_DIR = join(homedir(), ".executor");
 const SETTINGS_PATH = join(SETTINGS_DIR, "desktop-settings.json");
 
 const CLI_BIN_DIR = join(SETTINGS_DIR, "bin");
 const CLI_BIN_PATH = join(CLI_BIN_DIR, process.platform === "win32" ? "executor.exe" : "executor");
+
+app.commandLine.appendSwitch("remote-debugging-address", "127.0.0.1");
+app.commandLine.appendSwitch("remote-debugging-port", String(BROWSER_DEBUGGING_PORT));
+app.commandLine.appendSwitch("remote-allow-origins", DEV_SERVER_URL);
 
 // ---------------------------------------------------------------------------
 // CLI install — copy sidecar to ~/.executor/bin and patch shell PATH
@@ -99,11 +110,7 @@ const installCli = (): void => {
   // Patch shell profiles with PATH
   if (process.platform === "win32") {
     // Add bin dir to the user PATH via registry so new terminals pick it up
-    const result = spawn(
-      "reg",
-      ["query", "HKCU\\Environment", "/v", "Path"],
-      { stdio: "pipe" },
-    );
+    const result = spawn("reg", ["query", "HKCU\\Environment", "/v", "Path"], { stdio: "pipe" });
     let out = "";
     result.stdout?.on("data", (d: Buffer) => (out += d.toString()));
     result.on("close", (code) => {
@@ -128,8 +135,15 @@ const installCli = (): void => {
       if (!current.toLowerCase().includes(CLI_BIN_DIR.toLowerCase())) {
         const updated = current ? `${current};${CLI_BIN_DIR}` : CLI_BIN_DIR;
         spawn("reg", [
-          "add", "HKCU\\Environment", "/v", "Path",
-          "/t", "REG_EXPAND_SZ", "/d", updated, "/f",
+          "add",
+          "HKCU\\Environment",
+          "/v",
+          "Path",
+          "/t",
+          "REG_EXPAND_SZ",
+          "/d",
+          updated,
+          "/f",
         ]);
       }
     });
@@ -202,10 +216,27 @@ const addRecentScope = (settings: Settings, scopePath: string): void => {
 let serverProcess: ChildProcess | null = null;
 let currentScope: string | null = null;
 let currentPort = DEFAULT_PORT;
+let browserHiddenWindow: BrowserWindow | null = null;
+let browserSessionManager: BrowserSessionManager | null = null;
+let browserHostServer: Server | null = null;
 
 const isDev = !app.isPackaged;
 
 const binaryName = process.platform === "win32" ? "executor.exe" : "executor";
+
+const resolveAgentBrowserPath = (): string => {
+  if (process.env.EXECUTOR_AGENT_BROWSER_PATH) return process.env.EXECUTOR_AGENT_BROWSER_PATH;
+  if (isDev) return "agent-browser";
+
+  const platform = process.platform === "win32" ? "win32" : process.platform;
+  const arch = process.arch === "arm64" ? "arm64" : "x64";
+  const name =
+    process.platform === "win32"
+      ? `agent-browser-${platform}-${arch}.exe`
+      : `agent-browser-${platform}-${arch}`;
+  const bundled = join(process.resourcesPath, "agent-browser", name);
+  return existsSync(bundled) ? bundled : "agent-browser";
+};
 
 /**
  * Returns { command, args, cwd } for spawning the server.
@@ -279,7 +310,12 @@ const startServer = async (scopePath: string, port: number): Promise<void> => {
   serverProcess = spawn(server.command, args, {
     cwd,
     stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, EXECUTOR_SCOPE_DIR: scopePath },
+    env: {
+      ...process.env,
+      EXECUTOR_SCOPE_DIR: scopePath,
+      EXECUTOR_BROWSER_HOST_URL: `http://127.0.0.1:${BROWSER_HOST_PORT}`,
+      EXECUTOR_AGENT_BROWSER_PATH: resolveAgentBrowserPath(),
+    },
   });
 
   serverProcess.stdout?.on("data", (data: Buffer) => {
@@ -387,6 +423,56 @@ const createWindow = (): BrowserWindow => {
   });
 
   return win;
+};
+
+const broadcastBrowserSessionsChanged = (): void => {
+  mainWindow?.webContents.send("browser-sessions-changed", browserSessionManager?.list() ?? []);
+};
+
+const startBrowserHost = async (): Promise<void> => {
+  if (browserSessionManager && browserHostServer) return;
+
+  browserHiddenWindow = new BrowserWindow({
+    show: false,
+    width: 1280,
+    height: 800,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+
+  browserSessionManager = new BrowserSessionManager({
+    maxSessions: Number.isFinite(BROWSER_MAX_SESSIONS) ? BROWSER_MAX_SESSIONS : 5,
+    debuggingPort: Number.isFinite(BROWSER_DEBUGGING_PORT) ? BROWSER_DEBUGGING_PORT : 9333,
+    hiddenWindow: browserHiddenWindow,
+    getMainWindow: () => mainWindow,
+    onSessionsChanged: broadcastBrowserSessionsChanged,
+  });
+
+  browserHostServer = await startBrowserHostServer({
+    port: Number.isFinite(BROWSER_HOST_PORT) ? BROWSER_HOST_PORT : 14789,
+    manager: browserSessionManager,
+  });
+
+  console.log(
+    `[browser] host listening on http://127.0.0.1:${BROWSER_HOST_PORT} ` +
+      `(debugging port ${BROWSER_DEBUGGING_PORT}, max sessions ${BROWSER_MAX_SESSIONS})`,
+  );
+};
+
+const stopBrowserHost = (): void => {
+  browserSessionManager?.closeAll();
+  browserSessionManager = null;
+  if (browserHostServer) {
+    browserHostServer.close();
+    browserHostServer = null;
+  }
+  if (browserHiddenWindow && !browserHiddenWindow.isDestroyed()) {
+    browserHiddenWindow.close();
+  }
+  browserHiddenWindow = null;
 };
 
 const loadScope = async (scopePath: string): Promise<void> => {
@@ -526,6 +612,62 @@ const setupIPC = (): void => {
       await loadScope(scopePath);
     }
     return currentScope;
+  });
+
+  ipcMain.handle("browser-sessions:list", () => browserSessionManager?.list() ?? []);
+
+  ipcMain.handle("browser-sessions:ensure", async (_event, input) => {
+    if (!browserSessionManager) throw new Error("Browser host is not running");
+    return browserSessionManager.ensure(input);
+  });
+
+  ipcMain.handle("browser-sessions:show", (_event, sessionId: string, bounds: BrowserBounds) => {
+    if (!browserSessionManager) throw new Error("Browser host is not running");
+    return browserSessionManager.show(sessionId, bounds);
+  });
+
+  ipcMain.handle(
+    "browser-sessions:set-bounds",
+    (_event, sessionId: string, bounds: BrowserBounds) => {
+      if (!browserSessionManager) throw new Error("Browser host is not running");
+      return browserSessionManager.setBounds(sessionId, bounds);
+    },
+  );
+
+  ipcMain.handle("browser-sessions:hide", (_event, sessionId: string) => {
+    if (!browserSessionManager) throw new Error("Browser host is not running");
+    return browserSessionManager.hide(sessionId);
+  });
+
+  ipcMain.handle("browser-sessions:navigate", async (_event, sessionId: string, url: string) => {
+    if (!browserSessionManager) throw new Error("Browser host is not running");
+    return browserSessionManager.navigate(sessionId, url);
+  });
+
+  ipcMain.handle("browser-sessions:back", async (_event, sessionId: string) => {
+    if (!browserSessionManager) throw new Error("Browser host is not running");
+    return browserSessionManager.goBack(sessionId);
+  });
+
+  ipcMain.handle("browser-sessions:forward", async (_event, sessionId: string) => {
+    if (!browserSessionManager) throw new Error("Browser host is not running");
+    return browserSessionManager.goForward(sessionId);
+  });
+
+  ipcMain.handle("browser-sessions:reload", async (_event, sessionId: string) => {
+    if (!browserSessionManager) throw new Error("Browser host is not running");
+    return browserSessionManager.reload(sessionId);
+  });
+
+  ipcMain.handle("browser-sessions:touch", async (_event, sessionId: string, input) => {
+    if (!browserSessionManager) throw new Error("Browser host is not running");
+    return browserSessionManager.touch(sessionId, input);
+  });
+
+  ipcMain.handle("browser-sessions:close", (_event, sessionId: string) => {
+    if (!browserSessionManager) throw new Error("Browser host is not running");
+    browserSessionManager.close(sessionId);
+    return true;
   });
 };
 
@@ -783,6 +925,7 @@ app.whenReady().then(async () => {
   buildMenu();
 
   mainWindow = createWindow();
+  await startBrowserHost();
 
   // If we have a last scope and it still exists, open it directly
   if (settings.lastScope && existsSync(settings.lastScope)) {
@@ -793,6 +936,7 @@ app.whenReady().then(async () => {
 });
 
 app.on("window-all-closed", () => {
+  stopBrowserHost();
   // Synchronously kill the server process before quitting
   if (serverProcess) {
     serverProcess.kill("SIGTERM");
@@ -802,6 +946,7 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
+  stopBrowserHost();
   if (serverProcess) {
     serverProcess.kill("SIGTERM");
     serverProcess = null;

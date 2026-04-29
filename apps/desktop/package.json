@@ -40,7 +40,8 @@
         "to": "",
         "filter": [
           "executor*",
-          "emscripten-module.wasm"
+          "emscripten-module.wasm",
+          "agent-browser/**"
         ]
       }
     ],

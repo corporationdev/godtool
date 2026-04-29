@@ -7,7 +7,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "dev": "PORT=1355 bunx --bun vite dev --host 127.0.0.1",
+    "dev": "PORT=1355 bunx --bun vite dev --host 127.0.0.1 --strictPort",
     "build": "bunx --bun vite build",
     "start": "bun run src/serve.ts",
     "db:schema": "node --import jiti/register ../../packages/core/cli/src/index.ts generate --config ./executor.config.ts --output ./src/server/executor-schema.ts",
@@ -25,6 +25,7 @@
     "@executor/config": "workspace:*",
     "@executor/execution": "workspace:*",
     "@executor/host-mcp": "workspace:*",
+    "@executor/plugin-browser": "workspace:*",
     "@executor/plugin-file-secrets": "workspace:*",
     "@executor/plugin-google-discovery": "workspace:*",
     "@executor/plugin-graphql": "workspace:*",
@@ -39,8 +40,8 @@
     "@modelcontextprotocol/sdk": "^1.12.1",
     "@tanstack/react-router": "catalog:",
     "drizzle-orm": "catalog:",
-    "jsonc-parser": "^3.3.1",
     "effect": "catalog:",
+    "jsonc-parser": "^3.3.1",
     "react": "catalog:",
     "react-dom": "catalog:"
   },
