@@ -118,6 +118,34 @@ describe("quickjs executor", () => {
     }),
   );
 
+  it.effect("surfaces tagged tool errors without noisy stacks", () =>
+    Effect.gen(function* () {
+      const invoker: SandboxToolInvoker = {
+        invoke: () =>
+          Effect.fail({
+            _tag: "ToolInvocationError",
+            message: "Element not found: .missing",
+            stack: "ToolInvocationError: noisy stack should not leak\n    at internals",
+          }),
+      };
+
+      const result = yield* executor.execute(
+        `
+        try {
+          await tools.browser.getText({ selector: ".missing" });
+          return "should not reach";
+        } catch (e) {
+          return e.message;
+        }
+        `,
+        invoker,
+      );
+
+      expect(result.error).toBeUndefined();
+      expect(result.result).toBe("Element not found: .missing");
+    }),
+  );
+
   it.effect("handles unknown tool path", () =>
     Effect.gen(function* () {
       const invoker = makeTestInvoker({});

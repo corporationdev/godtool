@@ -26,6 +26,9 @@ import {
 //   3. Popular sources (plugin presets)
 // ---------------------------------------------------------------------------
 
+const isConnectedSource = (source: { id: string; runtime?: boolean }) =>
+  !source.runtime || source.id === "browser_use";
+
 export function CommandPalette(props: { sourcePlugins: readonly SourcePlugin[] }) {
   const { sourcePlugins } = props;
   const [open, setOpen] = useState(false);
@@ -64,7 +67,7 @@ export function CommandPalette(props: { sourcePlugins: readonly SourcePlugin[] }
             url?: string;
             runtime?: boolean;
           }>,
-        onSuccess: ({ value }) => value.filter((s) => !s.runtime),
+        onSuccess: ({ value }) => value.filter(isConnectedSource),
       }),
     [sourcesResult],
   );

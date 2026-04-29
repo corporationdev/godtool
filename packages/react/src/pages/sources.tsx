@@ -30,7 +30,11 @@ const KIND_TO_PLUGIN_KEY: Record<string, string> = {
   graphql: "graphql",
   googleDiscovery: "googleDiscovery",
   computer_use: "computer_use",
+  browser_use: "browser",
 };
+
+const isConnectedSource = (source: { id: string; runtime?: boolean }) =>
+  !source.runtime || source.id === "browser_use";
 
 // ---------------------------------------------------------------------------
 // Page
@@ -150,7 +154,7 @@ export function SourcesPage(props: { sourcePlugins: readonly SourcePlugin[] }) {
           onInitial: () => <SourcesGridSkeleton />,
           onFailure: () => <p className="text-sm text-destructive">Failed to load sources</p>,
           onSuccess: ({ value }) => {
-            const connectedSources = value.filter((source) => !source.runtime);
+            const connectedSources = value.filter(isConnectedSource);
 
             return value.length === 0 ? (
               <div className="mb-8 flex flex-col items-center justify-center rounded-2xl border border-dashed border-border py-20">
@@ -309,7 +313,6 @@ function SourceGrid(props: {
                       <SummaryComponent sourceId={s.id} />
                     </Suspense>
                   )}
-                  {s.runtime && <Badge className="bg-muted text-muted-foreground">built-in</Badge>}
                   <Badge variant="secondary">{s.kind}</Badge>
                 </CardStackEntryActions>
               </Link>

@@ -133,7 +133,10 @@ export class BrowserSessionManager {
       .map((session) => this.snapshot(session));
   }
 
-  async touch(id: string, options?: { readonly pinned?: boolean }): Promise<BrowserSessionSnapshot> {
+  async touch(
+    id: string,
+    options?: { readonly pinned?: boolean },
+  ): Promise<BrowserSessionSnapshot> {
     const session = this.getById(id);
     return this.enqueue(session.sessionName, async () => {
       if (options?.pinned !== undefined) session.pinned = options.pinned;
@@ -238,7 +241,7 @@ export class BrowserSessionManager {
       await this.ensureActive(session);
       const view = this.requireView(session);
       if (view.webContents.navigationHistory.canGoBack()) {
-        view.webContents.navigationHistory.goBack();
+        await this.waitForNavigationAfter(view, () => view.webContents.navigationHistory.goBack());
       }
       await this.refreshTarget(session);
       this.persistMetadata();
@@ -253,7 +256,9 @@ export class BrowserSessionManager {
       await this.ensureActive(session);
       const view = this.requireView(session);
       if (view.webContents.navigationHistory.canGoForward()) {
-        view.webContents.navigationHistory.goForward();
+        await this.waitForNavigationAfter(view, () =>
+          view.webContents.navigationHistory.goForward(),
+        );
       }
       await this.refreshTarget(session);
       this.persistMetadata();
@@ -424,7 +429,9 @@ export class BrowserSessionManager {
     const view = this.requireView(session);
     session.restoring = true;
     const restorePromise = (async () => {
-      await view.webContents.loadURL(session.url === "about:blank" ? session.markerUrl : session.url);
+      await view.webContents.loadURL(
+        session.url === "about:blank" ? session.markerUrl : session.url,
+      );
       this.updatePageMetadata(session);
       await this.refreshTarget(session);
     })();
@@ -541,6 +548,37 @@ export class BrowserSessionManager {
     await view.webContents.loadURL(normalizeNavigationUrl(url));
     this.updatePageMetadata(session);
     await this.refreshTarget(session);
+  }
+
+  private waitForNavigationAfter(view: WebContentsView, trigger: () => void): Promise<void> {
+    const webContents = view.webContents;
+    return new Promise((resolve) => {
+      let settled = false;
+      let timeout: ReturnType<typeof setTimeout> | null = null;
+      let quickCheck: ReturnType<typeof setTimeout> | null = null;
+      const cleanup = () => {
+        webContents.off("did-stop-loading", finish);
+        webContents.off("did-fail-load", finish);
+        webContents.off("did-navigate-in-page", finish);
+        if (timeout) clearTimeout(timeout);
+        if (quickCheck) clearTimeout(quickCheck);
+      };
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve();
+      };
+
+      webContents.on("did-stop-loading", finish);
+      webContents.on("did-fail-load", finish);
+      webContents.on("did-navigate-in-page", finish);
+      timeout = setTimeout(finish, 10_000);
+      trigger();
+      quickCheck = setTimeout(() => {
+        if (!webContents.isLoading()) finish();
+      }, 100);
+    });
   }
 
   private updatePageMetadata(session: BrowserSessionState): void {

@@ -9,10 +9,7 @@ import {
   type TypedAdapter,
 } from "@executor/storage-core";
 
-import {
-  pluginBlobStore,
-  type BlobStore,
-} from "./blob";
+import { pluginBlobStore, type BlobStore } from "./blob";
 import {
   ConnectionProviderState,
   ConnectionRef,
@@ -61,11 +58,7 @@ import type {
   StorageDeps,
 } from "./plugin";
 import type { Scope } from "./scope";
-import {
-  SecretRef,
-  SetSecretInput,
-  type SecretProvider,
-} from "./secrets";
+import { SecretRef, SetSecretInput, type SecretProvider } from "./secrets";
 import {
   ToolSchema,
   type Source,
@@ -95,9 +88,7 @@ export interface InvokeOptions {
 const acceptAllHandler: ElicitationHandler = () =>
   Effect.succeed(new ElicitationResponse({ action: "accept" }));
 
-const resolveElicitationHandler = (
-  options: InvokeOptions | undefined,
-): ElicitationHandler => {
+const resolveElicitationHandler = (options: InvokeOptions | undefined): ElicitationHandler => {
   const handler = options?.onElicitation;
   if (!handler || handler === "accept-all") return acceptAllHandler;
   return handler;
@@ -120,16 +111,12 @@ export type Executor<TPlugins extends readonly AnyPlugin[] = []> = {
   readonly scopes: readonly Scope[];
 
   readonly tools: {
-    readonly list: (
-      filter?: ToolListFilter,
-    ) => Effect.Effect<readonly Tool[], StorageFailure>;
+    readonly list: (filter?: ToolListFilter) => Effect.Effect<readonly Tool[], StorageFailure>;
     /** Fetch a tool's full schema view: JSON schemas with `$defs`
      *  attached from the core `definition` table, plus TypeScript
      *  preview strings rendered from them. Returns `null` for unknown
      *  tool ids. */
-    readonly schema: (
-      toolId: string,
-    ) => Effect.Effect<ToolSchema | null, StorageFailure>;
+    readonly schema: (toolId: string) => Effect.Effect<ToolSchema | null, StorageFailure>;
     /** Every `$defs` entry across every source, grouped by source id.
      *  Used for bulk schema export and downstream TypeScript rendering. */
     readonly definitions: () => Effect.Effect<
@@ -177,12 +164,8 @@ export type Executor<TPlugins extends readonly AnyPlugin[] = []> = {
      *  only, never calls the provider. Use this for UI state ("secret
      *  missing, prompt to add") to avoid keychain permission prompts
      *  or 1password IPC roundtrips on a pre-flight check. */
-    readonly status: (
-      id: string,
-    ) => Effect.Effect<"resolved" | "missing", StorageFailure>;
-    readonly set: (
-      input: SetSecretInput,
-    ) => Effect.Effect<SecretRef, StorageFailure>;
+    readonly status: (id: string) => Effect.Effect<"resolved" | "missing", StorageFailure>;
+    readonly set: (input: SetSecretInput) => Effect.Effect<SecretRef, StorageFailure>;
     /** Delete a bare (non-connection-owned) secret. Connection-owned
      *  secrets are rejected with `SecretOwnedByConnectionError` — use
      *  `connections.remove` instead. */
@@ -194,22 +177,14 @@ export type Executor<TPlugins extends readonly AnyPlugin[] = []> = {
   };
 
   readonly connections: {
-    readonly get: (
-      id: string,
-    ) => Effect.Effect<ConnectionRef | null, StorageFailure>;
+    readonly get: (id: string) => Effect.Effect<ConnectionRef | null, StorageFailure>;
     readonly list: () => Effect.Effect<readonly ConnectionRef[], StorageFailure>;
     readonly create: (
       input: CreateConnectionInput,
-    ) => Effect.Effect<
-      ConnectionRef,
-      ConnectionProviderNotRegisteredError | StorageFailure
-    >;
+    ) => Effect.Effect<ConnectionRef, ConnectionProviderNotRegisteredError | StorageFailure>;
     readonly updateTokens: (
       input: UpdateConnectionTokensInput,
-    ) => Effect.Effect<
-      ConnectionRef,
-      ConnectionNotFoundError | StorageFailure
-    >;
+    ) => Effect.Effect<ConnectionRef, ConnectionNotFoundError | StorageFailure>;
     readonly setIdentityLabel: (
       id: string,
       label: string | null,
@@ -232,9 +207,7 @@ export type Executor<TPlugins extends readonly AnyPlugin[] = []> = {
   readonly close: () => Effect.Effect<void, StorageFailure>;
 } & PluginExtensions<TPlugins>;
 
-export interface ExecutorConfig<
-  TPlugins extends readonly AnyPlugin[] = [],
-> {
+export interface ExecutorConfig<TPlugins extends readonly AnyPlugin[] = []> {
   /**
    * Precedence-ordered scope stack. Innermost first; typical shape is
    * `[userInOrgScope, orgScope]`. Reads on scoped tables walk the
@@ -255,9 +228,7 @@ export interface ExecutorConfig<
 // manifest) before constructing the executor.
 // ---------------------------------------------------------------------------
 
-export const collectSchemas = (
-  plugins: readonly AnyPlugin[],
-): DBSchema => {
+export const collectSchemas = (plugins: readonly AnyPlugin[]): DBSchema => {
   const merged: Record<string, DBSchema[string]> = { ...coreSchema };
   for (const plugin of plugins) {
     if (!plugin.schema) continue;
@@ -291,10 +262,7 @@ const rowToSource = (row: SourceRow): Source => ({
   runtime: false,
 });
 
-const staticDeclToSource = (
-  decl: StaticSourceDecl,
-  pluginId: string,
-): Source => ({
+const staticDeclToSource = (decl: StaticSourceDecl, pluginId: string): Source => ({
   id: decl.id,
   scopeId: undefined,
   kind: decl.kind,
@@ -317,10 +285,7 @@ const decodeJsonColumn = (value: unknown): unknown => {
   }
 };
 
-const rowToTool = (
-  row: ToolRow,
-  annotations?: ToolAnnotations,
-): Tool => ({
+const rowToTool = (row: ToolRow, annotations?: ToolAnnotations): Tool => ({
   id: row.id,
   sourceId: row.source_id,
   pluginId: row.plugin_id,
@@ -495,9 +460,7 @@ const toolMatchesFilter = (tool: Tool, filter: ToolListFilter): boolean => {
 // query through the same sql.begin connection. This is what makes nested
 // writes atomic on postgres + Hyperdrive without deadlocking a pool of 1.
 // ---------------------------------------------------------------------------
-const activeAdapterRef = FiberRef.unsafeMake<DBTransactionAdapter | null>(
-  null,
-);
+const activeAdapterRef = FiberRef.unsafeMake<DBTransactionAdapter | null>(null);
 
 // A `DBAdapter` whose methods dispatch to the active adapter (tx handle or
 // root) on every call. Stable identity for consumers (plugin storage,
@@ -508,7 +471,7 @@ const buildAdapterRouter = (root: DBAdapter): DBAdapter => {
     use: (active: DBTransactionAdapter) => Effect.Effect<A, E>,
   ): Effect.Effect<A, E> =>
     Effect.flatMap(FiberRef.get(activeAdapterRef), (active) =>
-      use((active ?? (root as DBTransactionAdapter))),
+      use(active ?? (root as DBTransactionAdapter)),
     );
 
   return {
@@ -532,9 +495,7 @@ const buildAdapterRouter = (root: DBAdapter): DBAdapter => {
     transaction: (callback) =>
       Effect.flatMap(FiberRef.get(activeAdapterRef), (active) => {
         if (active) return callback(active);
-        return root.transaction((trx) =>
-          Effect.locally(callback(trx), activeAdapterRef, trx),
-        );
+        return root.transaction((trx) => Effect.locally(callback(trx), activeAdapterRef, trx));
       }),
   } as DBAdapter;
 };
@@ -561,23 +522,14 @@ interface PluginRuntime {
   readonly ctx: PluginCtx<unknown>;
 }
 
-export const createExecutor = <
-  const TPlugins extends readonly AnyPlugin[] = [],
->(
+export const createExecutor = <const TPlugins extends readonly AnyPlugin[] = []>(
   config: ExecutorConfig<TPlugins>,
 ): Effect.Effect<Executor<TPlugins>, Error> =>
   Effect.gen(function* () {
-    const {
-      scopes,
-      adapter: rootAdapter,
-      blobs,
-      plugins = [] as unknown as TPlugins,
-    } = config;
+    const { scopes, adapter: rootAdapter, blobs, plugins = [] as unknown as TPlugins } = config;
 
     if (scopes.length === 0) {
-      return yield* Effect.fail(
-        new Error("createExecutor requires a non-empty scopes array"),
-      );
+      return yield* Effect.fail(new Error("createExecutor requires a non-empty scopes array"));
     }
 
     // Scope-wrap the root adapter so every read on a tenant-scoped
@@ -589,11 +541,7 @@ export const createExecutor = <
     // scoped.
     const schema = collectSchemas(plugins);
     const scopeIds = scopes.map((s) => s.id as string);
-    const scopedRoot = scopeAdapter(
-      rootAdapter,
-      { scopes: scopeIds },
-      schema,
-    );
+    const scopedRoot = scopeAdapter(rootAdapter, { scopes: scopeIds }, schema);
     const adapter = buildAdapterRouter(scopedRoot);
     const core = typedAdapter<CoreSchema>(adapter);
 
@@ -667,9 +615,7 @@ export const createExecutor = <
     // and wrong when a user has shadowed an outer default. Callers that
     // need a single logical row (invoke, tool schema, source removal)
     // must go through this path so the innermost write always wins.
-    const findInnermost = <T extends { scope_id: unknown }>(
-      rows: readonly T[],
-    ): T | null => {
+    const findInnermost = <T extends { scope_id: unknown }>(rows: readonly T[]): T | null => {
       if (rows.length === 0) return null;
       let winner: T | undefined;
       let best = Infinity;
@@ -716,14 +662,10 @@ export const createExecutor = <
         // enumeration fallback doesn't know which scope the value
         // lives in; flat providers ignore the arg.
         const fallbackScope = scopeIds[0]!;
-        const candidates = [...secretProviders.values()].filter(
-          (p) => p.list,
-        );
+        const candidates = [...secretProviders.values()].filter((p) => p.list);
         const values = yield* Effect.all(
           candidates.map((p) =>
-            p
-              .get(id, fallbackScope)
-              .pipe(Effect.catchAll(() => Effect.succeed(null))),
+            p.get(id, fallbackScope).pipe(Effect.catchAll(() => Effect.succeed(null))),
           ),
           { concurrency: "unbounded" },
         );
@@ -745,26 +687,20 @@ export const createExecutor = <
           return yield* Effect.fail(
             new SecretOwnedByConnectionError({
               secretId: SecretId.make(id),
-              connectionId: ConnectionId.make(
-                owned.owned_by_connection_id as string,
-              ),
+              connectionId: ConnectionId.make(owned.owned_by_connection_id as string),
             }),
           );
         }
         return yield* resolveSecretValueFromRows(id, rows);
       });
 
-    const connectionSecretGet = (
-      id: string,
-    ): Effect.Effect<string | null, StorageFailure> =>
+    const connectionSecretGet = (id: string): Effect.Effect<string | null, StorageFailure> =>
       Effect.gen(function* () {
         const rows = yield* secretRowsForId(id);
         return yield* resolveSecretValueFromRows(id, rows);
       });
 
-    const secretsSet = (
-      input: SetSecretInput,
-    ): Effect.Effect<SecretRef, StorageFailure> =>
+    const secretsSet = (input: SetSecretInput): Effect.Effect<SecretRef, StorageFailure> =>
       Effect.gen(function* () {
         // Validate the write target up front. The adapter would reject
         // an out-of-stack scope too, but catching it here gives a
@@ -879,14 +815,11 @@ export const createExecutor = <
           return yield* Effect.fail(
             new SecretOwnedByConnectionError({
               secretId: SecretId.make(id),
-              connectionId: ConnectionId.make(
-                target.owned_by_connection_id as string,
-              ),
+              connectionId: ConnectionId.make(target.owned_by_connection_id as string),
             }),
           );
         }
-        const targetScope = (target?.scope_id as string | undefined) ??
-          scopeIds[0]!;
+        const targetScope = (target?.scope_id as string | undefined) ?? scopeIds[0]!;
 
         const deleters = [...secretProviders.values()].filter(
           (p): p is typeof p & { delete: NonNullable<typeof p.delete> } =>
@@ -943,19 +876,18 @@ export const createExecutor = <
         // leak them back in below.
         const allRows = yield* core.findMany({ model: "secret" });
         const connectionOwnedIds = new Set(
-          allRows
-            .filter((r) => r.owned_by_connection_id)
-            .map((r) => r.id as string),
+          allRows.filter((r) => r.owned_by_connection_id).map((r) => r.id as string),
         );
         const rows = allRows.filter((r) => !r.owned_by_connection_id);
         const precedence = new Map<string, number>();
         scopeIds.forEach((id, index) => precedence.set(id, index));
-        const pick = (row: typeof rows[number]) => {
+        const pick = (row: (typeof rows)[number]) => {
           const existing = byId.get(row.id);
           const incomingScope = row.scope_id as string;
           const incomingRank = precedence.get(incomingScope) ?? Number.MAX_SAFE_INTEGER;
           if (existing) {
-            const existingRank = precedence.get(existing.scopeId as string) ?? Number.MAX_SAFE_INTEGER;
+            const existingRank =
+              precedence.get(existing.scopeId as string) ?? Number.MAX_SAFE_INTEGER;
             if (existingRank <= incomingRank) return;
           }
           byId.set(
@@ -980,17 +912,13 @@ export const createExecutor = <
         // whole list. Merge in registration order afterwards so the
         // "first provider wins" precedence stays deterministic.
         const attribution = scopes[0]!.id;
-        const listers = [...secretProviders.entries()].filter(
-          ([, p]) => p.list,
-        );
+        const listers = [...secretProviders.entries()].filter(([, p]) => p.list);
         const lists = yield* Effect.all(
           listers.map(([key, p]) =>
-            p
-              .list!()
-              .pipe(
-                Effect.catchAll(() => Effect.succeed([] as const)),
-                Effect.map((entries) => ({ key, entries })),
-              ),
+            p.list!().pipe(
+              Effect.catchAll(() => Effect.succeed([] as const)),
+              Effect.map((entries) => ({ key, entries })),
+            ),
           ),
           { concurrency: "unbounded" },
         );
@@ -1039,9 +967,7 @@ export const createExecutor = <
     // behavior under the new SDK orchestration stays identical.
     const CONNECTION_REFRESH_SKEW_MS = 60_000;
 
-    const decodeProviderState = Schema.decodeUnknownOption(
-      ConnectionProviderState,
-    );
+    const decodeProviderState = Schema.decodeUnknownOption(ConnectionProviderState);
 
     const rowToConnection = (row: ConnectionRow): ConnectionRef =>
       new ConnectionRef({
@@ -1054,20 +980,13 @@ export const createExecutor = <
           row.refresh_token_secret_id != null
             ? SecretId.make(row.refresh_token_secret_id as string)
             : null,
-        expiresAt:
-          row.expires_at != null ? Number(row.expires_at as number) : null,
+        expiresAt: row.expires_at != null ? Number(row.expires_at as number) : null,
         oauthScope: (row.scope as string | null | undefined) ?? null,
-        providerState: Option.getOrNull(
-          decodeProviderState(decodeJsonColumn(row.provider_state)),
-        ),
+        providerState: Option.getOrNull(decodeProviderState(decodeJsonColumn(row.provider_state))),
         createdAt:
-          row.created_at instanceof Date
-            ? row.created_at
-            : new Date(row.created_at as string),
+          row.created_at instanceof Date ? row.created_at : new Date(row.created_at as string),
         updatedAt:
-          row.updated_at instanceof Date
-            ? row.updated_at
-            : new Date(row.updated_at as string),
+          row.updated_at instanceof Date ? row.updated_at : new Date(row.updated_at as string),
       });
 
     const findInnermostConnectionRow = (
@@ -1081,18 +1000,13 @@ export const createExecutor = <
         return findInnermost(rows as readonly ConnectionRow[]);
       });
 
-    const connectionsGet = (
-      id: string,
-    ): Effect.Effect<ConnectionRef | null, StorageFailure> =>
+    const connectionsGet = (id: string): Effect.Effect<ConnectionRef | null, StorageFailure> =>
       Effect.gen(function* () {
         const row = yield* findInnermostConnectionRow(id);
         return row ? rowToConnection(row) : null;
       });
 
-    const connectionsList = (): Effect.Effect<
-      readonly ConnectionRef[],
-      StorageFailure
-    > =>
+    const connectionsList = (): Effect.Effect<readonly ConnectionRef[], StorageFailure> =>
       Effect.gen(function* () {
         const rows = yield* core.findMany({ model: "connection" });
         // Dedup by id, innermost scope wins — same rule as sources/tools.
@@ -1112,16 +1026,14 @@ export const createExecutor = <
     // Write a secret value through a specific provider, bypassing the
     // bare-secrets ownership check so the SDK can stamp
     // `owned_by_connection_id` atomically alongside a connection row.
-    const writeOwnedSecret = (
-      params: {
-        id: string;
-        scope: string;
-        name: string;
-        value: string;
-        provider: string;
-        ownedByConnectionId: string;
-      },
-    ): Effect.Effect<void, StorageFailure> =>
+    const writeOwnedSecret = (params: {
+      id: string;
+      scope: string;
+      name: string;
+      value: string;
+      provider: string;
+      ownedByConnectionId: string;
+    }): Effect.Effect<void, StorageFailure> =>
       Effect.gen(function* () {
         const target = secretProviders.get(params.provider);
         if (!target) {
@@ -1193,10 +1105,7 @@ export const createExecutor = <
 
     const connectionsCreate = (
       input: CreateConnectionInput,
-    ): Effect.Effect<
-      ConnectionRef,
-      ConnectionProviderNotRegisteredError | StorageFailure
-    > =>
+    ): Effect.Effect<ConnectionRef, ConnectionProviderNotRegisteredError | StorageFailure> =>
       Effect.gen(function* () {
         if (!scopeIds.includes(input.scope as string)) {
           return yield* Effect.fail(
@@ -1261,8 +1170,7 @@ export const createExecutor = <
                 provider: input.provider,
                 identity_label: input.identityLabel ?? undefined,
                 access_token_secret_id: input.accessToken.secretId as string,
-                refresh_token_secret_id:
-                  input.refreshToken?.secretId ?? undefined,
+                refresh_token_secret_id: input.refreshToken?.secretId ?? undefined,
                 expires_at: input.expiresAt ?? undefined,
                 scope: input.oauthScope ?? undefined,
                 provider_state: input.providerState ?? undefined,
@@ -1278,8 +1186,7 @@ export const createExecutor = <
               provider: input.provider,
               identityLabel: input.identityLabel,
               accessTokenSecretId: input.accessToken.secretId,
-              refreshTokenSecretId:
-                input.refreshToken?.secretId ?? null,
+              refreshTokenSecretId: input.refreshToken?.secretId ?? null,
               expiresAt: input.expiresAt,
               oauthScope: input.oauthScope,
               providerState: input.providerState,
@@ -1297,22 +1204,15 @@ export const createExecutor = <
     // configs still resolve.
     const connectionsUpdateTokens = (
       input: UpdateConnectionTokensInput,
-    ): Effect.Effect<
-      ConnectionRef,
-      ConnectionNotFoundError | StorageFailure
-    > =>
+    ): Effect.Effect<ConnectionRef, ConnectionNotFoundError | StorageFailure> =>
       Effect.gen(function* () {
         const row = yield* findInnermostConnectionRow(input.id as string);
         if (!row) {
-          return yield* Effect.fail(
-            new ConnectionNotFoundError({ connectionId: input.id }),
-          );
+          return yield* Effect.fail(new ConnectionNotFoundError({ connectionId: input.id }));
         }
         const writable = yield* pickWritableProvider();
-        const accessName =
-          `Connection ${input.id as string} access token`;
-        const refreshName =
-          `Connection ${input.id as string} refresh token`;
+        const accessName = `Connection ${input.id as string} access token`;
+        const refreshName = `Connection ${input.id as string} refresh token`;
 
         return yield* adapter.transaction(() =>
           Effect.gen(function* () {
@@ -1325,10 +1225,7 @@ export const createExecutor = <
               ownedByConnectionId: row.id as string,
             });
             const rotatedRefresh = input.refreshToken ?? undefined;
-            if (
-              rotatedRefresh &&
-              row.refresh_token_secret_id
-            ) {
+            if (rotatedRefresh && row.refresh_token_secret_id) {
               yield* writeOwnedSecret({
                 id: row.refresh_token_secret_id as string,
                 scope: row.scope_id as string,
@@ -1340,10 +1237,8 @@ export const createExecutor = <
             }
             const now = new Date();
             const patch: Record<string, unknown> = { updated_at: now };
-            if (input.expiresAt !== undefined)
-              patch.expires_at = input.expiresAt ?? undefined;
-            if (input.oauthScope !== undefined)
-              patch.scope = input.oauthScope ?? undefined;
+            if (input.expiresAt !== undefined) patch.expires_at = input.expiresAt ?? undefined;
+            if (input.oauthScope !== undefined) patch.scope = input.oauthScope ?? undefined;
             if (input.providerState !== undefined)
               patch.provider_state = input.providerState ?? undefined;
             if (input.identityLabel !== undefined)
@@ -1356,13 +1251,9 @@ export const createExecutor = <
               ],
               update: patch,
             });
-            const updated = yield* findInnermostConnectionRow(
-              row.id as string,
-            );
+            const updated = yield* findInnermostConnectionRow(row.id as string);
             if (!updated) {
-              return yield* Effect.fail(
-                new ConnectionNotFoundError({ connectionId: input.id }),
-              );
+              return yield* Effect.fail(new ConnectionNotFoundError({ connectionId: input.id }));
             }
             return rowToConnection(updated);
           }),
@@ -1395,9 +1286,7 @@ export const createExecutor = <
         });
       });
 
-    const connectionsRemove = (
-      id: string,
-    ): Effect.Effect<void, StorageFailure> =>
+    const connectionsRemove = (id: string): Effect.Effect<void, StorageFailure> =>
       Effect.gen(function* () {
         const row = yield* findInnermostConnectionRow(id);
         if (!row) return;
@@ -1460,9 +1349,7 @@ export const createExecutor = <
     // The actual work of a single refresh cycle, factored out so the
     // concurrency gate (`connectionsAccessToken`) stays readable. Runs
     // for the fiber that wins the `refreshInFlight` race.
-    const performRefresh = (
-      ref: ConnectionRef,
-    ): Effect.Effect<string, AccessTokenError> =>
+    const performRefresh = (ref: ConnectionRef): Effect.Effect<string, AccessTokenError> =>
       Effect.gen(function* () {
         const provider = connectionProviders.get(ref.provider);
         if (!provider) {
@@ -1540,9 +1427,7 @@ export const createExecutor = <
     // observes the Deferred and awaits its completion. The Deferred is
     // pulled out of the map before the refresh result resolves so
     // later invokes don't reuse a completed slot.
-    const connectionsAccessToken = (
-      id: string,
-    ): Effect.Effect<string, AccessTokenError> =>
+    const connectionsAccessToken = (id: string): Effect.Effect<string, AccessTokenError> =>
       Effect.gen(function* () {
         const row = yield* findInnermostConnectionRow(id);
         if (!row) {
@@ -1555,13 +1440,10 @@ export const createExecutor = <
         const ref = rowToConnection(row);
         const now = Date.now();
         const needsRefresh =
-          ref.expiresAt !== null &&
-          ref.expiresAt - CONNECTION_REFRESH_SKEW_MS <= now;
+          ref.expiresAt !== null && ref.expiresAt - CONNECTION_REFRESH_SKEW_MS <= now;
 
         if (!needsRefresh) {
-          const current = yield* connectionSecretGet(
-            ref.accessTokenSecretId as unknown as string,
-          );
+          const current = yield* connectionSecretGet(ref.accessTokenSecretId as unknown as string);
           if (current !== null) return current;
           // Fall through to refresh if the stored token vanished — a
           // genuinely-missing secret with no way to refresh is a
@@ -1617,9 +1499,7 @@ export const createExecutor = <
     // ------------------------------------------------------------------
     for (const plugin of plugins) {
       if (runtimes.has(plugin.id)) {
-        return yield* Effect.fail(
-          new Error(`Duplicate plugin id: ${plugin.id}`),
-        );
+        return yield* Effect.fail(new Error(`Duplicate plugin id: ${plugin.id}`));
       }
 
       // Plugin-facing typed view. `StorageError` and `UniqueViolationError`
@@ -1679,9 +1559,7 @@ export const createExecutor = <
                 // the router short-circuits to the active tx handle
                 // instead of opening a nested sql.begin — that nested
                 // sql.begin is the postgres.js + pool=1 deadlock path.
-                yield* adapter.transaction(() =>
-                  writeSourceInput(core, plugin.id, input),
-                );
+                yield* adapter.transaction(() => writeSourceInput(core, plugin.id, input));
               }),
             unregister: (sourceId: string) =>
               // `unregister` is scoped to a specific source row — look up
@@ -1699,19 +1577,13 @@ export const createExecutor = <
                   });
                   const row = findInnermost(rows);
                   if (!row) return;
-                  yield* deleteSourceById(
-                    core,
-                    sourceId,
-                    row.scope_id as string,
-                  );
+                  yield* deleteSourceById(core, sourceId, row.scope_id as string);
                 }),
               ),
           },
           definitions: {
             register: (input: DefinitionsInput) =>
-              adapter.transaction(() =>
-                writeDefinitions(core, plugin.id, input),
-              ),
+              adapter.transaction(() => writeDefinitions(core, plugin.id, input)),
           },
         },
         secrets: {
@@ -1725,8 +1597,7 @@ export const createExecutor = <
           list: () => connectionsListForCtx(),
           create: (input) => connectionsCreate(input),
           updateTokens: (input) => connectionsUpdateTokens(input),
-          setIdentityLabel: (id, label) =>
-            connectionsSetIdentityLabel(id, label),
+          setIdentityLabel: (id, label) => connectionsSetIdentityLabel(id, label),
           accessToken: (id) => connectionsAccessToken(id),
           remove: (id) => connectionsRemove(id),
         },
@@ -1736,33 +1607,24 @@ export const createExecutor = <
         // propagate unchanged; storage failures also stay typed
         // (`StorageFailure`) so the HTTP edge wrapper can translate them.
         transaction: <A, E>(effect: Effect.Effect<A, E>) =>
-          adapter.transaction(() => effect) as Effect.Effect<
-            A,
-            E | StorageFailure
-          >,
+          adapter.transaction(() => effect) as Effect.Effect<A, E | StorageFailure>,
       };
 
       // Build extension FIRST so it's available as `self` when resolving
       // staticSources. Field ordering in the plugin spec matters — TS
       // infers TExtension from `extension`'s return type, then NoInfer
       // locks `self` to that inferred type on `staticSources`.
-      const extension: object = plugin.extension
-        ? plugin.extension(ctx)
-        : {};
+      const extension: object = plugin.extension ? plugin.extension(ctx) : {};
       if (plugin.extension) {
         extensions[plugin.id] = extension;
       }
 
       // Resolve static declarations to the in-memory pools. NO DB WRITES.
-      const decls = plugin.staticSources
-        ? plugin.staticSources(extension)
-        : [];
+      const decls = plugin.staticSources ? plugin.staticSources(extension) : [];
       for (const source of decls) {
         if (staticSources.has(source.id)) {
           return yield* Effect.fail(
-            new Error(
-              `Duplicate static source id: ${source.id} (plugin ${plugin.id})`,
-            ),
+            new Error(`Duplicate static source id: ${source.id} (plugin ${plugin.id})`),
           );
         }
         staticSources.set(source.id, { source, pluginId: plugin.id });
@@ -1771,9 +1633,7 @@ export const createExecutor = <
           const fqid = `${source.id}.${tool.name}`;
           if (staticTools.has(fqid)) {
             return yield* Effect.fail(
-              new Error(
-                `Duplicate static tool id: ${fqid} (plugin ${plugin.id})`,
-              ),
+              new Error(`Duplicate static tool id: ${fqid} (plugin ${plugin.id})`),
             );
           }
           staticTools.set(fqid, {
@@ -1835,7 +1695,7 @@ export const createExecutor = <
         // two rows — their override and the outer default — which is
         // inconsistent with how `secrets.list` and every other list
         // surface dedup shadowed entries.
-        const byId = new Map<string, typeof dynamic[number]>();
+        const byId = new Map<string, (typeof dynamic)[number]>();
         const byIdRank = new Map<string, number>();
         for (const row of dynamic) {
           const rank = scopeRank(row);
@@ -1885,10 +1745,7 @@ export const createExecutor = <
           [...groups],
           ([key, groupRows]) =>
             Effect.gen(function* () {
-              const [pluginId, sourceId] = key.split("\u0000") as [
-                string,
-                string,
-              ];
+              const [pluginId, sourceId] = key.split("\u0000") as [string, string];
               const runtime = runtimes.get(pluginId);
               if (!runtime?.plugin.resolveAnnotations) return undefined;
               return yield* runtime.plugin.resolveAnnotations({
@@ -1912,14 +1769,12 @@ export const createExecutor = <
       Effect.gen(function* () {
         const dynamic = yield* core.findMany({
           model: "tool",
-          where: filter?.sourceId
-            ? [{ field: "source_id", value: filter.sourceId }]
-            : undefined,
+          where: filter?.sourceId ? [{ field: "source_id", value: filter.sourceId }] : undefined,
         });
         // Dedup by tool id, innermost scope winning — same reason as
         // `listSources` above: a shadowed id must surface as one entry
         // (the inner one), not two.
-        const byId = new Map<string, typeof dynamic[number]>();
+        const byId = new Map<string, (typeof dynamic)[number]>();
         const byIdRank = new Map<string, number>();
         for (const row of dynamic) {
           const rank = scopeRank(row);
@@ -1964,7 +1819,7 @@ export const createExecutor = <
           model: "definition",
           where: [{ field: "source_id", value: sourceId }],
         });
-        const winners = new Map<string, { row: typeof defRows[number]; rank: number }>();
+        const winners = new Map<string, { row: (typeof defRows)[number]; rank: number }>();
         for (const row of defRows) {
           const rank = scopeRank(row);
           const existing = winners.get(row.name);
@@ -2090,7 +1945,7 @@ export const createExecutor = <
     const toolsDefinitions = () =>
       Effect.gen(function* () {
         const rows = yield* core.findMany({ model: "definition" });
-        const winners = new Map<string, { row: typeof rows[number]; rank: number }>();
+        const winners = new Map<string, { row: (typeof rows)[number]; rank: number }>();
         for (const row of rows) {
           const key = `${row.source_id}\u0000${row.name}`;
           const rank = scopeRank(row);
@@ -2111,7 +1966,11 @@ export const createExecutor = <
         return out;
       });
 
-    const buildElicit = (toolId: string, args: unknown, options: InvokeOptions | undefined): Elicit => {
+    const buildElicit = (
+      toolId: string,
+      args: unknown,
+      options: InvokeOptions | undefined,
+    ): Elicit => {
       const handler = resolveElicitationHandler(options);
       return (request: ElicitationRequest) =>
         Effect.gen(function* () {
@@ -2154,12 +2013,23 @@ export const createExecutor = <
         }
       });
 
-    const invokeTool = (
-      toolId: string,
-      args: unknown,
-      options?: InvokeOptions,
-    ) =>
+    const invokeTool = (toolId: string, args: unknown, options?: InvokeOptions) =>
       Effect.gen(function* () {
+        const invocationErrorMessage = (cause: unknown): string => {
+          if (cause instanceof Error) {
+            const nested = (cause as { readonly cause?: unknown }).cause;
+            if (
+              nested instanceof Error &&
+              nested.message &&
+              /^An unknown error occurred/.test(cause.message)
+            ) {
+              return nested.message;
+            }
+            return cause.message;
+          }
+          return String(cause);
+        };
+
         const wrapInvocationError = <A, E>(
           effect: Effect.Effect<A, E>,
         ): Effect.Effect<A, ToolInvocationError> =>
@@ -2168,8 +2038,7 @@ export const createExecutor = <
               (cause) =>
                 new ToolInvocationError({
                   toolId: ToolId.make(toolId),
-                  message:
-                    cause instanceof Error ? cause.message : String(cause),
+                  message: invocationErrorMessage(cause),
                   cause,
                 }),
             ),
@@ -2184,12 +2053,9 @@ export const createExecutor = <
             "executor.source_kind": staticEntry.source.kind,
             "executor.plugin_id": staticEntry.pluginId,
           });
-          yield* enforceApproval(
-            staticEntry.tool.annotations,
-            toolId,
-            args,
-            options,
-          ).pipe(Effect.withSpan("executor.tool.enforce_approval"));
+          yield* enforceApproval(staticEntry.tool.annotations, toolId, args, options).pipe(
+            Effect.withSpan("executor.tool.enforce_approval"),
+          );
           return yield* wrapInvocationError(
             staticEntry.tool.handler({
               ctx: staticEntry.ctx,
@@ -2303,11 +2169,7 @@ export const createExecutor = <
                 scope: sourceRow.scope_id as string,
               });
             }
-            yield* deleteSourceById(
-              core,
-              sourceId,
-              sourceRow.scope_id as string,
-            );
+            yield* deleteSourceById(core, sourceId, sourceRow.scope_id as string);
           }),
         );
       });
@@ -2351,8 +2213,7 @@ export const createExecutor = <
       });
 
     // Per-source definitions accessor — one query, one mapping pass.
-    const sourceDefinitions = (sourceId: string) =>
-      loadDefinitionsForSource(sourceId);
+    const sourceDefinitions = (sourceId: string) => loadDefinitionsForSource(sourceId);
 
     // Fast-path existence check. Hits the core `secret` routing row
     // first (no provider call). If no routing row, walks enumerating
@@ -2360,9 +2221,7 @@ export const createExecutor = <
     // fallback strategy as secretsGet. Still avoids provider.get()
     // so no keychain permission prompts / 1password value IPC fires
     // just to ask "does this exist?"
-    const secretsStatus = (
-      id: string,
-    ): Effect.Effect<"resolved" | "missing", StorageFailure> =>
+    const secretsStatus = (id: string): Effect.Effect<"resolved" | "missing", StorageFailure> =>
       Effect.gen(function* () {
         const rows = yield* secretRowsForId(id);
         if (rows.some((row) => row.owned_by_connection_id)) return "missing";
@@ -2413,10 +2272,7 @@ export const createExecutor = <
         set: secretsSet,
         remove: secretsRemove,
         list: secretsList,
-        providers: () =>
-          Effect.sync(
-            () => Array.from(secretProviders.keys()) as readonly string[],
-          ),
+        providers: () => Effect.sync(() => Array.from(secretProviders.keys()) as readonly string[]),
       },
       connections: {
         get: connectionsGet,
@@ -2427,10 +2283,7 @@ export const createExecutor = <
         accessToken: connectionsAccessToken,
         remove: connectionsRemove,
         providers: () =>
-          Effect.sync(
-            () =>
-              Array.from(connectionProviders.keys()) as readonly string[],
-          ),
+          Effect.sync(() => Array.from(connectionProviders.keys()) as readonly string[]),
       },
       close,
     };

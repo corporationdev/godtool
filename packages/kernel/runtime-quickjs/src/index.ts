@@ -43,11 +43,35 @@ const EXECUTION_FILENAME = "executor-quickjs-runtime.js";
 const toError = (cause: unknown): Error =>
   cause instanceof Error ? cause : new Error(String(cause));
 
+const taggedFailureMessage = (message: string | undefined): string | undefined => {
+  if (!message) return undefined;
+  try {
+    const parsed = JSON.parse(message) as unknown;
+    if (typeof parsed === "object" && parsed !== null) {
+      const tag = "_tag" in parsed && typeof parsed._tag === "string" ? parsed._tag : undefined;
+      const nestedMessage =
+        "message" in parsed && typeof parsed.message === "string" ? parsed.message : undefined;
+      if (nestedMessage && (tag === "ToolInvocationError" || tag === "ExecutionToolError")) {
+        return nestedMessage;
+      }
+    }
+  } catch {}
+  return undefined;
+};
+
 const toErrorMessage = (cause: unknown): string => {
   if (typeof cause === "object" && cause !== null) {
     const stack = "stack" in cause && typeof cause.stack === "string" ? cause.stack : undefined;
     const message =
       "message" in cause && typeof cause.message === "string" ? cause.message : undefined;
+    const tag = "_tag" in cause && typeof cause._tag === "string" ? cause._tag : undefined;
+
+    if (message && (tag === "ToolInvocationError" || tag === "ExecutionToolError")) {
+      return message;
+    }
+
+    const tagged = taggedFailureMessage(message);
+    if (tagged) return tagged;
 
     if (stack) {
       return stack;

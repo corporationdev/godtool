@@ -5,13 +5,28 @@ import { createExecutor } from "@executor/sdk/promise";
 import { browserPlugin } from "../src";
 
 describe("browserPlugin", () => {
+  it("exposes the built-in source as browser_use", async () => {
+    const executor = await createExecutor({ plugins: [browserPlugin()] as const });
+
+    const sources = await executor.sources.list();
+    expect(sources.find((source) => source.id === "browser_use")).toMatchObject({
+      id: "browser_use",
+      kind: "browser_use",
+      name: "browser_use",
+      canRemove: false,
+      runtime: true,
+    });
+
+    await executor.close();
+  });
+
   it("exposes browser actions instead of session lifecycle plumbing", async () => {
     const executor = await createExecutor({ plugins: [browserPlugin()] as const });
 
     const tools = await executor.tools.list();
     const names = tools
-      .filter((tool) => tool.id.startsWith("browser."))
-      .map((tool) => tool.id.replace("browser.", ""))
+      .filter((tool) => tool.id.startsWith("browser_use."))
+      .map((tool) => tool.id.replace("browser_use.", ""))
       .sort();
 
     expect(names).toContain("open");
@@ -31,7 +46,7 @@ describe("browserPlugin", () => {
     const executor = await createExecutor({ plugins: [browserPlugin()] as const });
 
     const tools = await executor.tools.list();
-    const screenshot = tools.find((tool) => tool.id === "browser.screenshot");
+    const screenshot = tools.find((tool) => tool.id === "browser_use.screenshot");
 
     expect(screenshot?.description).toContain("Direct SDK calls return base64 data");
     expect(screenshot?.description).toContain("executor MCP emits inline image content");
@@ -43,7 +58,7 @@ describe("browserPlugin", () => {
     const executor = await createExecutor({ plugins: [browserPlugin()] as const });
 
     const tools = await executor.tools.list();
-    const open = tools.find((tool) => tool.id === "browser.open");
+    const open = tools.find((tool) => tool.id === "browser_use.open");
     const schema = open?.inputSchema as {
       readonly required?: readonly string[];
       readonly properties?: Record<string, unknown>;
@@ -60,8 +75,8 @@ describe("browserPlugin", () => {
     const executor = await createExecutor({ plugins: [browserPlugin()] as const });
 
     const tools = await executor.tools.list();
-    const open = tools.find((tool) => tool.id === "browser.open");
-    const listSessions = tools.find((tool) => tool.id === "browser.listSessions");
+    const open = tools.find((tool) => tool.id === "browser_use.open");
+    const listSessions = tools.find((tool) => tool.id === "browser_use.listSessions");
     const schema = open?.inputSchema as {
       readonly properties?: {
         readonly sessionName?: { readonly description?: string };

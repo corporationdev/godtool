@@ -390,17 +390,30 @@ const evaluateInSession = async <T>(session: BrowserSessionSnapshot, code: strin
       returnByValue: true,
     });
     if (result.exceptionDetails) {
-      throw new Error(
-        result.exceptionDetails.exception?.description ??
-          result.exceptionDetails.text ??
-          "Browser evaluation failed",
-      );
+      const description = result.exceptionDetails.exception?.description;
+      const message =
+        description?.split("\n")[0]?.replace(/^Error:\s*/, "") ??
+        result.exceptionDetails.text ??
+        "Browser evaluation failed";
+      throw new Error(message);
     }
     return result.result.value as T;
   } finally {
     cdp.close();
   }
 };
+
+const evaluateUserCode = (code: string): string => `
+(async () => {
+  const source = ${JSON.stringify(code)};
+  try {
+    return await (0, eval)(source);
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    return await Function("return (async () => {\\n" + source + "\\n})()")();
+  }
+})()
+`;
 
 const elementScript = (selector: string, body: string): string => `
 (() => {
@@ -523,11 +536,15 @@ const actionByName = async (
           selector,
           `
   element.focus();
-  const value = ${JSON.stringify(text ?? "")};
-  if ("value" in element) element.value = value;
-  element.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: value }));
-  element.dispatchEvent(new Event("change", { bubbles: true }));
-  return { filled: true };
+	const value = ${JSON.stringify(text ?? "")};
+	if (!("value" in element) && !element.isContentEditable) {
+	  throw new Error("Element is not fillable: " + selector);
+	}
+	if ("value" in element) element.value = value;
+	else element.textContent = value;
+	element.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: value }));
+	element.dispatchEvent(new Event("change", { bubbles: true }));
+	return { filled: true };
 `,
         ),
       );
@@ -585,14 +602,16 @@ const tool = <A>(
   callerId?: string,
 ) => withSession(config, sessionName, callerId, run);
 
+const SOURCE_ID = "browser_use";
+
 export const browserPlugin = definePlugin((config?: BrowserPluginConfig) => ({
   id: "browser" as const,
   storage: () => ({}),
   staticSources: () => [
     {
-      id: "browser",
-      kind: "browser",
-      name: "Browser",
+      id: SOURCE_ID,
+      kind: SOURCE_ID,
+      name: SOURCE_ID,
       canRemove: false,
       tools: [
         {
@@ -643,11 +662,10 @@ export const browserPlugin = definePlugin((config?: BrowserPluginConfig) => ({
                 (entry) => entry.sessionName === input.sessionName,
               );
               if (!session) throw new Error(`Browser session not found: ${input.sessionName}`);
-              await request<never>(
-                hostUrl,
-                `/sessions/${encodeURIComponent(session.id)}/close`,
-                { method: "POST", body: "{}" },
-              );
+              await request<never>(hostUrl, `/sessions/${encodeURIComponent(session.id)}/close`, {
+                method: "POST",
+                body: "{}",
+              });
               return { archived: true, sessionName: input.sessionName };
             }),
         },
@@ -987,8 +1005,7 @@ new Promise((resolve, reject) => {
             return tool(
               config,
               input.sessionName,
-              (session) =>
-                evaluateInSession(session, `Promise.resolve((async () => { ${input.code} })())`),
+              (session) => evaluateInSession(session, evaluateUserCode(input.code)),
               callerId,
             );
           },
@@ -1317,8 +1334,8 @@ new Promise((resolve, reject) => {
     element.getAttribute("role") ||
     ({ A: "link", BUTTON: "button", INPUT: element.type || "input", TEXTAREA: "textbox", SELECT: "combobox" })[element.tagName] ||
     element.tagName.toLowerCase();
-  const all = [...document.querySelectorAll("*")].filter(visible);
-  const found = all.find((element) => {
+	  const all = [...document.querySelectorAll("*")].filter(visible);
+	  const found = all.find((element) => {
     if (locator === "role") return roleOf(element) === value && (!roleName || matches(accessibleName(element)));
     if (locator === "text") return matches(element.innerText || element.textContent || "");
     if (locator === "label") {
@@ -1331,11 +1348,19 @@ new Promise((resolve, reject) => {
     if (locator === "title") return matches(element.getAttribute("title") || "");
     if (locator === "testid") return element.getAttribute("data-testid") === value;
     return false;
-  });
-  if (!found) throw new Error("Element not found by " + locator + ": " + value);
-  globalThis.__executorBrowserRefs = globalThis.__executorBrowserRefs || {};
-  globalThis.__executorBrowserRefs["@found"] = found;
-  return "@found";
+	  });
+	  if (!found) throw new Error("Element not found by " + locator + ": " + value);
+	  const target = (() => {
+	    if (locator !== "label") return found;
+	    if (found instanceof HTMLLabelElement) {
+	      return found.control || found.querySelector("input, textarea, select, [contenteditable=''], [contenteditable='true']");
+	    }
+	    return found;
+	  })();
+	  if (!target) throw new Error("Label has no associated control: " + value);
+	  globalThis.__executorBrowserRefs = globalThis.__executorBrowserRefs || {};
+	  globalThis.__executorBrowserRefs["@found"] = target;
+	  return "@found";
 })()
 `,
                 );
