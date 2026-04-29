@@ -5,10 +5,9 @@ import { definePlugin } from "@executor/sdk";
 
 export interface BrowserSessionSnapshot {
   readonly id: string;
-  readonly agentId: string;
+  readonly sessionName: string;
   readonly url: string;
   readonly title: string;
-  readonly busy: boolean;
   readonly pinned: boolean;
   readonly visible: boolean;
   readonly createdAt: number;
@@ -20,6 +19,7 @@ export interface BrowserSessionSnapshot {
 
 export interface BrowserPluginConfig {
   readonly hostUrl?: string;
+  readonly callerId?: string;
 }
 
 interface BrowserHostResponse<T> {
@@ -73,69 +73,73 @@ const request = async <T>(
   return data;
 };
 
-const AgentArgs = Schema.Struct({
-  agentId: Schema.String,
+const SessionArgs = Schema.Struct({
+  sessionName: Schema.optional(Schema.String),
+});
+
+const ArchiveSessionArgs = Schema.Struct({
+  sessionName: Schema.String,
 });
 
 const OpenArgs = Schema.Struct({
-  agentId: Schema.String,
+  sessionName: Schema.optional(Schema.String),
   url: Schema.String,
 });
 
 const SelectorArgs = Schema.Struct({
-  agentId: Schema.String,
+  sessionName: Schema.optional(Schema.String),
   selector: Schema.String,
 });
 
 const TextSelectorArgs = Schema.Struct({
-  agentId: Schema.String,
+  sessionName: Schema.optional(Schema.String),
   selector: Schema.String,
   text: Schema.String,
 });
 
 const SelectArgs = Schema.Struct({
-  agentId: Schema.String,
+  sessionName: Schema.optional(Schema.String),
   selector: Schema.String,
   values: Schema.Array(Schema.String),
 });
 
 const PressArgs = Schema.Struct({
-  agentId: Schema.String,
+  sessionName: Schema.optional(Schema.String),
   key: Schema.String,
 });
 
 const ScrollArgs = Schema.Struct({
-  agentId: Schema.String,
+  sessionName: Schema.optional(Schema.String),
   direction: Schema.Literal("up", "down", "left", "right"),
   pixels: Schema.optional(Schema.Number),
 });
 
 const WaitArgs = Schema.Struct({
-  agentId: Schema.String,
+  sessionName: Schema.optional(Schema.String),
   selector: Schema.optional(Schema.String),
   ms: Schema.optional(Schema.Number),
   timeoutMs: Schema.optional(Schema.Number),
 });
 
 const ScreenshotArgs = Schema.Struct({
-  agentId: Schema.String,
+  sessionName: Schema.optional(Schema.String),
   path: Schema.optional(Schema.String),
   full: Schema.optional(Schema.Boolean),
 });
 
 const EvaluateArgs = Schema.Struct({
-  agentId: Schema.String,
+  sessionName: Schema.optional(Schema.String),
   code: Schema.String,
 });
 
 const AttributeArgs = Schema.Struct({
-  agentId: Schema.String,
+  sessionName: Schema.optional(Schema.String),
   selector: Schema.String,
   name: Schema.String,
 });
 
 const FindArgs = Schema.Struct({
-  agentId: Schema.String,
+  sessionName: Schema.optional(Schema.String),
   locator: Schema.Literal("role", "text", "label", "placeholder", "alt", "title", "testid"),
   value: Schema.String,
   action: Schema.optional(
@@ -146,7 +150,8 @@ const FindArgs = Schema.Struct({
   exact: Schema.optional(Schema.Boolean),
 });
 
-const decodeAgentArgs = Schema.decodeUnknownSync(AgentArgs);
+const decodeSessionArgs = Schema.decodeUnknownSync(SessionArgs);
+const decodeArchiveSessionArgs = Schema.decodeUnknownSync(ArchiveSessionArgs);
 const decodeOpenArgs = Schema.decodeUnknownSync(OpenArgs);
 const decodeSelectorArgs = Schema.decodeUnknownSync(SelectorArgs);
 const decodeTextSelectorArgs = Schema.decodeUnknownSync(TextSelectorArgs);
@@ -159,33 +164,53 @@ const decodeEvaluateArgs = Schema.decodeUnknownSync(EvaluateArgs);
 const decodeAttributeArgs = Schema.decodeUnknownSync(AttributeArgs);
 const decodeFindArgs = Schema.decodeUnknownSync(FindArgs);
 
-const agentSchema = {
+const sessionProperties = {
+  sessionName: {
+    type: "string",
+    description:
+      "Browser session name for this call. If it does not exist, it is created. Passing a name makes it the caller's default for later browser calls. Omit to use the caller's current default session, creating one if needed.",
+  },
+} as const;
+
+const sessionSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["agentId"],
-  properties: { agentId: { type: "string" } },
+  properties: sessionProperties,
+} as const;
+
+const archiveSessionSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["sessionName"],
+  properties: {
+    sessionName: {
+      type: "string",
+      description:
+        "Existing browser session name to archive. This removes it from the browser sidebar and closes its loaded view if present.",
+    },
+  },
 } as const;
 
 const openSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["agentId", "url"],
-  properties: { agentId: { type: "string" }, url: { type: "string" } },
+  required: ["url"],
+  properties: { ...sessionProperties, url: { type: "string" } },
 } as const;
 
 const selectorSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["agentId", "selector"],
-  properties: { agentId: { type: "string" }, selector: { type: "string" } },
+  required: ["selector"],
+  properties: { ...sessionProperties, selector: { type: "string" } },
 } as const;
 
 const textSelectorSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["agentId", "selector", "text"],
+  required: ["selector", "text"],
   properties: {
-    agentId: { type: "string" },
+    ...sessionProperties,
     selector: { type: "string" },
     text: { type: "string" },
   },
@@ -194,9 +219,9 @@ const textSelectorSchema = {
 const selectSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["agentId", "selector", "values"],
+  required: ["selector", "values"],
   properties: {
-    agentId: { type: "string" },
+    ...sessionProperties,
     selector: { type: "string" },
     values: { type: "array", items: { type: "string" } },
   },
@@ -205,16 +230,16 @@ const selectSchema = {
 const pressSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["agentId", "key"],
-  properties: { agentId: { type: "string" }, key: { type: "string" } },
+  required: ["key"],
+  properties: { ...sessionProperties, key: { type: "string" } },
 } as const;
 
 const scrollSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["agentId", "direction"],
+  required: ["direction"],
   properties: {
-    agentId: { type: "string" },
+    ...sessionProperties,
     direction: { type: "string", enum: ["up", "down", "left", "right"] },
     pixels: { type: "number" },
   },
@@ -223,9 +248,8 @@ const scrollSchema = {
 const waitSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["agentId"],
   properties: {
-    agentId: { type: "string" },
+    ...sessionProperties,
     selector: { type: "string" },
     ms: { type: "number" },
     timeoutMs: { type: "number" },
@@ -235,9 +259,8 @@ const waitSchema = {
 const screenshotSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["agentId"],
   properties: {
-    agentId: { type: "string" },
+    ...sessionProperties,
     path: { type: "string" },
     full: { type: "boolean" },
   },
@@ -246,16 +269,16 @@ const screenshotSchema = {
 const evaluateSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["agentId", "code"],
-  properties: { agentId: { type: "string" }, code: { type: "string" } },
+  required: ["code"],
+  properties: { ...sessionProperties, code: { type: "string" } },
 } as const;
 
 const attributeSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["agentId", "selector", "name"],
+  required: ["selector", "name"],
   properties: {
-    agentId: { type: "string" },
+    ...sessionProperties,
     selector: { type: "string" },
     name: { type: "string" },
   },
@@ -264,9 +287,9 @@ const attributeSchema = {
 const findSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["agentId", "locator", "value"],
+  required: ["locator", "value"],
   properties: {
-    agentId: { type: "string" },
+    ...sessionProperties,
     locator: {
       type: "string",
       enum: ["role", "text", "label", "placeholder", "alt", "title", "testid"],
@@ -284,25 +307,21 @@ const findSchema = {
 
 const withSession = <A>(
   config: BrowserPluginConfig | undefined,
-  agentId: string,
+  sessionName: string | undefined,
+  callerId: string | undefined,
   run: (session: BrowserSessionSnapshot, hostUrl: string) => Promise<A>,
 ): Effect.Effect<A, Error> =>
   Effect.tryPromise(async () => {
     const hostUrl = hostUrlFromConfig(config);
+    const resolvedCallerId =
+      callerId ?? config?.callerId ?? process.env.GODTOOL_BROWSER_CALLER_ID ?? "browser-plugin";
     const data = await request<never>(hostUrl, "/sessions/ensure", {
       method: "POST",
-      body: JSON.stringify({ agentId, busy: true }),
+      body: JSON.stringify({ callerId: resolvedCallerId, sessionName }),
     });
     if (!data.session) throw new Error("Browser host did not return a session");
 
-    try {
-      return await run(data.session, hostUrl);
-    } finally {
-      await request<never>(hostUrl, `/sessions/${encodeURIComponent(data.session.id)}/touch`, {
-        method: "POST",
-        body: JSON.stringify({ busy: false }),
-      }).catch(() => undefined);
-    }
+    return await run(data.session, hostUrl);
   });
 
 const connect = (session: BrowserSessionSnapshot) =>
@@ -561,9 +580,10 @@ const actionByName = async (
 
 const tool = <A>(
   config: BrowserPluginConfig | undefined,
-  agentId: string,
+  sessionName: string | undefined,
   run: (session: BrowserSessionSnapshot, hostUrl: string) => Promise<A>,
-) => withSession(config, agentId, run);
+  callerId?: string,
+) => withSession(config, sessionName, callerId, run);
 
 export const browserPlugin = definePlugin((config?: BrowserPluginConfig) => ({
   id: "browser" as const,
@@ -577,31 +597,74 @@ export const browserPlugin = definePlugin((config?: BrowserPluginConfig) => ({
       tools: [
         {
           name: "open",
-          description: "Navigate the agent browser to a URL.",
+          description:
+            "Open or navigate a browser session to a URL. Creates the default session when omitted, or creates/reuses sessionName when provided. Passing sessionName makes it the caller's default for later browser calls.",
           inputSchema: openSchema,
-          handler: ({ args }) => {
+          handler: ({ args, callerId }) => {
             const input = decodeOpenArgs(args);
-            return tool(config, input.agentId, async (session, hostUrl) => {
-              const data = await request<never>(
-                hostUrl,
-                `/sessions/${encodeURIComponent(session.id)}/navigate`,
-                { method: "POST", body: JSON.stringify({ url: input.url }) },
-              );
-              return data.session;
-            });
+            return tool(
+              config,
+              input.sessionName,
+              async (session, hostUrl) => {
+                const data = await request<never>(
+                  hostUrl,
+                  `/sessions/${encodeURIComponent(session.id)}/navigate`,
+                  { method: "POST", body: JSON.stringify({ url: input.url }) },
+                );
+                return data.session;
+              },
+              callerId,
+            );
           },
+        },
+        {
+          name: "listSessions",
+          description:
+            "List existing browser sessions. Browser tools create the default session or named session on first use, so agents can pass sessionName directly to create/reuse and switch their default session.",
+          inputSchema: sessionSchema,
+          handler: () =>
+            Effect.tryPromise(async () => {
+              const hostUrl = hostUrlFromConfig(config);
+              const data = await request<never>(hostUrl, "/sessions");
+              return data.sessions ?? [];
+            }),
+        },
+        {
+          name: "archiveSession",
+          description:
+            "Archive an existing browser session by name. Removes it from the browser sidebar and closes its loaded view if present.",
+          inputSchema: archiveSessionSchema,
+          handler: ({ args }) =>
+            Effect.tryPromise(async () => {
+              const input = decodeArchiveSessionArgs(args);
+              const hostUrl = hostUrlFromConfig(config);
+              const data = await request<never>(hostUrl, "/sessions");
+              const session = (data.sessions ?? []).find(
+                (entry) => entry.sessionName === input.sessionName,
+              );
+              if (!session) throw new Error(`Browser session not found: ${input.sessionName}`);
+              await request<never>(
+                hostUrl,
+                `/sessions/${encodeURIComponent(session.id)}/close`,
+                { method: "POST", body: "{}" },
+              );
+              return { archived: true, sessionName: input.sessionName };
+            }),
         },
         {
           name: "snapshot",
           description:
             "Return a compact accessibility-style snapshot with @e refs for visible elements.",
-          inputSchema: agentSchema,
-          handler: ({ args }) => {
-            const input = decodeAgentArgs(args);
-            return tool(config, input.agentId, (session) =>
-              evaluateInSession<string>(
-                session,
-                `
+          inputSchema: sessionSchema,
+          handler: ({ args, callerId }) => {
+            const input = decodeSessionArgs(args);
+            return tool(
+              config,
+              input.sessionName,
+              (session) =>
+                evaluateInSession<string>(
+                  session,
+                  `
 (() => {
   const visible = (element) => {
     const style = getComputedStyle(element);
@@ -639,7 +702,8 @@ export const browserPlugin = definePlugin((config?: BrowserPluginConfig) => ({
   return lines.join("\\n");
 })()
 `,
-              ),
+                ),
+              callerId,
             );
           },
         },
@@ -647,18 +711,28 @@ export const browserPlugin = definePlugin((config?: BrowserPluginConfig) => ({
           name: "click",
           description: "Click a CSS selector or @e ref from snapshot.",
           inputSchema: selectorSchema,
-          handler: ({ args }) => {
+          handler: ({ args, callerId }) => {
             const input = decodeSelectorArgs(args);
-            return tool(config, input.agentId, (session) => clickAt(session, input.selector, 1));
+            return tool(
+              config,
+              input.sessionName,
+              (session) => clickAt(session, input.selector, 1),
+              callerId,
+            );
           },
         },
         {
           name: "doubleClick",
           description: "Double-click a CSS selector or @e ref from snapshot.",
           inputSchema: selectorSchema,
-          handler: ({ args }) => {
+          handler: ({ args, callerId }) => {
             const input = decodeSelectorArgs(args);
-            return tool(config, input.agentId, (session) => clickAt(session, input.selector, 2));
+            return tool(
+              config,
+              input.sessionName,
+              (session) => clickAt(session, input.selector, 2),
+              callerId,
+            );
           },
         },
         {
@@ -666,10 +740,13 @@ export const browserPlugin = definePlugin((config?: BrowserPluginConfig) => ({
           description:
             "Type text into the currently focused element or a selector after focusing it.",
           inputSchema: textSelectorSchema,
-          handler: ({ args }) => {
+          handler: ({ args, callerId }) => {
             const input = decodeTextSelectorArgs(args);
-            return tool(config, input.agentId, (session) =>
-              actionByName(session, input.selector, "type", input.text),
+            return tool(
+              config,
+              input.sessionName,
+              (session) => actionByName(session, input.selector, "type", input.text),
+              callerId,
             );
           },
         },
@@ -677,10 +754,13 @@ export const browserPlugin = definePlugin((config?: BrowserPluginConfig) => ({
           name: "fill",
           description: "Clear and set the value of an input, textarea, or editable element.",
           inputSchema: textSelectorSchema,
-          handler: ({ args }) => {
+          handler: ({ args, callerId }) => {
             const input = decodeTextSelectorArgs(args);
-            return tool(config, input.agentId, (session) =>
-              actionByName(session, input.selector, "fill", input.text),
+            return tool(
+              config,
+              input.sessionName,
+              (session) => actionByName(session, input.selector, "fill", input.text),
+              callerId,
             );
           },
         },
@@ -688,19 +768,27 @@ export const browserPlugin = definePlugin((config?: BrowserPluginConfig) => ({
           name: "press",
           description: "Press a keyboard key or combo such as Enter, Tab, Escape, or Control+a.",
           inputSchema: pressSchema,
-          handler: ({ args }) => {
+          handler: ({ args, callerId }) => {
             const input = decodePressArgs(args);
-            return tool(config, input.agentId, (session) => pressKey(session, input.key));
+            return tool(
+              config,
+              input.sessionName,
+              (session) => pressKey(session, input.key),
+              callerId,
+            );
           },
         },
         {
           name: "hover",
           description: "Move the mouse over a CSS selector or @e ref.",
           inputSchema: selectorSchema,
-          handler: ({ args }) => {
+          handler: ({ args, callerId }) => {
             const input = decodeSelectorArgs(args);
-            return tool(config, input.agentId, (session) =>
-              actionByName(session, input.selector, "hover"),
+            return tool(
+              config,
+              input.sessionName,
+              (session) => actionByName(session, input.selector, "hover"),
+              callerId,
             );
           },
         },
@@ -708,10 +796,13 @@ export const browserPlugin = definePlugin((config?: BrowserPluginConfig) => ({
           name: "focus",
           description: "Focus a CSS selector or @e ref.",
           inputSchema: selectorSchema,
-          handler: ({ args }) => {
+          handler: ({ args, callerId }) => {
             const input = decodeSelectorArgs(args);
-            return tool(config, input.agentId, (session) =>
-              actionByName(session, input.selector, "focus"),
+            return tool(
+              config,
+              input.sessionName,
+              (session) => actionByName(session, input.selector, "focus"),
+              callerId,
             );
           },
         },
@@ -719,10 +810,13 @@ export const browserPlugin = definePlugin((config?: BrowserPluginConfig) => ({
           name: "check",
           description: "Check a checkbox or radio input.",
           inputSchema: selectorSchema,
-          handler: ({ args }) => {
+          handler: ({ args, callerId }) => {
             const input = decodeSelectorArgs(args);
-            return tool(config, input.agentId, (session) =>
-              actionByName(session, input.selector, "check"),
+            return tool(
+              config,
+              input.sessionName,
+              (session) => actionByName(session, input.selector, "check"),
+              callerId,
             );
           },
         },
@@ -730,10 +824,13 @@ export const browserPlugin = definePlugin((config?: BrowserPluginConfig) => ({
           name: "uncheck",
           description: "Uncheck a checkbox input.",
           inputSchema: selectorSchema,
-          handler: ({ args }) => {
+          handler: ({ args, callerId }) => {
             const input = decodeSelectorArgs(args);
-            return tool(config, input.agentId, (session) =>
-              actionByName(session, input.selector, "uncheck"),
+            return tool(
+              config,
+              input.sessionName,
+              (session) => actionByName(session, input.selector, "uncheck"),
+              callerId,
             );
           },
         },
@@ -741,14 +838,17 @@ export const browserPlugin = definePlugin((config?: BrowserPluginConfig) => ({
           name: "select",
           description: "Select one or more values in a select element.",
           inputSchema: selectSchema,
-          handler: ({ args }) => {
+          handler: ({ args, callerId }) => {
             const input = decodeSelectArgs(args);
-            return tool(config, input.agentId, (session) =>
-              evaluateInSession(
-                session,
-                elementScript(
-                  input.selector,
-                  `
+            return tool(
+              config,
+              input.sessionName,
+              (session) =>
+                evaluateInSession(
+                  session,
+                  elementScript(
+                    input.selector,
+                    `
   if (!(element instanceof HTMLSelectElement)) throw new Error("Element is not a select: " + selector);
   const values = new Set(${JSON.stringify(input.values)});
   for (const option of element.options) option.selected = values.has(option.value);
@@ -756,8 +856,9 @@ export const browserPlugin = definePlugin((config?: BrowserPluginConfig) => ({
   element.dispatchEvent(new Event("change", { bubbles: true }));
   return { values: [...element.selectedOptions].map((option) => option.value) };
 `,
+                  ),
                 ),
-              ),
+              callerId,
             );
           },
         },
@@ -765,39 +866,48 @@ export const browserPlugin = definePlugin((config?: BrowserPluginConfig) => ({
           name: "scroll",
           description: "Scroll the page in a direction by pixels.",
           inputSchema: scrollSchema,
-          handler: ({ args }) => {
+          handler: ({ args, callerId }) => {
             const input = decodeScrollArgs(args);
-            return tool(config, input.agentId, (session) => {
-              const amount = input.pixels ?? 600;
-              const [x, y] =
-                input.direction === "left"
-                  ? [-amount, 0]
-                  : input.direction === "right"
-                    ? [amount, 0]
-                    : input.direction === "up"
-                      ? [0, -amount]
-                      : [0, amount];
-              return evaluateInSession(
-                session,
-                `window.scrollBy(${x}, ${y}); ({ x: scrollX, y: scrollY })`,
-              );
-            });
+            return tool(
+              config,
+              input.sessionName,
+              (session) => {
+                const amount = input.pixels ?? 600;
+                const [x, y] =
+                  input.direction === "left"
+                    ? [-amount, 0]
+                    : input.direction === "right"
+                      ? [amount, 0]
+                      : input.direction === "up"
+                        ? [0, -amount]
+                        : [0, amount];
+                return evaluateInSession(
+                  session,
+                  `window.scrollBy(${x}, ${y}); ({ x: scrollX, y: scrollY })`,
+                );
+              },
+              callerId,
+            );
           },
         },
         {
           name: "scrollIntoView",
           description: "Scroll a CSS selector or @e ref into view.",
           inputSchema: selectorSchema,
-          handler: ({ args }) => {
+          handler: ({ args, callerId }) => {
             const input = decodeSelectorArgs(args);
-            return tool(config, input.agentId, (session) =>
-              evaluateInSession(
-                session,
-                elementScript(
-                  input.selector,
-                  'element.scrollIntoView({ block: "center", inline: "center" }); return { scrolled: true };',
+            return tool(
+              config,
+              input.sessionName,
+              (session) =>
+                evaluateInSession(
+                  session,
+                  elementScript(
+                    input.selector,
+                    'element.scrollIntoView({ block: "center", inline: "center" }); return { scrolled: true };',
+                  ),
                 ),
-              ),
+              callerId,
             );
           },
         },
@@ -805,18 +915,21 @@ export const browserPlugin = definePlugin((config?: BrowserPluginConfig) => ({
           name: "wait",
           description: "Wait for a selector to appear, or wait for a number of milliseconds.",
           inputSchema: waitSchema,
-          handler: ({ args }) => {
+          handler: ({ args, callerId }) => {
             const input = decodeWaitArgs(args);
-            return tool(config, input.agentId, async (session) => {
-              if (input.ms !== undefined) {
-                await new Promise((resolve) => setTimeout(resolve, input.ms));
-                return { waitedMs: input.ms };
-              }
-              if (!input.selector) throw new Error("wait requires either selector or ms");
-              const timeoutMs = input.timeoutMs ?? 5_000;
-              return evaluateInSession(
-                session,
-                `
+            return tool(
+              config,
+              input.sessionName,
+              async (session) => {
+                if (input.ms !== undefined) {
+                  await new Promise((resolve) => setTimeout(resolve, input.ms));
+                  return { waitedMs: input.ms };
+                }
+                if (!input.selector) throw new Error("wait requires either selector or ms");
+                const timeoutMs = input.timeoutMs ?? 5_000;
+                return evaluateInSession(
+                  session,
+                  `
 new Promise((resolve, reject) => {
   const selector = ${JSON.stringify(input.selector)};
   const deadline = Date.now() + ${timeoutMs};
@@ -828,8 +941,10 @@ new Promise((resolve, reject) => {
   tick();
 })
 `,
-              );
-            });
+                );
+              },
+              callerId,
+            );
           },
         },
         {
@@ -837,24 +952,29 @@ new Promise((resolve, reject) => {
           description:
             "Capture a PNG screenshot. Direct SDK calls return base64 data unless path is provided; executor MCP emits inline image content when no path is provided.",
           inputSchema: screenshotSchema,
-          handler: ({ args }) => {
+          handler: ({ args, callerId }) => {
             const input = decodeScreenshotArgs(args);
-            return tool(config, input.agentId, async (session) => {
-              const cdp = await connect(session);
-              try {
-                const capture = await cdp.send<{ data: string }>("Page.captureScreenshot", {
-                  format: "png",
-                  captureBeyondViewport: input.full ?? false,
-                });
-                if (input.path) {
-                  writeFileSync(input.path, Buffer.from(capture.data, "base64"));
-                  return { path: input.path, mimeType: "image/png" };
+            return tool(
+              config,
+              input.sessionName,
+              async (session) => {
+                const cdp = await connect(session);
+                try {
+                  const capture = await cdp.send<{ data: string }>("Page.captureScreenshot", {
+                    format: "png",
+                    captureBeyondViewport: input.full ?? false,
+                  });
+                  if (input.path) {
+                    writeFileSync(input.path, Buffer.from(capture.data, "base64"));
+                    return { path: input.path, mimeType: "image/png" };
+                  }
+                  return { data: capture.data, mimeType: "image/png" };
+                } finally {
+                  cdp.close();
                 }
-                return { data: capture.data, mimeType: "image/png" };
-              } finally {
-                cdp.close();
-              }
-            });
+              },
+              callerId,
+            );
           },
         },
         {
@@ -862,52 +982,68 @@ new Promise((resolve, reject) => {
           description:
             "Evaluate JavaScript in the current page and return a JSON-serializable result.",
           inputSchema: evaluateSchema,
-          handler: ({ args }) => {
+          handler: ({ args, callerId }) => {
             const input = decodeEvaluateArgs(args);
-            return tool(config, input.agentId, (session) =>
-              evaluateInSession(session, `Promise.resolve((async () => { ${input.code} })())`),
+            return tool(
+              config,
+              input.sessionName,
+              (session) =>
+                evaluateInSession(session, `Promise.resolve((async () => { ${input.code} })())`),
+              callerId,
             );
           },
         },
         {
           name: "back",
           description: "Go back in browser history.",
-          inputSchema: agentSchema,
-          handler: ({ args }) => {
-            const input = decodeAgentArgs(args);
-            return tool(config, input.agentId, (_session, hostUrl) =>
-              request<never>(hostUrl, `/sessions/${encodeURIComponent(_session.id)}/back`, {
-                method: "POST",
-                body: "{}",
-              }).then((data) => data.session),
+          inputSchema: sessionSchema,
+          handler: ({ args, callerId }) => {
+            const input = decodeSessionArgs(args);
+            return tool(
+              config,
+              input.sessionName,
+              (_session, hostUrl) =>
+                request<never>(hostUrl, `/sessions/${encodeURIComponent(_session.id)}/back`, {
+                  method: "POST",
+                  body: "{}",
+                }).then((data) => data.session),
+              callerId,
             );
           },
         },
         {
           name: "forward",
           description: "Go forward in browser history.",
-          inputSchema: agentSchema,
-          handler: ({ args }) => {
-            const input = decodeAgentArgs(args);
-            return tool(config, input.agentId, (session, hostUrl) =>
-              request<never>(hostUrl, `/sessions/${encodeURIComponent(session.id)}/forward`, {
-                method: "POST",
-                body: "{}",
-              }).then((data) => data.session),
+          inputSchema: sessionSchema,
+          handler: ({ args, callerId }) => {
+            const input = decodeSessionArgs(args);
+            return tool(
+              config,
+              input.sessionName,
+              (session, hostUrl) =>
+                request<never>(hostUrl, `/sessions/${encodeURIComponent(session.id)}/forward`, {
+                  method: "POST",
+                  body: "{}",
+                }).then((data) => data.session),
+              callerId,
             );
           },
         },
         {
           name: "reload",
           description: "Reload the current page.",
-          inputSchema: agentSchema,
-          handler: ({ args }) => {
-            const input = decodeAgentArgs(args);
-            return tool(config, input.agentId, (session, hostUrl) =>
-              request<never>(hostUrl, `/sessions/${encodeURIComponent(session.id)}/reload`, {
-                method: "POST",
-                body: "{}",
-              }).then((data) => data.session),
+          inputSchema: sessionSchema,
+          handler: ({ args, callerId }) => {
+            const input = decodeSessionArgs(args);
+            return tool(
+              config,
+              input.sessionName,
+              (session, hostUrl) =>
+                request<never>(hostUrl, `/sessions/${encodeURIComponent(session.id)}/reload`, {
+                  method: "POST",
+                  body: "{}",
+                }).then((data) => data.session),
+              callerId,
             );
           },
         },
@@ -915,16 +1051,20 @@ new Promise((resolve, reject) => {
           name: "getText",
           description: "Get text content for a selector or @e ref.",
           inputSchema: selectorSchema,
-          handler: ({ args }) => {
+          handler: ({ args, callerId }) => {
             const input = decodeSelectorArgs(args);
-            return tool(config, input.agentId, (session) =>
-              evaluateInSession(
-                session,
-                elementScript(
-                  input.selector,
-                  "return element.innerText ?? element.textContent ?? '';",
+            return tool(
+              config,
+              input.sessionName,
+              (session) =>
+                evaluateInSession(
+                  session,
+                  elementScript(
+                    input.selector,
+                    "return element.innerText ?? element.textContent ?? '';",
+                  ),
                 ),
-              ),
+              callerId,
             );
           },
         },
@@ -932,13 +1072,17 @@ new Promise((resolve, reject) => {
           name: "getHtml",
           description: "Get inner HTML for a selector or @e ref.",
           inputSchema: selectorSchema,
-          handler: ({ args }) => {
+          handler: ({ args, callerId }) => {
             const input = decodeSelectorArgs(args);
-            return tool(config, input.agentId, (session) =>
-              evaluateInSession(
-                session,
-                elementScript(input.selector, "return element.innerHTML;"),
-              ),
+            return tool(
+              config,
+              input.sessionName,
+              (session) =>
+                evaluateInSession(
+                  session,
+                  elementScript(input.selector, "return element.innerHTML;"),
+                ),
+              callerId,
             );
           },
         },
@@ -946,13 +1090,20 @@ new Promise((resolve, reject) => {
           name: "getValue",
           description: "Get the value for an input-like selector or @e ref.",
           inputSchema: selectorSchema,
-          handler: ({ args }) => {
+          handler: ({ args, callerId }) => {
             const input = decodeSelectorArgs(args);
-            return tool(config, input.agentId, (session) =>
-              evaluateInSession(
-                session,
-                elementScript(input.selector, 'return "value" in element ? element.value : null;'),
-              ),
+            return tool(
+              config,
+              input.sessionName,
+              (session) =>
+                evaluateInSession(
+                  session,
+                  elementScript(
+                    input.selector,
+                    'return "value" in element ? element.value : null;',
+                  ),
+                ),
+              callerId,
             );
           },
         },
@@ -960,38 +1111,48 @@ new Promise((resolve, reject) => {
           name: "getAttribute",
           description: "Get an attribute from a selector or @e ref.",
           inputSchema: attributeSchema,
-          handler: ({ args }) => {
+          handler: ({ args, callerId }) => {
             const input = decodeAttributeArgs(args);
-            return tool(config, input.agentId, (session) =>
-              evaluateInSession(
-                session,
-                elementScript(
-                  input.selector,
-                  `return element.getAttribute(${JSON.stringify(input.name)});`,
+            return tool(
+              config,
+              input.sessionName,
+              (session) =>
+                evaluateInSession(
+                  session,
+                  elementScript(
+                    input.selector,
+                    `return element.getAttribute(${JSON.stringify(input.name)});`,
+                  ),
                 ),
-              ),
+              callerId,
             );
           },
         },
         {
           name: "getTitle",
           description: "Get the current page title.",
-          inputSchema: agentSchema,
-          handler: ({ args }) => {
-            const input = decodeAgentArgs(args);
-            return tool(config, input.agentId, (session) =>
-              evaluateInSession(session, "document.title"),
+          inputSchema: sessionSchema,
+          handler: ({ args, callerId }) => {
+            const input = decodeSessionArgs(args);
+            return tool(
+              config,
+              input.sessionName,
+              (session) => evaluateInSession(session, "document.title"),
+              callerId,
             );
           },
         },
         {
           name: "getUrl",
           description: "Get the current page URL.",
-          inputSchema: agentSchema,
-          handler: ({ args }) => {
-            const input = decodeAgentArgs(args);
-            return tool(config, input.agentId, (session) =>
-              evaluateInSession(session, "location.href"),
+          inputSchema: sessionSchema,
+          handler: ({ args, callerId }) => {
+            const input = decodeSessionArgs(args);
+            return tool(
+              config,
+              input.sessionName,
+              (session) => evaluateInSession(session, "location.href"),
+              callerId,
             );
           },
         },
@@ -999,13 +1160,17 @@ new Promise((resolve, reject) => {
           name: "count",
           description: "Count elements matching a CSS selector.",
           inputSchema: selectorSchema,
-          handler: ({ args }) => {
+          handler: ({ args, callerId }) => {
             const input = decodeSelectorArgs(args);
-            return tool(config, input.agentId, (session) =>
-              evaluateInSession(
-                session,
-                `document.querySelectorAll(${JSON.stringify(input.selector)}).length`,
-              ),
+            return tool(
+              config,
+              input.sessionName,
+              (session) =>
+                evaluateInSession(
+                  session,
+                  `document.querySelectorAll(${JSON.stringify(input.selector)}).length`,
+                ),
+              callerId,
             );
           },
         },
@@ -1013,28 +1178,37 @@ new Promise((resolve, reject) => {
           name: "getBox",
           description: "Get the bounding box for a selector or @e ref.",
           inputSchema: selectorSchema,
-          handler: ({ args }) => {
+          handler: ({ args, callerId }) => {
             const input = decodeSelectorArgs(args);
-            return tool(config, input.agentId, (session) => getBox(session, input.selector));
+            return tool(
+              config,
+              input.sessionName,
+              (session) => getBox(session, input.selector),
+              callerId,
+            );
           },
         },
         {
           name: "getStyles",
           description: "Get computed styles for a selector or @e ref.",
           inputSchema: selectorSchema,
-          handler: ({ args }) => {
+          handler: ({ args, callerId }) => {
             const input = decodeSelectorArgs(args);
-            return tool(config, input.agentId, (session) =>
-              evaluateInSession(
-                session,
-                elementScript(
-                  input.selector,
-                  `
+            return tool(
+              config,
+              input.sessionName,
+              (session) =>
+                evaluateInSession(
+                  session,
+                  elementScript(
+                    input.selector,
+                    `
   const style = getComputedStyle(element);
   return Object.fromEntries([...style].map((name) => [name, style.getPropertyValue(name)]));
 `,
+                  ),
                 ),
-              ),
+              callerId,
             );
           },
         },
@@ -1042,20 +1216,24 @@ new Promise((resolve, reject) => {
           name: "isVisible",
           description: "Check whether a selector or @e ref is visible.",
           inputSchema: selectorSchema,
-          handler: ({ args }) => {
+          handler: ({ args, callerId }) => {
             const input = decodeSelectorArgs(args);
-            return tool(config, input.agentId, (session) =>
-              evaluateInSession(
-                session,
-                elementScript(
-                  input.selector,
-                  `
+            return tool(
+              config,
+              input.sessionName,
+              (session) =>
+                evaluateInSession(
+                  session,
+                  elementScript(
+                    input.selector,
+                    `
   const style = getComputedStyle(element);
   const rect = element.getBoundingClientRect();
   return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
 `,
+                  ),
                 ),
-              ),
+              callerId,
             );
           },
         },
@@ -1063,16 +1241,20 @@ new Promise((resolve, reject) => {
           name: "isEnabled",
           description: "Check whether a selector or @e ref is enabled.",
           inputSchema: selectorSchema,
-          handler: ({ args }) => {
+          handler: ({ args, callerId }) => {
             const input = decodeSelectorArgs(args);
-            return tool(config, input.agentId, (session) =>
-              evaluateInSession(
-                session,
-                elementScript(
-                  input.selector,
-                  'return !element.disabled && element.getAttribute("aria-disabled") !== "true";',
+            return tool(
+              config,
+              input.sessionName,
+              (session) =>
+                evaluateInSession(
+                  session,
+                  elementScript(
+                    input.selector,
+                    'return !element.disabled && element.getAttribute("aria-disabled") !== "true";',
+                  ),
                 ),
-              ),
+              callerId,
             );
           },
         },
@@ -1080,16 +1262,20 @@ new Promise((resolve, reject) => {
           name: "isChecked",
           description: "Check whether a checkbox or radio selector is checked.",
           inputSchema: selectorSchema,
-          handler: ({ args }) => {
+          handler: ({ args, callerId }) => {
             const input = decodeSelectorArgs(args);
-            return tool(config, input.agentId, (session) =>
-              evaluateInSession(
-                session,
-                elementScript(
-                  input.selector,
-                  'return "checked" in element ? element.checked : false;',
+            return tool(
+              config,
+              input.sessionName,
+              (session) =>
+                evaluateInSession(
+                  session,
+                  elementScript(
+                    input.selector,
+                    'return "checked" in element ? element.checked : false;',
+                  ),
                 ),
-              ),
+              callerId,
             );
           },
         },
@@ -1098,12 +1284,15 @@ new Promise((resolve, reject) => {
           description:
             "Find an element by role, text, label, placeholder, alt, title, or test id, then optionally act on it.",
           inputSchema: findSchema,
-          handler: ({ args }) => {
+          handler: ({ args, callerId }) => {
             const input = decodeFindArgs(args);
-            return tool(config, input.agentId, async (session) => {
-              const selector = await evaluateInSession<string>(
-                session,
-                `
+            return tool(
+              config,
+              input.sessionName,
+              async (session) => {
+                const selector = await evaluateInSession<string>(
+                  session,
+                  `
 (() => {
   const locator = ${JSON.stringify(input.locator)};
   const value = ${JSON.stringify(input.value)};
@@ -1149,12 +1338,14 @@ new Promise((resolve, reject) => {
   return "@found";
 })()
 `,
-              );
-              if (input.action) {
-                return actionByName(session, selector, input.action, input.text);
-              }
-              return { selector };
-            });
+                );
+                if (input.action) {
+                  return actionByName(session, selector, input.action, input.text);
+                }
+                return { selector };
+              },
+              callerId,
+            );
           },
         },
       ],

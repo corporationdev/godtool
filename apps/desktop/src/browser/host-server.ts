@@ -80,9 +80,7 @@ export const startBrowserHostServer = async (
         const action = parts[2];
 
         if (request.method === "POST" && action === "touch") {
-          const input = await readJson<{ readonly busy?: boolean; readonly pinned?: boolean }>(
-            request,
-          );
+          const input = await readJson<{ readonly pinned?: boolean }>(request);
           const session = await options.manager.touch(sessionId, input);
           sendJson(response, 200, { session });
           return;
@@ -90,20 +88,27 @@ export const startBrowserHostServer = async (
 
         if (request.method === "POST" && action === "show") {
           const input = await readJson<{ readonly bounds: BrowserBounds }>(request);
-          const session = options.manager.show(sessionId, input.bounds);
+          const session = await options.manager.show(sessionId, input.bounds);
           sendJson(response, 200, { session });
           return;
         }
 
         if (request.method === "POST" && action === "bounds") {
           const input = await readJson<{ readonly bounds: BrowserBounds }>(request);
-          const session = options.manager.setBounds(sessionId, input.bounds);
+          const session = await options.manager.setBounds(sessionId, input.bounds);
           sendJson(response, 200, { session });
           return;
         }
 
         if (request.method === "POST" && action === "hide") {
-          const session = options.manager.hide(sessionId);
+          const session = await options.manager.hide(sessionId);
+          sendJson(response, 200, { session });
+          return;
+        }
+
+        if (request.method === "POST" && action === "rename") {
+          const input = await readJson<{ readonly sessionName: string }>(request);
+          const session = await options.manager.rename(sessionId, input.sessionName);
           sendJson(response, 200, { session });
           return;
         }
@@ -138,6 +143,12 @@ export const startBrowserHostServer = async (
           sendJson(response, 200, { ok: true });
           return;
         }
+      }
+
+      if (request.method === "POST" && url.pathname === "/browser-data/clear") {
+        await options.manager.clearBrowserData();
+        sendJson(response, 200, { ok: true });
+        return;
       }
 
       sendError(response, 404, "Not found");

@@ -89,6 +89,7 @@ import { scopeAdapter } from "./scoped-adapter";
 
 export interface InvokeOptions {
   readonly onElicitation?: ElicitationHandler | "accept-all";
+  readonly callerId?: string;
 }
 
 const acceptAllHandler: ElicitationHandler = () =>
@@ -2193,6 +2194,7 @@ export const createExecutor = <
             staticEntry.tool.handler({
               ctx: staticEntry.ctx,
               args,
+              callerId: options?.callerId,
               elicit: buildElicit(toolId, args, options),
             }),
           ).pipe(Effect.withSpan("executor.tool.handler"));

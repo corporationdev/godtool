@@ -203,6 +203,13 @@ const persistImageArtifact = (
   }
 };
 
+const makeExecutionCallerId = (): string => {
+  const crypto = getBuiltinModule<typeof import("node:crypto")>("node:crypto");
+  return typeof crypto?.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+};
+
 const extractContentImages = (
   value: unknown,
 ): {
@@ -559,8 +566,10 @@ export const createExecutionEngine = <
    * caller scope that returned the first pause, such as an HTTP request handler.
    */
   const startPausableExecution = Effect.fn("mcp.execute")(function* (code: string) {
+    const callerId = `execution-${makeExecutionCallerId()}`;
     yield* Effect.annotateCurrentSpan({
       "mcp.execute.mode": "pausable",
+      "mcp.execute.caller_id": callerId,
       "mcp.execute.code_length": code.length,
     });
 
@@ -593,7 +602,7 @@ export const createExecutionEngine = <
         return yield* Deferred.await(responseDeferred);
       });
 
-    const invoker = makeFullInvoker(executor, { onElicitation: elicitationHandler });
+    const invoker = makeFullInvoker(executor, { callerId, onElicitation: elicitationHandler });
     fiber = yield* Effect.forkDaemon(
       codeExecutor.execute(code, invoker).pipe(Effect.withSpan("executor.code.exec")),
     );
@@ -640,11 +649,14 @@ export const createExecutionEngine = <
     code: string,
     options: { readonly onElicitation: ElicitationHandler },
   ) {
+    const callerId = `execution-${makeExecutionCallerId()}`;
     yield* Effect.annotateCurrentSpan({
       "mcp.execute.mode": "inline",
+      "mcp.execute.caller_id": callerId,
       "mcp.execute.code_length": code.length,
     });
     const invoker = makeFullInvoker(executor, {
+      callerId,
       onElicitation: options.onElicitation,
     });
     return yield* codeExecutor

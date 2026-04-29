@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     setBounds: (sessionId: string, bounds: unknown) =>
       ipcRenderer.invoke("browser-sessions:set-bounds", sessionId, bounds),
     hide: (sessionId: string) => ipcRenderer.invoke("browser-sessions:hide", sessionId),
+    rename: (sessionId: string, sessionName: string) =>
+      ipcRenderer.invoke("browser-sessions:rename", sessionId, sessionName),
     navigate: (sessionId: string, url: string) =>
       ipcRenderer.invoke("browser-sessions:navigate", sessionId, url),
     back: (sessionId: string) => ipcRenderer.invoke("browser-sessions:back", sessionId),
@@ -20,6 +22,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     touch: (sessionId: string, input: unknown) =>
       ipcRenderer.invoke("browser-sessions:touch", sessionId, input),
     close: (sessionId: string) => ipcRenderer.invoke("browser-sessions:close", sessionId),
+    clearBrowserData: () => ipcRenderer.invoke("browser-data:clear"),
     onChanged: (listener: (sessions: unknown) => void) => {
       const wrapped = (_event: Electron.IpcRendererEvent, sessions: unknown) => {
         listener(sessions);

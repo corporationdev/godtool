@@ -37,6 +37,7 @@ const COMPUTER_USE_HOST_PORT = Number(process.env.GODTOOL_COMPUTER_USE_HOST_PORT
 const SERVER_STARTUP_TIMEOUT_MS = 30_000;
 const SETTINGS_DIR = join(homedir(), ".godtool");
 const SETTINGS_PATH = join(SETTINGS_DIR, "desktop-settings.json");
+const BROWSER_SESSIONS_PATH = join(SETTINGS_DIR, "browser-sessions.json");
 const DEFAULT_WORKSPACE_DIR = join(SETTINGS_DIR, "workspace");
 
 const CLI_BIN_DIR = join(SETTINGS_DIR, "bin");
@@ -453,6 +454,7 @@ const startBrowserHost = async (): Promise<void> => {
     maxSessions: Number.isFinite(BROWSER_MAX_SESSIONS) ? BROWSER_MAX_SESSIONS : 5,
     debuggingPort: Number.isFinite(BROWSER_DEBUGGING_PORT) ? BROWSER_DEBUGGING_PORT : 9333,
     hiddenWindow: browserHiddenWindow,
+    metadataPath: BROWSER_SESSIONS_PATH,
     getMainWindow: () => mainWindow,
     onSessionsChanged: broadcastBrowserSessionsChanged,
   });
@@ -494,12 +496,13 @@ const startComputerUseHost = async (): Promise<void> => {
     return;
   }
 
-  computerUseProcess = spawn(command, [
-    "--port",
-    String(Number.isFinite(COMPUTER_USE_HOST_PORT) ? COMPUTER_USE_HOST_PORT : 14790),
-  ], {
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  computerUseProcess = spawn(
+    command,
+    ["--port", String(Number.isFinite(COMPUTER_USE_HOST_PORT) ? COMPUTER_USE_HOST_PORT : 14790)],
+    {
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
 
   computerUseProcess.stdout?.on("data", (data: Buffer) => {
     console.log(`[computer-use] ${data.toString().trim()}`);
@@ -571,9 +574,7 @@ const buildMenu = (): void => {
     },
     {
       label: "File",
-      submenu: [
-        { role: "close" as const },
-      ],
+      submenu: [{ role: "close" as const }],
     },
     { role: "editMenu" },
     {
@@ -622,23 +623,34 @@ const setupIPC = (): void => {
     return true;
   });
 
-  ipcMain.handle("browser-sessions:show", (_event, sessionId: string, bounds: BrowserBounds) => {
-    if (!browserSessionManager) throw new Error("Browser host is not running");
-    return browserSessionManager.show(sessionId, bounds);
-  });
+  ipcMain.handle(
+    "browser-sessions:show",
+    async (_event, sessionId: string, bounds: BrowserBounds) => {
+      if (!browserSessionManager) throw new Error("Browser host is not running");
+      return browserSessionManager.show(sessionId, bounds);
+    },
+  );
 
   ipcMain.handle(
     "browser-sessions:set-bounds",
-    (_event, sessionId: string, bounds: BrowserBounds) => {
+    async (_event, sessionId: string, bounds: BrowserBounds) => {
       if (!browserSessionManager) throw new Error("Browser host is not running");
       return browserSessionManager.setBounds(sessionId, bounds);
     },
   );
 
-  ipcMain.handle("browser-sessions:hide", (_event, sessionId: string) => {
+  ipcMain.handle("browser-sessions:hide", async (_event, sessionId: string) => {
     if (!browserSessionManager) throw new Error("Browser host is not running");
     return browserSessionManager.hide(sessionId);
   });
+
+  ipcMain.handle(
+    "browser-sessions:rename",
+    async (_event, sessionId: string, sessionName: string) => {
+      if (!browserSessionManager) throw new Error("Browser host is not running");
+      return browserSessionManager.rename(sessionId, sessionName);
+    },
+  );
 
   ipcMain.handle("browser-sessions:navigate", async (_event, sessionId: string, url: string) => {
     if (!browserSessionManager) throw new Error("Browser host is not running");
@@ -668,6 +680,12 @@ const setupIPC = (): void => {
   ipcMain.handle("browser-sessions:close", (_event, sessionId: string) => {
     if (!browserSessionManager) throw new Error("Browser host is not running");
     browserSessionManager.close(sessionId);
+    return true;
+  });
+
+  ipcMain.handle("browser-data:clear", async () => {
+    if (!browserSessionManager) throw new Error("Browser host is not running");
+    await browserSessionManager.clearBrowserData();
     return true;
   });
 };

@@ -2,13 +2,12 @@
 
 interface BrowserSessionSnapshot {
   readonly id: string;
-  readonly agentId: string;
+  readonly sessionName: string;
   readonly url: string;
   readonly title: string;
   readonly canGoBack: boolean;
   readonly canGoForward: boolean;
   readonly isLoading: boolean;
-  readonly busy: boolean;
   readonly pinned: boolean;
   readonly visible: boolean;
   readonly createdAt: number;
@@ -31,9 +30,9 @@ interface Window {
     readonly browsers?: {
       readonly list: () => Promise<readonly BrowserSessionSnapshot[]>;
       readonly ensure: (input: {
-        readonly agentId: string;
+        readonly callerId?: string;
+        readonly sessionName?: string;
         readonly url?: string;
-        readonly busy?: boolean;
         readonly pinned?: boolean;
       }) => Promise<BrowserSessionSnapshot>;
       readonly activateViewport: () => Promise<boolean>;
@@ -44,15 +43,17 @@ interface Window {
         bounds: BrowserBounds,
       ) => Promise<BrowserSessionSnapshot>;
       readonly hide: (sessionId: string) => Promise<BrowserSessionSnapshot>;
+      readonly rename: (sessionId: string, sessionName: string) => Promise<BrowserSessionSnapshot>;
       readonly navigate: (sessionId: string, url: string) => Promise<BrowserSessionSnapshot>;
       readonly back: (sessionId: string) => Promise<BrowserSessionSnapshot>;
       readonly forward: (sessionId: string) => Promise<BrowserSessionSnapshot>;
       readonly reload: (sessionId: string) => Promise<BrowserSessionSnapshot>;
       readonly touch: (
         sessionId: string,
-        input: { readonly busy?: boolean; readonly pinned?: boolean },
+        input: { readonly pinned?: boolean },
       ) => Promise<BrowserSessionSnapshot>;
       readonly close: (sessionId: string) => Promise<boolean>;
+      readonly clearBrowserData: () => Promise<boolean>;
       readonly onChanged: (
         listener: (sessions: readonly BrowserSessionSnapshot[]) => void,
       ) => () => void;

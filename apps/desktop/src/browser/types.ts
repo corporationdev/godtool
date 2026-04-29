@@ -1,12 +1,11 @@
 export interface BrowserSessionSnapshot {
   readonly id: string;
-  readonly agentId: string;
+  readonly sessionName: string;
   readonly url: string;
   readonly title: string;
   readonly canGoBack: boolean;
   readonly canGoForward: boolean;
   readonly isLoading: boolean;
-  readonly busy: boolean;
   readonly pinned: boolean;
   readonly visible: boolean;
   readonly createdAt: number;
@@ -24,8 +23,8 @@ export interface BrowserBounds {
 }
 
 export interface EnsureBrowserSessionInput {
-  readonly agentId: string;
+  readonly callerId?: string;
+  readonly sessionName?: string;
   readonly url?: string;
-  readonly busy?: boolean;
   readonly pinned?: boolean;
 }

@@ -18,9 +18,10 @@ describe("browserPlugin", () => {
     expect(names).toContain("click");
     expect(names).toContain("snapshot");
     expect(names).toContain("getUrl");
+    expect(names).toContain("listSessions");
+    expect(names).toContain("archiveSession");
     expect(names).not.toContain("ensureSession");
     expect(names).not.toContain("touchSession");
-    expect(names).not.toContain("listSessions");
     expect(names).not.toContain("runAgentBrowser");
 
     await executor.close();
@@ -34,6 +35,47 @@ describe("browserPlugin", () => {
 
     expect(screenshot?.description).toContain("Direct SDK calls return base64 data");
     expect(screenshot?.description).toContain("executor MCP emits inline image content");
+
+    await executor.close();
+  });
+
+  it("uses optional sessionName instead of required agentId", async () => {
+    const executor = await createExecutor({ plugins: [browserPlugin()] as const });
+
+    const tools = await executor.tools.list();
+    const open = tools.find((tool) => tool.id === "browser.open");
+    const schema = open?.inputSchema as {
+      readonly required?: readonly string[];
+      readonly properties?: Record<string, unknown>;
+    };
+
+    expect(schema.required).toEqual(["url"]);
+    expect(schema.properties).toHaveProperty("sessionName");
+    expect(schema.properties).not.toHaveProperty("agentId");
+
+    await executor.close();
+  });
+
+  it("describes sessionName as create-or-reuse and default-switching", async () => {
+    const executor = await createExecutor({ plugins: [browserPlugin()] as const });
+
+    const tools = await executor.tools.list();
+    const open = tools.find((tool) => tool.id === "browser.open");
+    const listSessions = tools.find((tool) => tool.id === "browser.listSessions");
+    const schema = open?.inputSchema as {
+      readonly properties?: {
+        readonly sessionName?: { readonly description?: string };
+      };
+    };
+
+    expect(open?.description).toContain("Creates the default session when omitted");
+    expect(open?.description).toContain("creates/reuses sessionName when provided");
+    expect(open?.description).toContain("makes it the caller's default");
+    expect(listSessions?.description).toContain("create/reuse and switch their default session");
+    expect(schema.properties?.sessionName?.description).toContain("If it does not exist, it is created");
+    expect(schema.properties?.sessionName?.description).toContain(
+      "makes it the caller's default for later browser calls",
+    );
 
     await executor.close();
   });

@@ -225,6 +225,7 @@ export interface PluginCtx<TStore = unknown> {
 export interface StaticToolHandlerInput<TStore = unknown> {
   readonly ctx: PluginCtx<TStore>;
   readonly args: unknown;
+  readonly callerId?: string;
   /** Suspend the fiber to request user input. The handler passed to
    *  `executor.tools.invoke(..., { onElicitation })` is called. */
   readonly elicit: Elicit;
