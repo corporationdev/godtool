@@ -28,6 +28,7 @@ import { mcpPlugin } from "@executor/plugin-mcp";
 import { googleDiscoveryPlugin } from "@executor/plugin-google-discovery";
 import { graphqlPlugin } from "@executor/plugin-graphql";
 import { browserPlugin } from "@executor/plugin-browser";
+import { computerUsePlugin } from "@executor/plugin-computer-use";
 import { keychainPlugin } from "@executor/plugin-keychain";
 import { fileSecretsPlugin } from "@executor/plugin-file-secrets";
 import { onepasswordPlugin } from "@executor/plugin-onepassword";
@@ -93,6 +94,7 @@ const createLocalPlugins = (configFile: ConfigFileSink) =>
     googleDiscoveryPlugin(),
     graphqlPlugin({ configFile }),
     browserPlugin(),
+    computerUsePlugin(),
     keychainPlugin(),
     fileSecretsPlugin(),
     onepasswordPlugin(),

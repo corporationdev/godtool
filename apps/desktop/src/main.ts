@@ -33,6 +33,7 @@ const DEV_SERVER_URL = process.env.GODTOOL_DEV_URL || "http://127.0.0.1:1355";
 const BROWSER_HOST_PORT = Number(process.env.GODTOOL_BROWSER_HOST_PORT ?? "14789");
 const BROWSER_DEBUGGING_PORT = Number(process.env.GODTOOL_BROWSER_DEBUGGING_PORT ?? "9333");
 const BROWSER_MAX_SESSIONS = Number(process.env.GODTOOL_BROWSER_MAX_SESSIONS ?? "5");
+const COMPUTER_USE_HOST_PORT = Number(process.env.GODTOOL_COMPUTER_USE_HOST_PORT ?? "14790");
 const SERVER_STARTUP_TIMEOUT_MS = 30_000;
 const SETTINGS_DIR = join(homedir(), ".godtool");
 const SETTINGS_PATH = join(SETTINGS_DIR, "desktop-settings.json");
@@ -208,6 +209,7 @@ let currentPort = DEFAULT_PORT;
 let browserHiddenWindow: BrowserWindow | null = null;
 let browserSessionManager: BrowserSessionManager | null = null;
 let browserHostServer: Server | null = null;
+let computerUseProcess: ChildProcess | null = null;
 
 const isDev = !app.isPackaged;
 
@@ -225,6 +227,20 @@ const resolveAgentBrowserPath = (): string => {
       : `agent-browser-${platform}-${arch}`;
   const bundled = join(process.resourcesPath, "agent-browser", name);
   return existsSync(bundled) ? bundled : "agent-browser";
+};
+
+const resolveComputerUsePath = (): string => {
+  if (process.env.GODTOOL_COMPUTER_USE_PATH) return process.env.GODTOOL_COMPUTER_USE_PATH;
+  if (isDev) return resolve(__dirname, "../native/computer-use-mac/computer-use-mac");
+
+  const platform = process.platform === "win32" ? "win32" : process.platform;
+  const arch = process.arch === "arm64" ? "arm64" : "x64";
+  const name =
+    process.platform === "win32"
+      ? `computer-use-${platform}-${arch}.exe`
+      : `computer-use-${platform}-${arch}`;
+  const bundled = join(process.resourcesPath, "computer-use", name);
+  return existsSync(bundled) ? bundled : "computer-use-mac";
 };
 
 /**
@@ -304,6 +320,7 @@ const startServer = async (scopePath: string, port: number): Promise<void> => {
       GODTOOL_SCOPE_DIR: scopePath,
       GODTOOL_BROWSER_HOST_URL: `http://127.0.0.1:${BROWSER_HOST_PORT}`,
       GODTOOL_AGENT_BROWSER_PATH: resolveAgentBrowserPath(),
+      GODTOOL_COMPUTER_USE_HOST_URL: `http://127.0.0.1:${COMPUTER_USE_HOST_PORT}`,
     },
   });
 
@@ -462,6 +479,47 @@ const stopBrowserHost = (): void => {
     browserHiddenWindow.close();
   }
   browserHiddenWindow = null;
+};
+
+const startComputerUseHost = async (): Promise<void> => {
+  if (computerUseProcess) return;
+  if (process.platform !== "darwin") {
+    console.warn("[computer-use] macOS host is only available on darwin");
+    return;
+  }
+
+  const command = resolveComputerUsePath();
+  if (!existsSync(command)) {
+    console.warn(`[computer-use] host binary not found at ${command}`);
+    return;
+  }
+
+  computerUseProcess = spawn(command, [
+    "--port",
+    String(Number.isFinite(COMPUTER_USE_HOST_PORT) ? COMPUTER_USE_HOST_PORT : 14790),
+  ], {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  computerUseProcess.stdout?.on("data", (data: Buffer) => {
+    console.log(`[computer-use] ${data.toString().trim()}`);
+  });
+
+  computerUseProcess.stderr?.on("data", (data: Buffer) => {
+    console.error(`[computer-use] ${data.toString().trim()}`);
+  });
+
+  computerUseProcess.on("exit", (code) => {
+    console.log(`[computer-use] exited with code ${code}`);
+    computerUseProcess = null;
+  });
+};
+
+const stopComputerUseHost = (): void => {
+  if (computerUseProcess) {
+    computerUseProcess.kill("SIGTERM");
+    computerUseProcess = null;
+  }
 };
 
 const loadScope = async (scopePath: string): Promise<void> => {
@@ -780,6 +838,7 @@ app.whenReady().then(async () => {
 
   mainWindow = createWindow();
   await startBrowserHost();
+  await startComputerUseHost();
 
   mkdirSync(DEFAULT_WORKSPACE_DIR, { recursive: true });
   await loadScope(DEFAULT_WORKSPACE_DIR);
@@ -787,6 +846,7 @@ app.whenReady().then(async () => {
 
 app.on("window-all-closed", () => {
   stopBrowserHost();
+  stopComputerUseHost();
   // Synchronously kill the server process before quitting
   if (serverProcess) {
     serverProcess.kill("SIGTERM");
@@ -797,6 +857,7 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   stopBrowserHost();
+  stopComputerUseHost();
   if (serverProcess) {
     serverProcess.kill("SIGTERM");
     serverProcess = null;
@@ -805,6 +866,7 @@ app.on("before-quit", () => {
 
 // Last resort: kill server on exit
 process.on("exit", () => {
+  stopComputerUseHost();
   if (serverProcess) {
     serverProcess.kill("SIGKILL");
     serverProcess = null;

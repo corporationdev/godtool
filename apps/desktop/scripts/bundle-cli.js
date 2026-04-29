@@ -52,6 +52,22 @@ const agentBrowserBinaryName =
   process.platform === "win32"
     ? `agent-browser-${agentBrowserPlatform}-${arch}.exe`
     : `agent-browser-${agentBrowserPlatform}-${arch}`;
+const computerUseBinaryName =
+  process.platform === "win32"
+    ? `computer-use-${agentBrowserPlatform}-${arch}.exe`
+    : `computer-use-${agentBrowserPlatform}-${arch}`;
+const computerUseSigningIdentifier = "com.executor.computer-use-mac";
+
+const signComputerUseBinary = (binaryPath) => {
+  const result = spawnSync(
+    "codesign",
+    ["--force", "--sign", "-", "--identifier", computerUseSigningIdentifier, binaryPath],
+    { stdio: "inherit" },
+  );
+  if (result.status !== 0) {
+    console.warn("computer-use mac sidecar signing failed; permissions may not persist across rebuilds");
+  }
+};
 
 if (!existsSync(join(targetDir, binaryName))) {
   console.error(`Binary not found at ${join(targetDir, binaryName)}`);
@@ -90,6 +106,43 @@ if (agentBrowserResolution.status === 0) {
   console.warn(
     "agent-browser is not installed; packaged browser tools will need an external binary",
   );
+}
+
+if (process.platform === "darwin") {
+  const computerUseSource = join(root, "native", "computer-use-mac", "main.swift");
+  const computerUseDevBinary = join(root, "native", "computer-use-mac", "computer-use-mac");
+  const targetComputerUseDir = join(resourcesDir, "computer-use");
+  const computerUseResult = spawnSync(
+    "swiftc",
+    [
+      computerUseSource,
+      "-o",
+      computerUseDevBinary,
+      "-framework",
+      "AppKit",
+      "-framework",
+      "ApplicationServices",
+      "-framework",
+      "CoreGraphics",
+      "-framework",
+      "Foundation",
+      "-framework",
+      "Network",
+      "-framework",
+      "ScreenCaptureKit",
+    ],
+    { stdio: "inherit" },
+  );
+
+  if (computerUseResult.status === 0) {
+    signComputerUseBinary(computerUseDevBinary);
+    mkdirSync(targetComputerUseDir, { recursive: true });
+    cpSync(computerUseDevBinary, join(targetComputerUseDir, computerUseBinaryName));
+    chmodSync(join(targetComputerUseDir, computerUseBinaryName), 0o755);
+    console.log(`computer-use binary copied to ${targetComputerUseDir}`);
+  } else {
+    console.warn("computer-use mac sidecar failed to build; packaged computer use tools will be unavailable");
+  }
 }
 
 console.log(`Sidecar binary copied to ${resourcesDir}`);

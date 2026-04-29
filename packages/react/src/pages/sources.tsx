@@ -29,6 +29,7 @@ const KIND_TO_PLUGIN_KEY: Record<string, string> = {
   mcp: "mcp",
   graphql: "graphql",
   googleDiscovery: "googleDiscovery",
+  computer_use: "computer_use",
 };
 
 // ---------------------------------------------------------------------------

@@ -26,6 +26,7 @@
     "@executor/execution": "workspace:*",
     "@executor/host-mcp": "workspace:*",
     "@executor/plugin-browser": "workspace:*",
+    "@executor/plugin-computer-use": "workspace:*",
     "@executor/plugin-file-secrets": "workspace:*",
     "@executor/plugin-google-discovery": "workspace:*",
     "@executor/plugin-graphql": "workspace:*",

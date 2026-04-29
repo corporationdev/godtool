@@ -7,8 +7,10 @@ import { createMcpSourcePlugin } from "@executor/plugin-mcp/react";
 const mcpSourcePlugin = createMcpSourcePlugin({ allowStdio: true });
 import { googleDiscoverySourcePlugin } from "@executor/plugin-google-discovery/react";
 import { graphqlSourcePlugin } from "@executor/plugin-graphql/react";
+import { computerUseSourcePlugin } from "@executor/plugin-computer-use/react";
 
 const sourcePlugins = [
+  computerUseSourcePlugin,
   openApiSourcePlugin,
   mcpSourcePlugin,
   googleDiscoverySourcePlugin,

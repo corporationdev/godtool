@@ -4,7 +4,6 @@ import { PlusIcon } from "lucide-react";
 import { Button } from "../components/button";
 import { Badge } from "../components/badge";
 import { Input } from "../components/input";
-import { Popover, PopoverContent, PopoverTrigger } from "../components/popover";
 
 interface BrowserSessionSnapshot {
   readonly id: string;
@@ -194,16 +193,23 @@ const boundsForElement = (element: HTMLElement): BrowserBounds => {
   };
 };
 
+const nextBrowserAgentId = (sessions: readonly BrowserSessionSnapshot[]): string => {
+  const existing = new Set(sessions.map((session) => session.agentId));
+  for (let index = sessions.length + 1; ; index += 1) {
+    const candidate = `browser-${index}`;
+    if (!existing.has(candidate)) return candidate;
+  }
+};
+
 export function BrowsersPage() {
   const api = useMemo(getBrowserApi, []);
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const addressInputRef = useRef<HTMLInputElement | null>(null);
   const [sessions, setSessions] = useState<readonly BrowserSessionSnapshot[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [agentId, setAgentId] = useState("agent-main");
   const [address, setAddress] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [createOpen, setCreateOpen] = useState(false);
 
   const selected = sessions.find((session) => session.id === selectedId) ?? null;
 
@@ -233,42 +239,48 @@ export function BrowsersPage() {
     [api, refresh],
   );
 
-  const createSession = useCallback(async () => {
-    setLoading(true);
+  const startNewBrowser = useCallback(async () => {
+    const previousSelectedId = selectedId;
+    setSelectedId(null);
+    setAddress("");
+    if (previousSelectedId) {
+      try {
+        await api.hide(previousSelectedId);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : String(cause));
+      }
+    }
+    requestAnimationFrame(() => addressInputRef.current?.focus());
+  }, [api, selectedId]);
+
+  const navigateSelected = useCallback(async () => {
+    const target = address.trim();
+    if (!target) return;
     try {
-      const session = await api.ensure({ agentId, busy: true });
-      setSelectedId(session.id);
+      setLoading(true);
+      const sessionId =
+        selectedId ??
+        (
+          await api.ensure({
+            agentId: nextBrowserAgentId(sessions),
+            busy: true,
+          })
+        ).id;
+      if (!selectedId) {
+        setSelectedId(sessionId);
+        await refresh();
+        await showSession(sessionId);
+      }
+      const session = await api.navigate(sessionId, target);
+      setAddress(session.url);
       await refresh();
-      await showSession(session.id);
-      setCreateOpen(false);
       setError(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setLoading(false);
     }
-  }, [agentId, api, refresh, showSession]);
-
-  const closeSession = useCallback(
-    async (sessionId: string) => {
-      await api.close(sessionId);
-      if (selectedId === sessionId) setSelectedId(null);
-      await refresh();
-    },
-    [api, refresh, selectedId],
-  );
-
-  const navigateSelected = useCallback(async () => {
-    if (!selectedId || !address.trim()) return;
-    try {
-      const session = await api.navigate(selectedId, address);
-      setAddress(session.url);
-      await refresh();
-      setError(null);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    }
-  }, [address, api, refresh, selectedId]);
+  }, [address, api, refresh, selectedId, sessions, showSession]);
 
   const runNavigationAction = useCallback(
     async (action: "back" | "forward" | "reload") => {
@@ -335,44 +347,14 @@ export function BrowsersPage() {
               <h1 className="truncate text-sm font-semibold tracking-normal">Browsers</h1>
               <p className="shrink-0 text-xs text-muted-foreground">{sessions.length} active</p>
             </div>
-            <Popover open={createOpen} onOpenChange={setCreateOpen}>
-              <PopoverTrigger asChild>
-                <Button type="button" size="icon-xs" aria-label="New browser">
-                  <PlusIcon aria-hidden className="size-3.5" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="w-72 p-3">
-                <form
-                  className="space-y-3"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    void createSession();
-                  }}
-                >
-                  <div className="space-y-1.5">
-                    <label htmlFor="browser-agent-id" className="text-sm font-medium">
-                      New browser
-                    </label>
-                    <Input
-                      id="browser-agent-id"
-                      value={agentId}
-                      onChange={(event) => setAgentId(event.target.value)}
-                      className="h-8"
-                      placeholder="Agent id"
-                    />
-                  </div>
-                  <Button
-                    type="submit"
-                    size="sm"
-                    className="w-full"
-                    disabled={loading || !agentId.trim()}
-                  >
-                    Create
-                  </Button>
-                  {error && <p className="text-xs text-destructive">{error}</p>}
-                </form>
-              </PopoverContent>
-            </Popover>
+            <button
+              type="button"
+              className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50"
+              aria-label="New browser"
+              onClick={() => void startNewBrowser()}
+            >
+              <PlusIcon aria-hidden className="size-4" />
+            </button>
           </div>
           {sessions.length === 0 ? (
             <div className="p-5 text-sm text-muted-foreground">No browser sessions yet.</div>
@@ -488,9 +470,9 @@ export function BrowsersPage() {
             >
               <div className="relative min-w-0 flex-1">
                 <Input
+                  ref={addressInputRef}
                   value={address}
                   onChange={(event) => setAddress(event.target.value)}
-                  disabled={!selected}
                   className="h-8 rounded-md border-border/70 bg-background pr-8 font-mono text-xs"
                   placeholder="Search or enter address"
                 />
@@ -500,23 +482,22 @@ export function BrowsersPage() {
               </div>
               <Button
                 type="submit"
-                size="sm"
-                variant="outline"
-                disabled={!selected || !address.trim()}
+                size="icon-sm"
+                aria-label="Go"
+                disabled={!address.trim() || loading}
               >
-                Go
+                <svg viewBox="0 0 16 16" className="size-3.5">
+                  <path
+                    d="M6 3l5 5-5 5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.7"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
               </Button>
             </form>
-            {selected && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => void closeSession(selected.id)}
-              >
-                Close
-              </Button>
-            )}
           </div>
           <div className="min-h-0 flex-1">
             <div ref={viewportRef} className="h-full min-h-[360px] overflow-hidden bg-muted/30">

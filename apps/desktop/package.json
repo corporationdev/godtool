@@ -41,7 +41,8 @@
         "filter": [
           "executor*",
           "emscripten-module.wasm",
-          "agent-browser/**"
+          "agent-browser/**",
+          "computer-use/**"
         ]
       }
     ],

@@ -140,6 +140,7 @@
         "@executor/execution": "workspace:*",
         "@executor/host-mcp": "workspace:*",
         "@executor/plugin-browser": "workspace:*",
+        "@executor/plugin-computer-use": "workspace:*",
         "@executor/plugin-file-secrets": "workspace:*",
         "@executor/plugin-google-discovery": "workspace:*",
         "@executor/plugin-graphql": "workspace:*",
@@ -526,6 +527,43 @@
         "tsup": "catalog:",
         "vitest": "catalog:",
       },
+    },
+    "packages/plugins/computer-use": {
+      "name": "@executor/plugin-computer-use",
+      "version": "0.0.1",
+      "dependencies": {
+        "@effect/platform": "catalog:",
+        "@executor/api": "workspace:*",
+        "@executor/sdk": "workspace:*",
+        "effect": "catalog:",
+      },
+      "devDependencies": {
+        "@effect-atom/atom-react": "^0.5.0",
+        "@executor/react": "workspace:*",
+        "@types/node": "catalog:",
+        "@types/react": "catalog:",
+        "bun-types": "catalog:",
+        "lucide-react": "^1.7.0",
+        "react": "catalog:",
+        "tsup": "catalog:",
+        "vitest": "catalog:",
+      },
+      "peerDependencies": {
+        "@effect-atom/atom-react": "^0.5.0",
+        "@executor/api": "workspace:*",
+        "@executor/react": "workspace:*",
+        "@tanstack/react-router": "catalog:",
+        "lucide-react": "^1.7.0",
+        "react": "catalog:",
+      },
+      "optionalPeers": [
+        "@effect-atom/atom-react",
+        "@executor/api",
+        "@executor/react",
+        "@tanstack/react-router",
+        "lucide-react",
+        "react",
+      ],
     },
     "packages/plugins/file-secrets": {
       "name": "@executor/plugin-file-secrets",
@@ -1278,6 +1316,8 @@
     "@executor/marketing": ["@executor/marketing@workspace:apps/marketing"],
 
     "@executor/plugin-browser": ["@executor/plugin-browser@workspace:packages/plugins/browser"],
+
+    "@executor/plugin-computer-use": ["@executor/plugin-computer-use@workspace:packages/plugins/computer-use"],
 
     "@executor/plugin-file-secrets": ["@executor/plugin-file-secrets@workspace:packages/plugins/file-secrets"],
 
