@@ -115,6 +115,58 @@ describe("MCP host server — client with elicitation", () => {
     });
   });
 
+  it("execute tool returns extracted images as MCP image content", async () => {
+    const imageData = "iVBORw0KGgo=";
+    const engine = makeStubEngine({
+      execute: () =>
+        Effect.succeed({
+          result: {
+            text: "Computer Use state",
+            screenshot: { data: imageData, mimeType: "image/png" },
+          },
+        }),
+    });
+
+    await withClient(engine, ELICITATION_CAPS, async (client) => {
+      const result = await client.callTool({
+        name: "execute",
+        arguments: { code: "screenshot" },
+      });
+
+      expect(result.content).toEqual([
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              text: "Computer Use state",
+              screenshot: {
+                mimeType: "image/png",
+                byteLength: 8,
+                contentIndex: 1,
+              },
+            },
+            null,
+            2,
+          ),
+        },
+        { type: "image", mimeType: "image/png", data: imageData },
+      ]);
+      expect(result.structuredContent).toEqual({
+        status: "completed",
+        result: {
+          text: "Computer Use state",
+          screenshot: {
+            mimeType: "image/png",
+            byteLength: 8,
+            contentIndex: 1,
+          },
+        },
+        logs: [],
+      });
+      expect(JSON.stringify(result.structuredContent)).not.toContain(imageData);
+    });
+  });
+
   it("execute tool resolves failed engine effects as MCP error results", async () => {
     const engine = makeStubEngine({
       execute: () => Effect.fail(new TestExecutionError({ message: "Unexpected token ':'" })),

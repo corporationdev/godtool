@@ -834,7 +834,8 @@ new Promise((resolve, reject) => {
         },
         {
           name: "screenshot",
-          description: "Capture a PNG screenshot. Returns base64 data unless path is provided.",
+          description:
+            "Capture a PNG screenshot. Direct SDK calls return base64 data unless path is provided; executor MCP emits inline image content when no path is provided.",
           inputSchema: screenshotSchema,
           handler: ({ args }) => {
             const input = decodeScreenshotArgs(args);

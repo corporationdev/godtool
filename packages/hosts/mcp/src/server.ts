@@ -208,13 +208,23 @@ const makeMcpElicitationHandler =
 // ---------------------------------------------------------------------------
 
 type McpToolResult = {
-  content: Array<{ type: "text"; text: string }>;
+  content: Array<
+    | { type: "text"; text: string }
+    | { type: "image"; mimeType: string; data: string }
+  >;
   structuredContent?: Record<string, unknown>;
   isError?: boolean;
 };
 
 const toMcpResult = (formatted: ReturnType<typeof formatExecuteResult>): McpToolResult => ({
-  content: [{ type: "text", text: formatted.text }],
+  content: [
+    { type: "text", text: formatted.text },
+    ...formatted.contentImages.map((image) => ({
+      type: "image" as const,
+      mimeType: image.mimeType,
+      data: image.data,
+    })),
+  ],
   structuredContent: formatted.structured,
   isError: formatted.isError || undefined,
 });

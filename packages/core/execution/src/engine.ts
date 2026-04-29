@@ -63,18 +63,82 @@ const truncate = (value: string, max: number): string =>
     ? `${value.slice(0, max)}\n... [truncated ${value.length - max} chars]`
     : value;
 
+export type FormattedContentImage = {
+  readonly mimeType: string;
+  readonly data: string;
+};
+
+const isImageDataObject = (
+  value: Record<string, unknown>,
+): value is { readonly mimeType: string; readonly data: string } =>
+  typeof value.mimeType === "string" &&
+  value.mimeType.startsWith("image/") &&
+  typeof value.data === "string";
+
+const base64ByteLength = (value: string): number => {
+  const base64 = value.includes(",") ? (value.split(",").pop() ?? "") : value;
+  const normalized = base64.replace(/\s/g, "");
+  if (normalized.length === 0) return 0;
+  const padding = normalized.endsWith("==") ? 2 : normalized.endsWith("=") ? 1 : 0;
+  return Math.max(0, Math.floor((normalized.length * 3) / 4) - padding);
+};
+
+const extractContentImages = (
+  value: unknown,
+): {
+  readonly value: unknown;
+  readonly images: readonly FormattedContentImage[];
+} => {
+  const images: FormattedContentImage[] = [];
+  const seen = new WeakSet<object>();
+
+  const walk = (current: unknown): unknown => {
+    if (Array.isArray(current)) {
+      if (seen.has(current)) return "[Circular]";
+      seen.add(current);
+      return current.map(walk);
+    }
+
+    if (typeof current !== "object" || current === null) return current;
+
+    const record = current as Record<string, unknown>;
+    if (isImageDataObject(record)) {
+      const contentIndex = images.length + 1;
+      images.push({ mimeType: record.mimeType, data: record.data });
+      return {
+        mimeType: record.mimeType,
+        byteLength: base64ByteLength(record.data),
+        contentIndex,
+      };
+    }
+
+    if (seen.has(current)) return "[Circular]";
+    seen.add(current);
+
+    const out: Record<string, unknown> = {};
+    for (const [key, nested] of Object.entries(record)) {
+      out[key] = walk(nested);
+    }
+    return out;
+  };
+
+  return { value: walk(value), images };
+};
+
 export const formatExecuteResult = (
   result: ExecuteResult,
 ): {
   text: string;
   structured: Record<string, unknown>;
   isError: boolean;
+  contentImages: readonly FormattedContentImage[];
 } => {
+  const extracted = extractContentImages(result.result);
   const resultText =
-    result.result != null
-      ? typeof result.result === "string"
-        ? result.result
-        : JSON.stringify(result.result, null, 2)
+    extracted.value != null
+      ? typeof extracted.value === "string"
+        ? extracted.value
+        : JSON.stringify(extracted.value, null, 2)
       : null;
 
   const logText = result.logs && result.logs.length > 0 ? result.logs.join("\n") : null;
@@ -85,6 +149,7 @@ export const formatExecuteResult = (
       text: truncate(parts.join("\n"), MAX_PREVIEW_CHARS),
       structured: { status: "error", error: result.error, logs: result.logs ?? [] },
       isError: true,
+      contentImages: [],
     };
   }
 
@@ -94,8 +159,9 @@ export const formatExecuteResult = (
   ];
   return {
     text: parts.join("\n"),
-    structured: { status: "completed", result: result.result ?? null, logs: result.logs ?? [] },
+    structured: { status: "completed", result: extracted.value ?? null, logs: result.logs ?? [] },
     isError: false,
+    contentImages: extracted.images,
   };
 };
 
