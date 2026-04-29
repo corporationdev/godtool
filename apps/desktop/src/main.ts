@@ -5,11 +5,12 @@ import {
   Menu,
   nativeTheme,
   session,
+  shell,
   type MenuItemConstructorOptions,
 } from "electron";
 import { spawn, type ChildProcess } from "node:child_process";
 import type { Server } from "node:http";
-import { join, resolve, basename } from "node:path";
+import { join, resolve, basename, dirname, relative, sep } from "node:path";
 import {
   existsSync,
   readFileSync,
@@ -19,6 +20,7 @@ import {
   chmodSync,
   appendFileSync,
 } from "node:fs";
+import { lstat, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { BrowserSessionManager } from "./browser/session-manager";
 import { startBrowserHostServer } from "./browser/host-server";
@@ -185,6 +187,232 @@ const installCli = (): void => {
 interface Settings {
   windowBounds?: { x: number; y: number; width: number; height: number };
 }
+
+type WorkspaceFileNode = {
+  readonly type: "file" | "directory";
+  readonly name: string;
+  readonly path: string;
+  readonly children?: readonly WorkspaceFileNode[];
+};
+
+type WorkspaceOpenTarget =
+  | "default"
+  | "file-manager"
+  | "cursor"
+  | "zed"
+  | "vscode"
+  | "vscode-insiders"
+  | "vscodium";
+
+type WorkspaceOpenTargetDefinition = {
+  readonly id: WorkspaceOpenTarget;
+  readonly label: string;
+  readonly commands: readonly [string, ...string[]] | null;
+  readonly macAppName?: string;
+};
+
+const WORKSPACE_TREE_EXCLUDED_NAMES = new Set([".DS_Store", ".git", ".hg", ".svn", "node_modules"]);
+
+const WORKSPACE_OPEN_TARGETS: readonly WorkspaceOpenTargetDefinition[] = [
+  { id: "cursor", label: "Cursor", commands: ["cursor"], macAppName: "Cursor" },
+  { id: "zed", label: "Zed", commands: ["zed", "zeditor"], macAppName: "Zed" },
+  { id: "vscode", label: "VS Code", commands: ["code"], macAppName: "Visual Studio Code" },
+  {
+    id: "vscode-insiders",
+    label: "VS Code Insiders",
+    commands: ["code-insiders"],
+    macAppName: "Visual Studio Code - Insiders",
+  },
+  { id: "vscodium", label: "VSCodium", commands: ["codium"], macAppName: "VSCodium" },
+  { id: "file-manager", label: "Finder", commands: null },
+  { id: "default", label: "Default app", commands: null },
+];
+
+const resolveWorkspacePath = (workspaceRelativePath: string): string => {
+  if (workspaceRelativePath.includes("\0")) {
+    throw new Error("Invalid workspace path");
+  }
+
+  const normalizedInput = workspaceRelativePath.replace(/\\/g, "/");
+  if (normalizedInput.startsWith("/") || /^[a-zA-Z]:\//.test(normalizedInput)) {
+    throw new Error("Workspace paths must be relative");
+  }
+
+  const root = resolve(DEFAULT_WORKSPACE_DIR);
+  const resolved = resolve(root, normalizedInput);
+  if (resolved !== root && !resolved.startsWith(`${root}${sep}`)) {
+    throw new Error("Workspace path escapes the workspace root");
+  }
+  return resolved;
+};
+
+const toWorkspaceRelativePath = (absolutePath: string): string =>
+  relative(DEFAULT_WORKSPACE_DIR, absolutePath).split(sep).join("/");
+
+const fileManagerLabel = (): string => {
+  if (process.platform === "darwin") return "Finder";
+  if (process.platform === "win32") return "Explorer";
+  return "Files";
+};
+
+const isCommandAvailable = (command: string): boolean => {
+  const pathValue = process.env.PATH ?? "";
+  if (pathValue.length === 0) return false;
+  return pathValue.split(process.platform === "win32" ? ";" : ":").some((pathEntry) => {
+    const candidate = join(pathEntry, command);
+    return existsSync(candidate);
+  });
+};
+
+const isMacAppAvailable = (appName: string): boolean => {
+  if (process.platform !== "darwin") return false;
+  return [join("/Applications", `${appName}.app`), join(homedir(), "Applications", `${appName}.app`)].some(
+    (appPath) => existsSync(appPath),
+  );
+};
+
+const availableWorkspaceOpenTargets = async (): Promise<
+  readonly { id: WorkspaceOpenTarget; label: string }[]
+> => {
+  const available: { id: WorkspaceOpenTarget; label: string }[] = [];
+  for (const target of WORKSPACE_OPEN_TARGETS) {
+    if (target.id === "default") {
+      available.push(target);
+      continue;
+    }
+    if (target.id === "file-manager") {
+      available.push({ ...target, label: fileManagerLabel() });
+      continue;
+    }
+    const hasCommand = target.commands?.some((command) => isCommandAvailable(command)) ?? false;
+    const hasMacApp = target.macAppName ? isMacAppAvailable(target.macAppName) : false;
+    if (hasCommand || hasMacApp) available.push(target);
+  }
+  return available;
+};
+
+const spawnAndWait = (command: string, args: readonly string[]): Promise<void> =>
+  new Promise((resolveSpawn, reject) => {
+    const proc = spawn(command, [...args], { stdio: "ignore" });
+    proc.once("error", reject);
+    proc.once("exit", (code) => {
+      if (code === 0) resolveSpawn();
+      else reject(new Error(`Failed to run ${command}`));
+    });
+  });
+
+const openWorkspacePath = async (
+  workspaceRelativePath: string,
+  target: WorkspaceOpenTarget,
+): Promise<void> => {
+  const absolutePath = resolveWorkspacePath(workspaceRelativePath);
+
+  if (target === "default") {
+    const error = await shell.openPath(absolutePath);
+    if (error) throw new Error(error);
+    return;
+  }
+
+  if (target === "file-manager") {
+    const stat = await lstat(absolutePath);
+    if (process.platform === "darwin" && !stat.isDirectory()) {
+      shell.showItemInFolder(absolutePath);
+      return;
+    }
+    if (process.platform === "win32") {
+      await spawnAndWait("explorer", [absolutePath]);
+      return;
+    }
+    if (process.platform === "linux") {
+      await spawnAndWait("xdg-open", [absolutePath]);
+      return;
+    }
+    if (stat.isDirectory()) {
+      const error = await shell.openPath(absolutePath);
+      if (error) throw new Error(error);
+    } else {
+      shell.showItemInFolder(absolutePath);
+    }
+    return;
+  }
+
+  const targetDefinition = WORKSPACE_OPEN_TARGETS.find((definition) => definition.id === target);
+  if (!targetDefinition || !targetDefinition.commands) {
+    throw new Error(`Unsupported open target: ${target}`);
+  }
+
+  const command = targetDefinition.commands.find((candidate) => isCommandAvailable(candidate));
+  if (command) {
+    await spawnAndWait(command, [absolutePath]);
+    return;
+  }
+
+  if (process.platform === "darwin" && targetDefinition.macAppName) {
+    await spawnAndWait("open", ["-a", targetDefinition.macAppName, absolutePath]);
+    return;
+  }
+
+  throw new Error(`Editor not found: ${targetDefinition.label}`);
+};
+
+const moveWorkspaceFile = async (
+  sourceWorkspaceRelativePath: string,
+  destinationDirectoryWorkspaceRelativePath: string,
+): Promise<{ path: string }> => {
+  const sourcePath = resolveWorkspacePath(sourceWorkspaceRelativePath);
+  const destinationDirectoryPath = resolveWorkspacePath(destinationDirectoryWorkspaceRelativePath);
+  const sourceStat = await lstat(sourcePath);
+  if (!sourceStat.isFile()) throw new Error("Only files can be moved into folders");
+
+  const destinationDirectoryStat = await lstat(destinationDirectoryPath);
+  if (!destinationDirectoryStat.isDirectory()) {
+    throw new Error("Drop target is not a folder");
+  }
+
+  const destinationPath = join(destinationDirectoryPath, basename(sourcePath));
+  if (sourcePath === destinationPath) {
+    return { path: toWorkspaceRelativePath(sourcePath) };
+  }
+  if (existsSync(destinationPath)) {
+    throw new Error("A file with that name already exists in the folder");
+  }
+
+  await rename(sourcePath, destinationPath);
+  return { path: toWorkspaceRelativePath(destinationPath) };
+};
+
+const readWorkspaceTree = async (dir: string): Promise<readonly WorkspaceFileNode[]> => {
+  const entries = await readdir(dir, { withFileTypes: true });
+  const nodes = await Promise.all(
+    entries
+      .filter((entry) => !WORKSPACE_TREE_EXCLUDED_NAMES.has(entry.name))
+      .map(async (entry): Promise<WorkspaceFileNode | null> => {
+        const fullPath = join(dir, entry.name);
+        if (entry.isSymbolicLink()) return null;
+        if (entry.isDirectory()) {
+          return {
+            type: "directory",
+            name: entry.name,
+            path: toWorkspaceRelativePath(fullPath),
+            children: await readWorkspaceTree(fullPath),
+          };
+        }
+        if (!entry.isFile()) return null;
+        return {
+          type: "file",
+          name: entry.name,
+          path: toWorkspaceRelativePath(fullPath),
+        };
+      }),
+  );
+
+  return nodes
+    .filter((node): node is WorkspaceFileNode => node !== null)
+    .sort((a, b) => {
+      if (a.type !== b.type) return a.type === "directory" ? -1 : 1;
+      return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+    });
+};
 
 const loadSettings = (): Settings => {
   try {
@@ -603,6 +831,83 @@ const buildMenu = (): void => {
 
 const setupIPC = (): void => {
   ipcMain.handle("get-current-scope", () => currentScope);
+
+  ipcMain.handle("workspace-files:list", async () => {
+    mkdirSync(DEFAULT_WORKSPACE_DIR, { recursive: true });
+    return {
+      rootPath: DEFAULT_WORKSPACE_DIR,
+      tree: await readWorkspaceTree(DEFAULT_WORKSPACE_DIR),
+      openTargets: await availableWorkspaceOpenTargets(),
+    };
+  });
+
+  ipcMain.handle("workspace-files:read", async (_event, workspaceRelativePath: string) => {
+    const absolutePath = resolveWorkspacePath(workspaceRelativePath);
+    const stat = await lstat(absolutePath);
+    if (!stat.isFile()) throw new Error("Workspace path is not a file");
+    return {
+      path: toWorkspaceRelativePath(absolutePath),
+      content: await readFile(absolutePath, "utf-8"),
+    };
+  });
+
+  ipcMain.handle(
+    "workspace-files:write",
+    async (_event, workspaceRelativePath: string, content: string) => {
+      const absolutePath = resolveWorkspacePath(workspaceRelativePath);
+      mkdirSync(dirname(absolutePath), { recursive: true });
+      const tempPath = `${absolutePath}.${process.pid}.${Date.now()}.tmp`;
+      await writeFile(tempPath, content, "utf-8");
+      await rename(tempPath, absolutePath);
+      return {
+        path: toWorkspaceRelativePath(absolutePath),
+      };
+    },
+  );
+
+  ipcMain.handle(
+    "workspace-files:create-file",
+    async (_event, workspaceRelativePath: string, content = "") => {
+      const absolutePath = resolveWorkspacePath(workspaceRelativePath);
+      mkdirSync(dirname(absolutePath), { recursive: true });
+      await writeFile(absolutePath, content, { encoding: "utf-8", flag: "wx" });
+      return {
+        path: toWorkspaceRelativePath(absolutePath),
+      };
+    },
+  );
+
+  ipcMain.handle(
+    "workspace-files:create-directory",
+    async (_event, workspaceRelativePath: string) => {
+      const absolutePath = resolveWorkspacePath(workspaceRelativePath);
+      mkdirSync(absolutePath);
+      return {
+        path: toWorkspaceRelativePath(absolutePath),
+      };
+    },
+  );
+
+  ipcMain.handle(
+    "workspace-files:move-file",
+    async (
+      _event,
+      sourceWorkspaceRelativePath: string,
+      destinationDirectoryWorkspaceRelativePath: string,
+    ) => moveWorkspaceFile(sourceWorkspaceRelativePath, destinationDirectoryWorkspaceRelativePath),
+  );
+
+  ipcMain.handle(
+    "workspace-files:open",
+    async (
+      _event,
+      workspaceRelativePath: string,
+      target: WorkspaceOpenTarget,
+    ) => {
+      await openWorkspacePath(workspaceRelativePath, target);
+      return true;
+    },
+  );
 
   ipcMain.handle("browser-sessions:list", () => browserSessionManager?.list() ?? []);
 

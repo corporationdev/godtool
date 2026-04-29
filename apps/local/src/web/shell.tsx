@@ -234,6 +234,7 @@ function SidebarContent(props: {
   const isHome = props.pathname === "/";
   const isSecrets = props.pathname === "/secrets";
   const isBrowsers = props.pathname === "/browsers";
+  const isFiles = props.pathname === "/files";
 
   return (
     <>
@@ -253,6 +254,7 @@ function SidebarContent(props: {
           active={isBrowsers}
           onNavigate={props.onNavigate}
         />
+        <NavItem to="/files" label="Files" active={isFiles} onNavigate={props.onNavigate} />
         <NavItem to="/secrets" label="Secrets" active={isSecrets} onNavigate={props.onNavigate} />
       </nav>
 

@@ -24,9 +24,63 @@ interface BrowserBounds {
   readonly height: number;
 }
 
+interface WorkspaceFileNode {
+  readonly type: "file" | "directory";
+  readonly name: string;
+  readonly path: string;
+  readonly children?: readonly WorkspaceFileNode[];
+}
+
+type WorkspaceOpenTarget =
+  | "default"
+  | "file-manager"
+  | "cursor"
+  | "zed"
+  | "vscode"
+  | "vscode-insiders"
+  | "vscodium";
+
+interface WorkspaceOpenTargetOption {
+  readonly id: WorkspaceOpenTarget;
+  readonly label: string;
+}
+
 interface Window {
   readonly electronAPI?: {
     readonly getCurrentScope: () => Promise<string | null>;
+    readonly files?: {
+      readonly list: () => Promise<{
+        readonly rootPath: string;
+        readonly tree: readonly WorkspaceFileNode[];
+        readonly openTargets: readonly WorkspaceOpenTargetOption[];
+      }>;
+      readonly read: (path: string) => Promise<{
+        readonly path: string;
+        readonly content: string;
+      }>;
+      readonly write: (
+        path: string,
+        content: string,
+      ) => Promise<{
+        readonly path: string;
+      }>;
+      readonly createFile: (
+        path: string,
+        content?: string,
+      ) => Promise<{
+        readonly path: string;
+      }>;
+      readonly createDirectory: (path: string) => Promise<{
+        readonly path: string;
+      }>;
+      readonly moveFile: (
+        sourcePath: string,
+        destinationDirectoryPath: string,
+      ) => Promise<{
+        readonly path: string;
+      }>;
+      readonly open: (path: string, target: WorkspaceOpenTarget) => Promise<boolean>;
+    };
     readonly browsers?: {
       readonly list: () => Promise<readonly BrowserSessionSnapshot[]>;
       readonly ensure: (input: {

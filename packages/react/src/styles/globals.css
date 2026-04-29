@@ -168,3 +168,22 @@
     opacity: 0.25;
   }
 }
+
+.workspace-blocknote.bn-container {
+  background: transparent;
+  color: var(--foreground);
+}
+
+.workspace-blocknote .bn-editor {
+  background: transparent;
+  color: var(--foreground);
+  padding-inline: 0;
+}
+
+.workspace-blocknote .bn-block-content {
+  border-radius: 6px;
+}
+
+.workspace-blocknote .bn-block-content[data-content-type="codeBlock"] {
+  background: var(--muted);
+}

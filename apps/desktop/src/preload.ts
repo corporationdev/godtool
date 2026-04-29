@@ -2,6 +2,29 @@ import { contextBridge, ipcRenderer } from "electron";
 
 contextBridge.exposeInMainWorld("electronAPI", {
   getCurrentScope: () => ipcRenderer.invoke("get-current-scope"),
+  files: {
+    list: () => ipcRenderer.invoke("workspace-files:list"),
+    read: (path: string) => ipcRenderer.invoke("workspace-files:read", path),
+    write: (path: string, content: string) =>
+      ipcRenderer.invoke("workspace-files:write", path, content),
+    createFile: (path: string, content?: string) =>
+      ipcRenderer.invoke("workspace-files:create-file", path, content),
+    createDirectory: (path: string) => ipcRenderer.invoke("workspace-files:create-directory", path),
+    moveFile: (sourcePath: string, destinationDirectoryPath: string) =>
+      ipcRenderer.invoke("workspace-files:move-file", sourcePath, destinationDirectoryPath),
+    open: (
+      path: string,
+      target:
+        | "default"
+        | "file-manager"
+        | "cursor"
+        | "zed"
+        | "vscode"
+        | "vscode-insiders"
+        | "vscodium",
+    ) =>
+      ipcRenderer.invoke("workspace-files:open", path, target),
+  },
   browsers: {
     list: () => ipcRenderer.invoke("browser-sessions:list"),
     ensure: (input: unknown) => ipcRenderer.invoke("browser-sessions:ensure", input),
