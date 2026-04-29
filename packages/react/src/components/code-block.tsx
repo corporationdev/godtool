@@ -86,6 +86,7 @@ export function CodeBlock(props: {
   maxHeight?: string;
   className?: string;
   theme?: ShikiThemeProp;
+  expandable?: boolean;
 }) {
   const { code, lang: langHint, title, className, theme } = props;
   const [expanded, setExpanded] = useState(false);
@@ -96,7 +97,7 @@ export function CodeBlock(props: {
   const highlighted = useHighlighted(code, language, resolvedTheme);
 
   const lines = code.split("\n");
-  const isLong = lines.length > 24;
+  const isLong = props.expandable !== false && lines.length > 24;
   const maxH = !expanded && isLong ? (props.maxHeight ?? "24rem") : undefined;
 
   const handleCopy = useCallback(() => {

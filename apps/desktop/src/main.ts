@@ -4,6 +4,8 @@ import {
   ipcMain,
   Menu,
   nativeTheme,
+  net,
+  protocol,
   session,
   shell,
   type MenuItemConstructorOptions,
@@ -11,6 +13,7 @@ import {
 import { spawn, type ChildProcess } from "node:child_process";
 import type { Server } from "node:http";
 import { join, resolve, basename, dirname, relative, sep } from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   existsSync,
   readFileSync,
@@ -48,6 +51,18 @@ const CLI_BIN_PATH = join(CLI_BIN_DIR, process.platform === "win32" ? "godtool.e
 app.commandLine.appendSwitch("remote-debugging-address", "127.0.0.1");
 app.commandLine.appendSwitch("remote-debugging-port", String(BROWSER_DEBUGGING_PORT));
 app.commandLine.appendSwitch("remote-allow-origins", DEV_SERVER_URL);
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "godtool-workspace",
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      stream: true,
+    },
+  },
+]);
 
 // ---------------------------------------------------------------------------
 // CLI install — copy sidecar to ~/.godtool/bin and patch shell PATH
@@ -438,6 +453,27 @@ const importWorkspacePaths = async (
   }
 
   return { paths: importedPaths };
+};
+
+const workspaceFileUrl = (workspaceRelativePath: string): string =>
+  `godtool-workspace://file/${encodeURIComponent(workspaceRelativePath)}`;
+
+const setupWorkspaceFileProtocol = (): void => {
+  protocol.handle("godtool-workspace", async (request) => {
+    const url = new URL(request.url);
+    if (url.hostname !== "file") {
+      return new Response("Not found", { status: 404 });
+    }
+
+    const workspaceRelativePath = decodeURIComponent(url.pathname.replace(/^\//, ""));
+    const absolutePath = resolveWorkspacePath(workspaceRelativePath);
+    const stat = await lstat(absolutePath);
+    if (!stat.isFile()) {
+      return new Response("Not found", { status: 404 });
+    }
+
+    return net.fetch(pathToFileURL(absolutePath).toString());
+  });
 };
 
 const readWorkspaceTree = async (dir: string): Promise<readonly WorkspaceFileNode[]> => {
@@ -967,6 +1003,13 @@ const setupIPC = (): void => {
     ) => importWorkspacePaths(sourcePaths, destinationDirectoryWorkspaceRelativePath),
   );
 
+  ipcMain.handle("workspace-files:get-file-url", async (_event, workspaceRelativePath: string) => {
+    const absolutePath = resolveWorkspacePath(workspaceRelativePath);
+    const stat = await lstat(absolutePath);
+    if (!stat.isFile()) throw new Error("Workspace path is not a file");
+    return workspaceFileUrl(toWorkspaceRelativePath(absolutePath));
+  });
+
   ipcMain.handle(
     "workspace-files:open",
     async (
@@ -1226,6 +1269,7 @@ app.whenReady().then(async () => {
   installCli();
 
   settings = loadSettings();
+  setupWorkspaceFileProtocol();
   setupIPC();
   buildMenu();
 

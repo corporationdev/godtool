@@ -11,8 +11,11 @@ import {
   ClipboardCopyIcon,
   Code2Icon,
   ExternalLinkIcon,
+  FileAudioIcon,
+  FileImageIcon,
   FilePlusIcon,
   FileTextIcon,
+  FileVideoIcon,
   FolderPlusIcon,
   FolderIcon,
   FolderOpenIcon,
@@ -28,10 +31,12 @@ import {
   useRef,
   useState,
   type DragEvent,
+  type ReactNode,
   type Ref,
 } from "react";
 
 import { Button } from "../components/button";
+import { CodeBlock } from "../components/code-block";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -105,9 +110,10 @@ type WorkspaceFilesApi = {
   readonly importPaths: (
     sourcePaths: readonly string[],
     destinationDirectoryPath: string,
-  ) => Promise<{
-    readonly paths: readonly string[];
-  }>;
+      ) => Promise<{
+        readonly paths: readonly string[];
+      }>;
+  readonly getFileUrl: (path: string) => Promise<string>;
   readonly open: (path: string, target: WorkspaceOpenTarget) => Promise<boolean>;
 };
 
@@ -123,6 +129,7 @@ type WorkspaceFilesState =
   | { readonly status: "error"; readonly message: string };
 
 type EditorStatus = "idle" | "loading" | "ready" | "saving" | "saved" | "error";
+type FilePreviewKind = "markdown" | "code" | "text" | "image" | "video" | "audio" | "pdf" | "other";
 
 type CreateDraft = {
   readonly kind: "file" | "directory";
@@ -142,7 +149,51 @@ type Row =
       readonly node: WorkspaceFileNode;
     };
 
-const EDITABLE_FILE_PATTERN = /\.(md|mdown|markdown|mdx|txt)$/i;
+const MARKDOWN_FILE_PATTERN = /\.(md|mdown|markdown|mdx)$/i;
+const TEXT_FILE_PATTERN = /\.(txt|log|csv|tsv|env|gitignore|dockerignore|npmrc|yarnrc)$/i;
+const IMAGE_FILE_PATTERN = /\.(apng|avif|bmp|gif|ico|jpe?g|png|svg|webp)$/i;
+const VIDEO_FILE_PATTERN = /\.(m4v|mkv|mov|mp4|ogg|ogv|webm)$/i;
+const AUDIO_FILE_PATTERN = /\.(aac|aiff?|flac|m4a|mp3|oga|ogg|opus|wav|weba)$/i;
+const PDF_FILE_PATTERN = /\.pdf$/i;
+const CODE_LANGUAGE_BY_EXTENSION: Readonly<Record<string, string>> = {
+  c: "c",
+  cc: "cpp",
+  cpp: "cpp",
+  cs: "csharp",
+  css: "css",
+  diff: "diff",
+  dockerfile: "dockerfile",
+  go: "go",
+  gql: "graphql",
+  graphql: "graphql",
+  h: "c",
+  hpp: "cpp",
+  html: "html",
+  http: "http",
+  java: "java",
+  js: "javascript",
+  json: "json",
+  jsonc: "jsonc",
+  jsx: "jsx",
+  kt: "kotlin",
+  kts: "kotlin",
+  mjs: "javascript",
+  php: "php",
+  proto: "proto",
+  py: "python",
+  rb: "ruby",
+  rs: "rust",
+  sh: "shellscript",
+  sql: "sql",
+  swift: "swift",
+  toml: "toml",
+  ts: "typescript",
+  tsx: "tsx",
+  xml: "xml",
+  yaml: "yaml",
+  yml: "yaml",
+  zsh: "shellscript",
+};
 const SAVE_DEBOUNCE_MS = 700;
 const WORKSPACE_FILE_DRAG_TYPE = "application/x-godtool-workspace-file";
 const PREFERRED_OPEN_TARGET_KEY = "godtool:files:preferred-open-target";
@@ -163,8 +214,28 @@ const getWorkspaceFilesApi = (): WorkspaceFilesApi | null => {
   return electronWindow.electronAPI?.files ?? null;
 };
 
-const isEditableFile = (node: WorkspaceFileNode): boolean =>
-  node.type === "file" && EDITABLE_FILE_PATTERN.test(node.name);
+const getFileExtension = (path: string): string => {
+  const name = path.split("/").pop() ?? path;
+  if (/^dockerfile$/i.test(name)) return "dockerfile";
+  const lastDotIndex = name.lastIndexOf(".");
+  return lastDotIndex === -1 ? "" : name.slice(lastDotIndex + 1).toLowerCase();
+};
+
+const getFileLanguage = (path: string): string | null =>
+  CODE_LANGUAGE_BY_EXTENSION[getFileExtension(path)] ?? null;
+
+const getFilePreviewKind = (path: string): FilePreviewKind => {
+  if (MARKDOWN_FILE_PATTERN.test(path)) return "markdown";
+  if (getFileLanguage(path)) return "code";
+  if (TEXT_FILE_PATTERN.test(path)) return "text";
+  if (IMAGE_FILE_PATTERN.test(path)) return "image";
+  if (VIDEO_FILE_PATTERN.test(path)) return "video";
+  if (AUDIO_FILE_PATTERN.test(path)) return "audio";
+  if (PDF_FILE_PATTERN.test(path)) return "pdf";
+  return "other";
+};
+
+const isSelectableFile = (node: WorkspaceFileNode): boolean => node.type === "file";
 
 const collectDirectoryPaths = (nodes: readonly WorkspaceFileNode[], acc: Set<string>): void => {
   for (const node of nodes) {
@@ -298,12 +369,15 @@ export function FilesPage() {
   const [editorStatus, setEditorStatus] = useState<EditorStatus>("idle");
   const [editorError, setEditorError] = useState<string | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
+  const [previewText, setPreviewText] = useState("");
+  const [previewUrl, setPreviewUrl] = useState("");
   const [preferredOpenTarget, setPreferredOpenTarget] = useState<WorkspaceOpenTarget | null>(() =>
     readPreferredOpenTarget(),
   );
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadingPathRef = useRef<string | null>(null);
   const suppressChangeRef = useRef(false);
+  const selectedPreviewKind = selectedPath ? getFilePreviewKind(selectedPath) : null;
 
   const refreshTree = useCallback(async () => {
     if (!filesApi) {
@@ -332,6 +406,8 @@ export function FilesPage() {
     if (!filesApi || !selectedPath) {
       setEditorStatus("idle");
       setEditorError(null);
+      setPreviewText("");
+      setPreviewUrl("");
       return;
     }
 
@@ -345,6 +421,50 @@ export function FilesPage() {
     suppressChangeRef.current = true;
     setEditorStatus("loading");
     setEditorError(null);
+    setPreviewText("");
+    setPreviewUrl("");
+
+    if (selectedPreviewKind === "code" || selectedPreviewKind === "text") {
+      filesApi
+        .read(path)
+        .then((file) => {
+          if (loadingPathRef.current !== path) return;
+          setPreviewText(file.content);
+          setEditorStatus("ready");
+        })
+        .catch((error) => {
+          if (loadingPathRef.current !== path) return;
+          setEditorStatus("error");
+          setEditorError(getErrorMessage(error));
+        });
+      return;
+    }
+
+    if (
+      selectedPreviewKind === "image" ||
+      selectedPreviewKind === "video" ||
+      selectedPreviewKind === "audio" ||
+      selectedPreviewKind === "pdf"
+    ) {
+      filesApi
+        .getFileUrl(path)
+        .then((url) => {
+          if (loadingPathRef.current !== path) return;
+          setPreviewUrl(url);
+          setEditorStatus("ready");
+        })
+        .catch((error) => {
+          if (loadingPathRef.current !== path) return;
+          setEditorStatus("error");
+          setEditorError(getErrorMessage(error));
+        });
+      return;
+    }
+
+    if (selectedPreviewKind !== "markdown") {
+      setEditorStatus("ready");
+      return;
+    }
 
     filesApi
       .read(path)
@@ -367,10 +487,17 @@ export function FilesPage() {
           }, 0);
         }
       });
-  }, [editor, filesApi, selectedPath]);
+  }, [editor, filesApi, selectedPath, selectedPreviewKind]);
 
   const saveSelectedFile = useCallback(async () => {
-    if (!filesApi || !selectedPath || suppressChangeRef.current) return;
+    if (
+      !filesApi ||
+      !selectedPath ||
+      selectedPreviewKind !== "markdown" ||
+      suppressChangeRef.current
+    ) {
+      return;
+    }
 
     setEditorStatus("saving");
     setEditorError(null);
@@ -383,16 +510,16 @@ export function FilesPage() {
       setEditorStatus("error");
       setEditorError(getErrorMessage(error));
     }
-  }, [editor, filesApi, refreshTree, selectedPath]);
+  }, [editor, filesApi, refreshTree, selectedPath, selectedPreviewKind]);
 
   const handleEditorChange = useCallback(() => {
-    if (!selectedPath || suppressChangeRef.current) return;
+    if (!selectedPath || selectedPreviewKind !== "markdown" || suppressChangeRef.current) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
       saveTimerRef.current = null;
       void saveSelectedFile();
     }, SAVE_DEBOUNCE_MS);
-  }, [saveSelectedFile, selectedPath]);
+  }, [saveSelectedFile, selectedPath, selectedPreviewKind]);
 
   const handleSelectPath = useCallback(
     (path: string) => {
@@ -536,15 +663,22 @@ export function FilesPage() {
                 <span className="min-w-0 truncate">{editorError ?? openError}</span>
               </div>
             )}
-            <div className="mx-auto w-full max-w-4xl px-6 py-6">
-              <BlockNoteView
-                editor={editor}
-                editable={editorStatus !== "loading"}
-                onChange={handleEditorChange}
-                theme={isDark ? "dark" : "light"}
-                className="workspace-blocknote"
-              />
-            </div>
+            <FilePreview
+              path={selectedPath}
+              kind={selectedPreviewKind ?? "other"}
+              status={editorStatus}
+              text={previewText}
+              url={previewUrl}
+              editorView={
+                <BlockNoteView
+                  editor={editor}
+                  editable={editorStatus !== "loading"}
+                  onChange={handleEditorChange}
+                  theme={isDark ? "dark" : "light"}
+                  className="workspace-blocknote"
+                />
+              }
+            />
           </div>
         ) : (
           <div className="flex min-h-0 flex-1 items-center justify-center px-6">
@@ -555,7 +689,7 @@ export function FilesPage() {
               <div className="space-y-1">
                 <h2 className="text-base font-medium text-foreground">Select a file</h2>
                 <p className="text-sm leading-6 text-muted-foreground">
-                  Open a Markdown file from your workspace to view and edit it here.
+                  Open a workspace file to preview or edit it here.
                 </p>
               </div>
             </div>
@@ -564,6 +698,122 @@ export function FilesPage() {
       </section>
     </div>
   );
+}
+
+function FilePreview(props: {
+  path: string;
+  kind: FilePreviewKind;
+  status: EditorStatus;
+  text: string;
+  url: string;
+  editorView: ReactNode;
+}) {
+  if (props.status === "loading") {
+    return (
+      <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-10 text-sm text-muted-foreground">
+        Loading preview...
+      </div>
+    );
+  }
+
+  if (props.kind === "markdown") {
+    return <div className="mx-auto w-full max-w-4xl px-6 py-6">{props.editorView}</div>;
+  }
+
+  if (props.kind === "code" || props.kind === "text") {
+    const language = props.kind === "code" ? (getFileLanguage(props.path) ?? "text") : "log";
+    return (
+      <div className="mx-auto w-full max-w-5xl px-5 py-5">
+        <CodeBlock
+          code={props.text}
+          lang={language}
+          title={props.path}
+          expandable={false}
+          className="rounded-md bg-background"
+        />
+      </div>
+    );
+  }
+
+  if (props.kind === "image") {
+    return (
+      <div className="flex min-h-full items-center justify-center p-6">
+        <img
+          src={props.url}
+          alt={props.path}
+          className="max-h-[calc(100vh-8rem)] max-w-full rounded-md object-contain"
+          draggable={false}
+        />
+      </div>
+    );
+  }
+
+  if (props.kind === "video") {
+    return (
+      <div className="flex min-h-full items-center justify-center p-6">
+        <video
+          src={props.url}
+          controls
+          className="max-h-[calc(100vh-8rem)] w-full max-w-5xl rounded-md bg-black"
+        />
+      </div>
+    );
+  }
+
+  if (props.kind === "audio") {
+    return (
+      <div className="flex min-h-full items-center justify-center p-6">
+        <div className="w-full max-w-xl rounded-md border border-border bg-card p-5">
+          <div className="mb-4 flex items-center gap-3">
+            <div className="flex size-10 items-center justify-center rounded-md bg-muted text-muted-foreground">
+              <FileAudioIcon className="size-5" />
+            </div>
+            <div className="min-w-0">
+              <div className="truncate font-mono text-sm text-foreground">{props.path}</div>
+            </div>
+          </div>
+          <audio src={props.url} controls className="w-full" />
+        </div>
+      </div>
+    );
+  }
+
+  if (props.kind === "pdf") {
+    return (
+      <div className="h-[calc(100vh-5rem)] min-h-[28rem] p-4">
+        <iframe
+          src={props.url}
+          title={props.path}
+          className="h-full w-full rounded-md border border-border bg-background"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-h-0 flex-1 items-center justify-center px-6">
+      <div className="flex max-w-sm flex-col items-center gap-3 text-center">
+        <div className="flex size-10 items-center justify-center rounded-md bg-muted text-muted-foreground">
+          <FileTextIcon className="size-5" />
+        </div>
+        <div className="space-y-1">
+          <h2 className="text-base font-medium text-foreground">No preview available</h2>
+          <p className="text-sm leading-6 text-muted-foreground">
+            Open this file in its default app from the header menu.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FileTypeIcon(props: { path: string; className?: string }) {
+  const kind = getFilePreviewKind(props.path);
+  if (kind === "image") return <FileImageIcon className={props.className} />;
+  if (kind === "video") return <FileVideoIcon className={props.className} />;
+  if (kind === "audio") return <FileAudioIcon className={props.className} />;
+  if (kind === "code") return <Code2Icon className={props.className} />;
+  return <FileTextIcon className={props.className} />;
 }
 
 function FilesSidebar(props: {
@@ -769,8 +1019,9 @@ function FilesSidebar(props: {
         setManualOpen((prev) => new Set(prev).add(destinationDirectoryPath));
       }
       props.onRefresh();
-      const firstEditablePath = result.paths.find((path) => EDITABLE_FILE_PATTERN.test(path));
-      if (firstEditablePath) props.onSelect(firstEditablePath);
+      const firstPreviewablePath =
+        result.paths.find((path) => getFilePreviewKind(path) !== "other") ?? result.paths[0];
+      if (firstPreviewablePath) props.onSelect(firstPreviewablePath);
     } catch (error) {
       setActionError(getErrorMessage(error));
     }
@@ -1043,7 +1294,7 @@ function FilesSidebar(props: {
                     node={row.node}
                     depth={row.depth}
                     active={row.node.path === props.selectedPath}
-                    disabled={!isEditableFile(row.node)}
+                    disabled={!isSelectableFile(row.node)}
                     onSelect={() => props.onSelect(row.node.path)}
                     onDragStart={(event) => startFileDrag(event, row.node.path)}
                     onDragEnd={clearFileDrag}
@@ -1292,9 +1543,9 @@ function FileRow(props: {
             props.disabled && "cursor-not-allowed opacity-45",
           )}
           style={{ paddingLeft: rowIndent(props.depth) + 20, paddingRight: 12 }}
-          title={props.disabled ? "Only Markdown and text files are editable" : props.node.path}
+          title={props.node.path}
         >
-          <FileTextIcon className="size-3.5 shrink-0 text-muted-foreground" />
+          <FileTypeIcon path={props.node.path} className="size-3.5 shrink-0 text-muted-foreground" />
           <span className="min-w-0 flex-1 truncate text-left font-mono">{props.node.name}</span>
         </Button>
       </ContextMenuTrigger>

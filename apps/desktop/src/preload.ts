@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       files.map((file) => webUtils.getPathForFile(file)).filter((path) => path.length > 0),
     importPaths: (sourcePaths: string[], destinationDirectoryPath: string) =>
       ipcRenderer.invoke("workspace-files:import-paths", sourcePaths, destinationDirectoryPath),
+    getFileUrl: (path: string) => ipcRenderer.invoke("workspace-files:get-file-url", path),
     open: (
       path: string,
       target:

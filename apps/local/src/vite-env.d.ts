@@ -86,6 +86,7 @@ interface Window {
       ) => Promise<{
         readonly paths: readonly string[];
       }>;
+      readonly getFileUrl: (path: string) => Promise<string>;
       readonly open: (path: string, target: WorkspaceOpenTarget) => Promise<boolean>;
     };
     readonly browsers?: {
