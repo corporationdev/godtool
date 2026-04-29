@@ -55,8 +55,9 @@ final class ElementCache {
 
 let cache = ElementCache()
 
-let maxSnapshotElements = 2_000
-let maxSnapshotDepth = 80
+let maxSnapshotElements = 1_200
+let maxSnapshotDepth = 40
+let maxChildrenPerContainer = 60
 
 func jsonObject(_ data: Data) throws -> [String: Any] {
   if data.isEmpty { return [:] }
@@ -144,9 +145,39 @@ func axActions(_ element: AXUIElement) -> [String] {
 }
 
 func normalizedActionName(_ action: String) -> String {
-  action
+  if action.contains("Name:") {
+    let pattern = #"Name:([^\n,]+)"#
+    if let regex = try? NSRegularExpression(pattern: pattern) {
+      let range = NSRange(action.startIndex..<action.endIndex, in: action)
+      let names = regex.matches(in: action, range: range).compactMap { match -> String? in
+        guard let matchRange = Range(match.range(at: 1), in: action) else { return nil }
+        return String(action[matchRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+      }
+      if !names.isEmpty { return names.joined(separator: ", ") }
+    }
+  }
+  let stripped = action
     .replacingOccurrences(of: "AX", with: "")
     .replacingOccurrences(of: "Action", with: "")
+  switch stripped {
+  case "ShowDefaultUI": return "Show Default UI"
+  case "ShowAlternateUI": return "Show Alternate UI"
+  case "ShowMenu": return "Show Menu"
+  case "ScrollLeftByPage": return "Scroll Left"
+  case "ScrollRightByPage": return "Scroll Right"
+  case "ScrollUpByPage": return "Scroll Up"
+  case "ScrollDownByPage": return "Scroll Down"
+  case "Press": return "Press"
+  case "Confirm": return "Confirm"
+  case "Open": return "Open"
+  default:
+    return stripped
+      .replacingOccurrences(
+        of: "([a-z])([A-Z])",
+        with: "$1 $2",
+        options: .regularExpression
+      )
+  }
 }
 
 func appMatches(_ app: NSRunningApplication, query: String) -> Bool {
@@ -188,25 +219,110 @@ func focusedWindow(for app: NSRunningApplication) throws -> AXUIElement {
   throw ComputerUseError.accessibility("No accessible window found for \(app.localizedName ?? String(app.processIdentifier))")
 }
 
-func lineForElement(index: Int, element: AXUIElement, actions: [String]) -> String {
+func normalizedRole(_ element: AXUIElement) -> String {
   let role = axString(element, kAXRoleAttribute) ?? "unknown"
-  let title = axString(element, kAXTitleAttribute)
-  let description = axString(element, kAXDescriptionAttribute)
-  let value = axString(element, kAXValueAttribute)
-  let help = axString(element, kAXHelpAttribute)
+  let subrole = axString(element, kAXSubroleAttribute)
+  let raw = subrole == kAXStandardWindowSubrole ? "AXStandardWindow" : role
+  switch raw {
+  case "AXGroup": return "container"
+  case "AXSplitGroup": return "split group"
+  case "AXWebArea": return "HTML content"
+  default: break
+  }
+  let stripped = raw
+    .replacingOccurrences(of: "AX", with: "")
+    .replacingOccurrences(of: "UIElement", with: "")
+  let spaced = stripped
+    .replacingOccurrences(
+      of: "([a-z])([A-Z])",
+      with: "$1 $2",
+      options: .regularExpression
+    )
+    .replacingOccurrences(of: "Static Text", with: "text")
+    .replacingOccurrences(of: "Text Field", with: "text field")
+    .replacingOccurrences(of: "Text Area", with: "text area")
+    .replacingOccurrences(of: "Check Box", with: "checkbox")
+    .replacingOccurrences(of: "Combo Box", with: "combo box")
+    .replacingOccurrences(of: "Pop Up Button", with: "pop up button")
+  return spaced == "HTML content" ? spaced : spaced.lowercased()
+}
+
+func nonEmpty(_ value: String?) -> String? {
+  guard let value else { return nil }
+  let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+  return trimmed.isEmpty ? nil : trimmed
+}
+
+func lineForElement(index: Int, element: AXUIElement, actions: [String]) -> String {
+  let role = normalizedRole(element)
+  let title = nonEmpty(axString(element, kAXTitleAttribute))
+  let description = nonEmpty(axString(element, kAXDescriptionAttribute))
+  let value = nonEmpty(axString(element, kAXValueAttribute))
+  let help = nonEmpty(axString(element, kAXHelpAttribute))
+  let identifier = nonEmpty(axString(element, kAXIdentifierAttribute))
+  let url = nonEmpty(axString(element, kAXURLAttribute))
   let selected = axBool(element, kAXSelectedAttribute) == true ? "selected" : nil
   let enabled = axBool(element, kAXEnabledAttribute) == false ? "disabled" : nil
-  let expanded = axBool(element, kAXExpandedAttribute).map { $0 ? "expanded" : "collapsed" }
+  let expanded =
+    ["row", "outline", "disclosure triangle"].contains(role)
+      ? axBool(element, kAXExpandedAttribute).map { $0 ? "expanded" : "collapsed" }
+      : nil
+  var valueSettable = DarwinBoolean(false)
+  let settable =
+    AXUIElementIsAttributeSettable(element, kAXValueAttribute as CFString, &valueSettable) == .success
+      && valueSettable.boolValue
+      && (value != nil || ["text field", "combo box", "slider", "checkbox", "switch"].contains(role))
+      ? "settable" : nil
   let state = [selected, enabled, expanded].compactMap { $0 }
   let stateText = state.isEmpty ? "" : " (\(state.joined(separator: ", ")))"
   let titleText = title.map { " \($0)" } ?? ""
   let details = [
+    identifier.map { "ID: \($0)" },
     description.map { "Description: \($0)" },
+    url.map { "URL: \($0)" },
     value.map { "Value: \($0)" },
     help.map { "Help: \($0)" },
+    settable,
     actions.isEmpty ? nil : "Secondary Actions: \(actions.map(normalizedActionName).joined(separator: ", "))",
   ].compactMap { $0 }
   return "\(index) \(role)\(stateText)\(titleText)" + (details.isEmpty ? "" : " " + details.joined(separator: ", "))
+}
+
+func isContainerRole(_ element: AXUIElement) -> Bool {
+  guard let role = axString(element, kAXRoleAttribute) else { return false }
+  return [
+    kAXWindowRole,
+    kAXSplitGroupRole,
+    kAXGroupRole,
+    kAXScrollAreaRole,
+    kAXOutlineRole,
+    kAXTableRole,
+    kAXRowRole,
+    kAXCellRole,
+    kAXToolbarRole,
+    kAXMenuBarRole,
+  ].contains(role)
+}
+
+func visibleChildren(_ children: [AXUIElement], in windowFrame: CGRect?) -> [AXUIElement] {
+  guard children.count > maxChildrenPerContainer else { return children }
+  guard let windowFrame else { return children }
+  let visible = children.filter { child in
+    guard let frame = axFrame(child) else { return true }
+    if frame.width <= 0 || frame.height <= 0 { return false }
+    return frame.intersects(windowFrame)
+  }
+  return visible.isEmpty ? children : visible
+}
+
+func selectedSummary(_ indexed: [Int: AXUIElement]) -> [String] {
+  indexed
+    .filter { axBool($0.value, kAXSelectedAttribute) == true }
+    .sorted { $0.key < $1.key }
+    .prefix(8)
+    .map { index, element in
+      lineForElement(index: index, element: element, actions: axActions(element))
+    }
 }
 
 func snapshot(app query: String) throws -> [String: Any] {
@@ -216,27 +332,54 @@ func snapshot(app query: String) throws -> [String: Any] {
 
   let window = try focusedWindow(for: app)
   let windowTitle = axString(window, kAXTitleAttribute) ?? ""
+  let windowFrame = axFrame(window)
   var lines: [String] = [
-    "Computer Use state (Godtool Computer Use Version: 1)",
+    "Computer Use state (Godtool Computer Use Version: 2)",
     "<app_state>",
     "App=\(app.bundleIdentifier ?? String(app.processIdentifier)) (pid \(app.processIdentifier))",
     "Window: \"\(windowTitle)\", App: \(app.localizedName ?? app.bundleIdentifier ?? "Unknown").",
   ]
   var indexed: [Int: AXUIElement] = [:]
   var nextIndex = 0
+  var focusedIndex: Int?
+  var truncated = false
 
   func visit(_ element: AXUIElement, depth: Int) {
-    guard nextIndex < maxSnapshotElements, depth < maxSnapshotDepth else { return }
+    guard nextIndex < maxSnapshotElements, depth < maxSnapshotDepth else {
+      truncated = true
+      return
+    }
     let index = nextIndex
     nextIndex += 1
     indexed[index] = element
+    if axBool(element, kAXFocusedAttribute) == true {
+      focusedIndex = index
+    }
     lines.append(String(repeating: "\t", count: depth) + lineForElement(index: index, element: element, actions: axActions(element)))
-    for child in axChildren(element) {
+    let allChildren = axChildren(element)
+    guard !allChildren.isEmpty else { return }
+    let children = Array(visibleChildren(allChildren, in: windowFrame).prefix(maxChildrenPerContainer))
+    if allChildren.count > children.count {
+      lines[lines.count - 1] += " (showing 0-\(max(0, children.count - 1)) of \(allChildren.count) items)"
+    }
+    for child in children {
       visit(child, depth: depth + 1)
     }
   }
 
   visit(window, depth: 1)
+  if truncated {
+    lines.append("\nNote: Snapshot truncated at \(maxSnapshotElements) elements.")
+  }
+  let selected = selectedSummary(indexed)
+  if !selected.isEmpty {
+    lines.append("\nSelected:")
+    lines.append(contentsOf: selected)
+    lines.append("\nNote: Pay special attention to the content selected by the user. If the user asks a question or refers to the content they are looking at on-screen, they might be referring to the selected content (but they might be referring to something else that's visible, too).")
+  }
+  if let focusedIndex, let focusedElement = indexed[focusedIndex] {
+    lines.append("\nThe focused UI element is \(focusedIndex) \(normalizedRole(focusedElement)).")
+  }
   lines.append("</app_state>")
   cache.set(app: query, elements: indexed)
 

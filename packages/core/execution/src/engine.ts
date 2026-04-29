@@ -57,6 +57,48 @@ export type ResumeResponse = {
 // ---------------------------------------------------------------------------
 
 const MAX_PREVIEW_CHARS = 30_000;
+const DEBUG_LOG_FILE = "/tmp/executor-mcp-debug.log";
+
+const appendDebugLine = (file: string, line: string): void => {
+  if (typeof process === "undefined") return;
+  const getBuiltinModule = (process as unknown as {
+    getBuiltinModule?: (name: string) => { appendFileSync?: (...args: unknown[]) => void };
+  }).getBuiltinModule;
+  const fs = getBuiltinModule?.("node:fs");
+  fs?.appendFileSync?.(file, line, "utf8");
+};
+
+const debugImagesEnabled = (): boolean => {
+  if (typeof process === "undefined" || !process.env) return false;
+  if (process.env.EXECUTOR_MCP_DEBUG === "0" || process.env.EXECUTOR_MCP_DEBUG === "false") {
+    return false;
+  }
+  return (
+    process.env.EXECUTOR_MCP_DEBUG === undefined ||
+    process.env.EXECUTOR_MCP_DEBUG === "1" ||
+    process.env.EXECUTOR_MCP_DEBUG === "true" ||
+    typeof process.env.EXECUTOR_MCP_DEBUG_FILE === "string"
+  );
+};
+
+const imageDebugLog = (event: string, data: Record<string, unknown>) => {
+  if (!debugImagesEnabled()) return;
+  const file =
+    typeof process !== "undefined" && process.env?.EXECUTOR_MCP_DEBUG_FILE
+      ? process.env.EXECUTOR_MCP_DEBUG_FILE
+      : DEBUG_LOG_FILE;
+  const payload = {
+    ts: new Date().toISOString(),
+    scope: "execution",
+    event,
+    ...data,
+  };
+  try {
+    appendDebugLine(file, `${JSON.stringify(payload)}\n`);
+  } catch {
+    // Debug logging must never affect code execution.
+  }
+};
 
 const truncate = (value: string, max: number): string =>
   value.length > max
@@ -66,6 +108,7 @@ const truncate = (value: string, max: number): string =>
 export type FormattedContentImage = {
   readonly mimeType: string;
   readonly data: string;
+  readonly path?: string;
 };
 
 const isImageDataObject = (
@@ -81,6 +124,83 @@ const base64ByteLength = (value: string): number => {
   if (normalized.length === 0) return 0;
   const padding = normalized.endsWith("==") ? 2 : normalized.endsWith("=") ? 1 : 0;
   return Math.max(0, Math.floor((normalized.length * 3) / 4) - padding);
+};
+
+const imageExtension = (mimeType: string): string => {
+  switch (mimeType) {
+    case "image/jpeg":
+      return "jpg";
+    case "image/png":
+      return "png";
+    case "image/webp":
+      return "webp";
+    case "image/gif":
+      return "gif";
+    default:
+      return "img";
+  }
+};
+
+const getBuiltinModule = <T>(name: string): T | undefined => {
+  if (typeof process === "undefined") return undefined;
+  return (process as unknown as { getBuiltinModule?: (name: string) => T }).getBuiltinModule?.(
+    name,
+  );
+};
+
+const imageArtifactsDir = (): string | null => {
+  if (typeof process === "undefined" || !process.env) return null;
+  const path = getBuiltinModule<typeof import("node:path")>("node:path");
+  const os = getBuiltinModule<typeof import("node:os")>("node:os");
+  if (!path || !os) return null;
+
+  const artifactsDir = process.env.GODTOOL_ARTIFACTS_DIR;
+  if (artifactsDir && artifactsDir.trim().length > 0) {
+    return artifactsDir;
+  }
+
+  const dataDir =
+    process.env.GODTOOL_DATA_DIR && process.env.GODTOOL_DATA_DIR.trim().length > 0
+      ? process.env.GODTOOL_DATA_DIR
+      : path.join(os.homedir(), ".godtool");
+  return path.join(dataDir, "artifacts");
+};
+
+const decodeBase64Image = (data: string): Buffer | null => {
+  if (typeof Buffer === "undefined") return null;
+  const base64 = data.includes(",") ? (data.split(",").pop() ?? "") : data;
+  const normalized = base64.replace(/\s/g, "");
+  if (normalized.length === 0) return null;
+  return Buffer.from(normalized, "base64");
+};
+
+const persistImageArtifact = (
+  image: { readonly mimeType: string; readonly data: string },
+  contentIndex: number,
+): string | undefined => {
+  const fs = getBuiltinModule<typeof import("node:fs")>("node:fs");
+  const path = getBuiltinModule<typeof import("node:path")>("node:path");
+  const crypto = getBuiltinModule<typeof import("node:crypto")>("node:crypto");
+  const dir = imageArtifactsDir();
+  const bytes = decodeBase64Image(image.data);
+  if (!fs || !path || !crypto || !dir || !bytes) return undefined;
+
+  const id =
+    typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const filePath = path.join(
+    dir,
+    `image-${Date.now()}-${contentIndex}-${id}.${imageExtension(image.mimeType)}`,
+  );
+
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(filePath, bytes);
+    return filePath;
+  } catch {
+    return undefined;
+  }
 };
 
 const extractContentImages = (
@@ -104,12 +224,27 @@ const extractContentImages = (
     const record = current as Record<string, unknown>;
     if (isImageDataObject(record)) {
       const contentIndex = images.length + 1;
-      images.push({ mimeType: record.mimeType, data: record.data });
-      return {
-        mimeType: record.mimeType,
-        byteLength: base64ByteLength(record.data),
+      const artifactPath = persistImageArtifact(record, contentIndex);
+      images.push({ mimeType: record.mimeType, data: record.data, path: artifactPath });
+      imageDebugLog("extract.image", {
         contentIndex,
-      };
+        mimeType: record.mimeType,
+        base64Length: record.data.length,
+        byteLength: base64ByteLength(record.data),
+        artifactPath,
+      });
+      return Object.fromEntries(
+        Object.entries({
+          mimeType: record.mimeType,
+          byteLength: base64ByteLength(record.data),
+          contentIndex,
+          path: artifactPath,
+          fallback:
+            artifactPath === undefined
+              ? undefined
+              : "If the image is not visible, read this file from disk.",
+        }).filter(([, value]) => value !== undefined),
+      );
     }
 
     if (seen.has(current)) return "[Circular]";
@@ -125,6 +260,10 @@ const extractContentImages = (
   return { value: walk(value), images };
 };
 
+export const __testing = {
+  imageArtifactsDir,
+};
+
 export const formatExecuteResult = (
   result: ExecuteResult,
 ): {
@@ -134,6 +273,15 @@ export const formatExecuteResult = (
   contentImages: readonly FormattedContentImage[];
 } => {
   const extracted = extractContentImages(result.result);
+  imageDebugLog("format.result", {
+    hasError: Boolean(result.error),
+    resultType: typeof result.result,
+    imageCount: extracted.images.length,
+    imageMimeTypes: extracted.images.map((image) => image.mimeType),
+    imageBase64Lengths: extracted.images.map((image) => image.data.length),
+    artifactPaths: extracted.images.map((image) => image.path ?? null),
+    logCount: result.logs?.length ?? 0,
+  });
   const resultText =
     extracted.value != null
       ? typeof extracted.value === "string"
