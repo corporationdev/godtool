@@ -8,6 +8,7 @@ import { Button } from "@executor/react/components/button";
 import {
   CardStack,
   CardStackContent,
+  CardStackEntry,
   CardStackEntryField,
 } from "@executor/react/components/card-stack";
 import { FieldLabel } from "@executor/react/components/field";
@@ -72,6 +73,9 @@ export default function AddRawSource(props: {
     ...(resolvedPreset?.defaultHeaders ?? {}),
     ...headersFromState(headers),
   };
+  const presetHeaderEntries = Object.entries(
+    resolvedPreset?.defaultHeaders ?? {},
+  );
   const headersValid = headers.every(
     (header) => header.name.trim() && header.secretId,
   );
@@ -137,16 +141,36 @@ export default function AddRawSource(props: {
 
       <section className="space-y-2.5">
         <FieldLabel>Headers</FieldLabel>
+        {presetHeaderEntries.length > 0 && (
+          <CardStack>
+            <CardStackContent className="[&>*+*]:before:inset-x-0">
+              {presetHeaderEntries.map(([name, value]) => (
+                <CardStackEntry
+                  key={name}
+                  className="items-center justify-between gap-4"
+                >
+                  <span className="min-w-0 font-mono text-sm text-muted-foreground">
+                    {name}
+                  </span>
+                  <span className="min-w-0 truncate font-mono text-sm text-foreground">
+                    {value}
+                  </span>
+                </CardStackEntry>
+              ))}
+            </CardStackContent>
+          </CardStack>
+        )}
         <HeadersList
           headers={headers}
           onHeadersChange={setHeaders}
           existingSecrets={secretList}
           sourceName={displayName}
           emptyLabel={
-            resolvedPreset?.defaultHeaders
-              ? "Only preset headers"
+            presetHeaderEntries.length > 0
+              ? "No additional headers"
               : "No headers"
           }
+          initiallyPicking={headers.length === 0}
         />
       </section>
 

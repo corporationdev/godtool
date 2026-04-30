@@ -196,7 +196,13 @@ export function SourcesPage(props: { sourcePlugins: readonly SourcePlugin[] }) {
 
         <div className="mb-8 border-t border-border/50" />
 
-        <PresetGrid plugins={sourcePlugins} />
+        {Result.match(sources, {
+          onInitial: () => <PresetGrid plugins={sourcePlugins} />,
+          onFailure: () => <PresetGrid plugins={sourcePlugins} />,
+          onSuccess: ({ value }) => (
+            <PresetGrid plugins={sourcePlugins} connectedSources={value.filter(isConnectedSource)} />
+          ),
+        })}
       </div>
     </div>
   );
@@ -212,11 +218,19 @@ type PresetEntry = {
   pluginLabel: string;
 };
 
-function PresetGrid(props: { plugins: readonly SourcePlugin[] }) {
+function PresetGrid(props: {
+  plugins: readonly SourcePlugin[];
+  connectedSources?: readonly { id: string; kind: string }[];
+}) {
+  const connectedSourceIds = useMemo(
+    () => new Set((props.connectedSources ?? []).map((source) => source.id)),
+    [props.connectedSources],
+  );
   const allPresets = useMemo(() => {
     const entries: PresetEntry[] = [];
     for (const plugin of props.plugins) {
       for (const preset of plugin.presets ?? []) {
+        if (plugin.key === "computer_use" && connectedSourceIds.has(preset.id)) continue;
         entries.push({
           preset,
           pluginKey: plugin.key,
@@ -225,7 +239,7 @@ function PresetGrid(props: { plugins: readonly SourcePlugin[] }) {
       }
     }
     return entries;
-  }, [props.plugins]);
+  }, [connectedSourceIds, props.plugins]);
 
   if (allPresets.length === 0) return null;
 
@@ -307,7 +321,7 @@ function SourceGrid(props: {
             <CardStackEntry key={s.id} asChild searchText={`${s.name} ${s.id} ${s.kind}`}>
               <Link to="/sources/$namespace" params={{ namespace: s.id }}>
                 <CardStackEntryMedia>
-                  <SourceFavicon url={s.url} size={32} />
+                  <SourceFavicon url={s.url} size={32} sourceId={s.id} kind={s.kind} />
                 </CardStackEntryMedia>
                 <CardStackEntryContent>
                   <CardStackEntryTitle>{s.name}</CardStackEntryTitle>
