@@ -1,6 +1,6 @@
 {
   "name": "@executor/desktop",
-  "version": "1.4.10",
+  "version": "1.4.11",
   "private": true,
   "description": "Executor desktop app",
   "homepage": "https://github.com/RhysSullivan/executor",
@@ -31,6 +31,9 @@
     "appId": "com.godtool.desktop",
     "productName": "Godtool",
     "publish": null,
+    "directories": {
+      "output": "release"
+    },
     "files": [
       "dist/**/*"
     ],
@@ -49,20 +52,8 @@
     "mac": {
       "category": "public.app-category.developer-tools",
       "target": [
-        {
-          "target": "dmg",
-          "arch": [
-            "arm64",
-            "x64"
-          ]
-        },
-        {
-          "target": "zip",
-          "arch": [
-            "arm64",
-            "x64"
-          ]
-        }
+        "dmg",
+        "zip"
       ],
       "icon": "build/icon.icns"
     },

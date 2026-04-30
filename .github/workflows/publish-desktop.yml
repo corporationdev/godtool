@@ -54,7 +54,7 @@ jobs:
 
       - name: Build web app
         run: bun run build
-        working-directory: apps/web
+        working-directory: apps/local
 
       - name: Download and extract CLI sidecar
         env:
@@ -87,8 +87,8 @@ jobs:
         with:
           name: desktop-${{ matrix.platform }}-${{ matrix.arch }}
           path: |
-            apps/desktop/dist/*.dmg
-            apps/desktop/dist/*-mac.zip
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*-mac.zip
           if-no-files-found: warn
 
   release:
