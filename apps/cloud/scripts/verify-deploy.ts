@@ -22,6 +22,7 @@ const marketingWorkerName =
   runtime.stageKind === "production"
     ? "godtool-marketing-production"
     : undefined;
+const marketingDomains = ["godtool.dev", "www.godtool.dev"];
 
 const cloudflareFetch = async <Result>(path: string): Promise<Result> => {
   const response = await fetch(`https://api.cloudflare.com/client/v4${path}`, {
@@ -86,6 +87,22 @@ if (runtime.appHostname) {
   }
 }
 
+if (marketingWorkerName) {
+  for (const hostname of marketingDomains) {
+    const domains = await cloudflareFetch<
+      Array<{ hostname: string; service: string; environment?: string }>
+    >(`/accounts/${accountId}/workers/domains?hostname=${encodeURIComponent(hostname)}`);
+
+    if (
+      !domains.some(
+        (domain) => domain.hostname === hostname && domain.service === marketingWorkerName,
+      )
+    ) {
+      throw new Error(`Expected worker domain ${hostname} to be bound to ${marketingWorkerName}`);
+    }
+  }
+}
+
 console.log(
   JSON.stringify({
     ok: true,
@@ -93,5 +110,6 @@ console.log(
     worker: runtime.cloudWorkerName,
     marketingWorker: marketingWorkerName,
     appHostname: runtime.appHostname,
+    marketingHostnames: marketingWorkerName ? marketingDomains : [],
   }),
 );
