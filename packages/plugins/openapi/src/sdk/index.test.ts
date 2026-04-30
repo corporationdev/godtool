@@ -194,9 +194,10 @@ describe("OpenAPI plugin", () => {
 
       const vars = Option.getOrThrow(server.variables);
       expect(vars.region!.default).toBe("us");
-      expect(
-        Option.getOrElse(vars.region!.enum, () => [] as readonly string[]),
-      ).toEqual(["us", "de"]);
+      expect(Option.getOrElse(vars.region!.enum, () => [] as readonly string[])).toEqual([
+        "us",
+        "de",
+      ]);
       expect(Option.getOrElse(vars.region!.description, () => "")).toBe(
         "The data-storage-location for an organization",
       );

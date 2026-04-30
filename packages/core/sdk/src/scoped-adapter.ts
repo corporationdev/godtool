@@ -49,10 +49,7 @@ const collectScopedModels = (schema: DBSchema): Set<string> => {
   return out;
 };
 
-const withScopeRead = (
-  where: readonly Where[] | undefined,
-  ctx: ScopeContext,
-): Where[] => {
+const withScopeRead = (where: readonly Where[] | undefined, ctx: ScopeContext): Where[] => {
   const base = (where ?? []).filter((w) => w.field !== SCOPE_FIELD);
   const callerScope = (where ?? []).find((w) => w.field === SCOPE_FIELD);
 
@@ -123,11 +120,7 @@ const wrapTxMethods = (
     create: (data) =>
       isScoped(data.model)
         ? Effect.flatMap(
-            assertScopedWrite(
-              data.model,
-              data.data as Record<string, unknown>,
-              ctx,
-            ),
+            assertScopedWrite(data.model, data.data as Record<string, unknown>, ctx),
             () => inner.create(data),
           )
         : inner.create(data),
@@ -136,11 +129,7 @@ const wrapTxMethods = (
         ? Effect.flatMap(
             Effect.all(
               data.data.map((row) =>
-                assertScopedWrite(
-                  data.model,
-                  row as Record<string, unknown>,
-                  ctx,
-                ),
+                assertScopedWrite(data.model, row as Record<string, unknown>, ctx),
               ),
             ),
             () => inner.createMany(data),
@@ -168,11 +157,7 @@ const wrapTxMethods = (
             // rows you can read. That's sufficient for isolation; we
             // don't need to force-stamp on update.
             (data.update as Record<string, unknown>)[SCOPE_FIELD] !== undefined
-              ? assertScopedWrite(
-                  data.model,
-                  data.update as Record<string, unknown>,
-                  ctx,
-                )
+              ? assertScopedWrite(data.model, data.update as Record<string, unknown>, ctx)
               : Effect.void,
             () =>
               inner.update({
@@ -185,11 +170,7 @@ const wrapTxMethods = (
       isScoped(data.model)
         ? Effect.flatMap(
             (data.update as Record<string, unknown>)[SCOPE_FIELD] !== undefined
-              ? assertScopedWrite(
-                  data.model,
-                  data.update as Record<string, unknown>,
-                  ctx,
-                )
+              ? assertScopedWrite(data.model, data.update as Record<string, unknown>, ctx)
               : Effect.void,
             () =>
               inner.updateMany({
@@ -209,22 +190,14 @@ const wrapTxMethods = (
   };
 };
 
-export const scopeAdapter = (
-  inner: DBAdapter,
-  ctx: ScopeContext,
-  schema: DBSchema,
-): DBAdapter => {
+export const scopeAdapter = (inner: DBAdapter, ctx: ScopeContext, schema: DBSchema): DBAdapter => {
   const scopedModels = collectScopedModels(schema);
   const tx = wrapTxMethods(inner, ctx, scopedModels);
   return {
     ...tx,
     transaction: (callback) =>
       inner.transaction((rawTrx) => {
-        const scopedTrx: DBTransactionAdapter = wrapTxMethods(
-          rawTrx,
-          ctx,
-          scopedModels,
-        );
+        const scopedTrx: DBTransactionAdapter = wrapTxMethods(rawTrx, ctx, scopedModels);
         return callback(scopedTrx);
       }),
     createSchema: inner.createSchema,

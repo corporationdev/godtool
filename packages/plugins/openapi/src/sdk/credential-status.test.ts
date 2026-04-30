@@ -72,12 +72,7 @@ describe("OpenAPI credential status", () => {
   it("does not treat personal bindings as satisfying org-level credential status", () => {
     expect(
       missingCredentialLabels(source, bindings(userScope, allSlots), orgScope, scopeRanks),
-    ).toEqual([
-      "Authorization",
-      "Client ID",
-      "Client Secret",
-      "OAuth client connection",
-    ]);
+    ).toEqual(["Authorization", "Client ID", "Client Secret", "OAuth client connection"]);
   });
 
   it("prefers the personal binding over a shared org binding", () => {

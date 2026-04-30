@@ -36,10 +36,7 @@ type FindManyCall = {
   readonly where?: readonly Where[];
 };
 
-const recordFindMany = (
-  adapter: DBAdapter,
-  calls: FindManyCall[],
-): DBAdapter => ({
+const recordFindMany = (adapter: DBAdapter, calls: FindManyCall[]): DBAdapter => ({
   ...adapter,
   findMany: (data) => {
     calls.push({ model: data.model, where: data.where });
@@ -67,14 +64,12 @@ const memoryProvider: SecretProvider = (() => {
   return {
     key: "memory",
     writable: true,
-    get: (id, scope) =>
-      Effect.sync(() => store.get(`${scope}\u0000${id}`) ?? null),
+    get: (id, scope) => Effect.sync(() => store.get(`${scope}\u0000${id}`) ?? null),
     set: (id, value, scope) =>
       Effect.sync(() => {
         store.set(`${scope}\u0000${id}`, value);
       }),
-    delete: (id, scope) =>
-      Effect.sync(() => store.delete(`${scope}\u0000${id}`)),
+    delete: (id, scope) => Effect.sync(() => store.delete(`${scope}\u0000${id}`)),
     list: () =>
       Effect.sync(() =>
         Array.from(store.keys()).map((k) => {
@@ -276,9 +271,7 @@ layer(TestLayer)("OpenAPI Plugin", (it) => {
       )) as { sourceId: string; toolCount: number };
 
       expect(result).toEqual({ sourceId: "runtime", toolCount: 3 });
-      expect((yield* executor.tools.list()).map((t) => t.id)).toContain(
-        "runtime.items.listItems",
-      );
+      expect((yield* executor.tools.list()).map((t) => t.id)).toContain("runtime.items.listItems");
     }),
   );
 
@@ -413,11 +406,10 @@ layer(TestLayer)("OpenAPI Plugin", (it) => {
         baseUrl: "",
       });
 
-      const result = (yield* executor.tools.invoke(
-        "test.items.listItems",
-        {},
-        autoApprove,
-      )) as { data: unknown; error: unknown };
+      const result = (yield* executor.tools.invoke("test.items.listItems", {}, autoApprove)) as {
+        data: unknown;
+        error: unknown;
+      };
       expect(result.error).toBeNull();
       expect(result.data).toEqual(ITEMS);
     }),
@@ -481,10 +473,7 @@ layer(TestLayer)("OpenAPI Plugin", (it) => {
 
       const remaining = yield* executor.tools.list();
       const ids = remaining.map((t) => t.id).sort();
-      expect(ids).toEqual([
-        "openapi.addSource",
-        "openapi.previewSpec",
-      ]);
+      expect(ids).toEqual(["openapi.addSource", "openapi.previewSpec"]);
     }),
   );
 
@@ -554,10 +543,7 @@ layer(TestLayer)("OpenAPI Plugin", (it) => {
       const clientLayer = Layer.succeed(HttpClient.HttpClient, httpClient);
       const config = makeTestConfig({
         scopes: stackedScopes,
-        plugins: [
-          openApiPlugin({ httpClientLayer: clientLayer }),
-          memorySecretsPlugin(),
-        ] as const,
+        plugins: [openApiPlugin({ httpClientLayer: clientLayer }), memorySecretsPlugin()] as const,
       });
       const findManyCalls: FindManyCall[] = [];
 
@@ -674,94 +660,92 @@ layer(TestLayer)("OpenAPI Plugin", (it) => {
     }),
   );
 
-  it.effect(
-    "addSpec persists a source with deferred OAuth2Auth (no live connection yet)",
-    () =>
-      Effect.gen(function* () {
-        const httpClient = yield* HttpClient.HttpClient;
-        const clientLayer = Layer.succeed(HttpClient.HttpClient, httpClient);
+  it.effect("addSpec persists a source with deferred OAuth2Auth (no live connection yet)", () =>
+    Effect.gen(function* () {
+      const httpClient = yield* HttpClient.HttpClient;
+      const clientLayer = Layer.succeed(HttpClient.HttpClient, httpClient);
 
-        const executor = yield* createExecutor(
-          makeTestConfig({
-            plugins: [
-              openApiPlugin({ httpClientLayer: clientLayer }),
-              memorySecretsPlugin(),
-            ] as const,
-          }),
+      const executor = yield* createExecutor(
+        makeTestConfig({
+          plugins: [
+            openApiPlugin({ httpClientLayer: clientLayer }),
+            memorySecretsPlugin(),
+          ] as const,
+        }),
+      );
+
+      // A team-shared client id secret, but no live connection for this
+      // scope — the admin is saving the source and deferring sign-in
+      // to individual users.
+      yield* executor.secrets.set(
+        new SetSecretInput({
+          id: SecretId.make("acme-client-id"),
+          scope: ScopeId.make(TEST_SCOPE),
+          name: "Acme Client ID",
+          value: "client-abc",
+        }),
+      );
+
+      const deferredAuth = new OAuth2Auth({
+        kind: "oauth2",
+        connectionId: "openapi-oauth2-pending-deferred",
+        securitySchemeName: "oauth2",
+        flow: "authorizationCode",
+        tokenUrl: "https://auth.example.com/token",
+        authorizationUrl: "https://auth.example.com/authorize",
+        clientIdSecretId: "acme-client-id",
+        clientSecretSecretId: null,
+        scopes: ["read:items"],
+      });
+
+      const result = yield* executor.openapi.addSpec({
+        spec: specJson,
+        scope: TEST_SCOPE,
+        namespace: "deferred",
+        baseUrl: "https://api.example.com",
+        oauth2: deferredAuth,
+      });
+
+      expect(result.toolCount).toBeGreaterThan(0);
+
+      const stored = yield* executor.openapi.getSource("deferred", TEST_SCOPE);
+      expect(stored).not.toBeNull();
+      expect(stored?.config.oauth2?.flow).toBe("authorizationCode");
+      expect(stored?.config.oauth2?.connectionSlot).toBe("oauth2:oauth2:connection");
+      expect(stored?.config.oauth2?.clientIdSlot).toBe("oauth2:oauth2:client-id");
+
+      const clientIdBinding = yield* executor.openapi
+        .listSourceBindings("deferred", TEST_SCOPE)
+        .pipe(
+          Effect.map(
+            (bindings) =>
+              bindings.find((binding) => binding.slot === stored!.config.oauth2!.clientIdSlot) ??
+              null,
+          ),
         );
+      expect(clientIdBinding?.value).toEqual({
+        kind: "secret",
+        secretId: SecretId.make("acme-client-id"),
+      });
 
-        // A team-shared client id secret, but no live connection for this
-        // scope — the admin is saving the source and deferring sign-in
-        // to individual users.
-        yield* executor.secrets.set(
-          new SetSecretInput({
-            id: SecretId.make("acme-client-id"),
-            scope: ScopeId.make(TEST_SCOPE),
-            name: "Acme Client ID",
-            value: "client-abc",
-          }),
+      const connectionBinding = yield* executor.openapi
+        .listSourceBindings("deferred", TEST_SCOPE)
+        .pipe(
+          Effect.map(
+            (bindings) =>
+              bindings.find((binding) => binding.slot === stored!.config.oauth2!.connectionSlot) ??
+              null,
+          ),
         );
+      expect(connectionBinding?.value).toEqual({
+        kind: "connection",
+        connectionId: "openapi-oauth2-pending-deferred",
+      });
 
-        const deferredAuth = new OAuth2Auth({
-          kind: "oauth2",
-          connectionId: "openapi-oauth2-pending-deferred",
-          securitySchemeName: "oauth2",
-          flow: "authorizationCode",
-          tokenUrl: "https://auth.example.com/token",
-          authorizationUrl: "https://auth.example.com/authorize",
-          clientIdSecretId: "acme-client-id",
-          clientSecretSecretId: null,
-          scopes: ["read:items"],
-        });
-
-        const result = yield* executor.openapi.addSpec({
-          spec: specJson,
-          scope: TEST_SCOPE,
-          namespace: "deferred",
-          baseUrl: "https://api.example.com",
-          oauth2: deferredAuth,
-        });
-
-        expect(result.toolCount).toBeGreaterThan(0);
-
-        const stored = yield* executor.openapi.getSource("deferred", TEST_SCOPE);
-        expect(stored).not.toBeNull();
-        expect(stored?.config.oauth2?.flow).toBe("authorizationCode");
-        expect(stored?.config.oauth2?.connectionSlot).toBe("oauth2:oauth2:connection");
-        expect(stored?.config.oauth2?.clientIdSlot).toBe("oauth2:oauth2:client-id");
-
-        const clientIdBinding = yield* executor.openapi
-          .listSourceBindings("deferred", TEST_SCOPE)
-          .pipe(
-            Effect.map((bindings) =>
-              bindings.find(
-                (binding) => binding.slot === stored!.config.oauth2!.clientIdSlot,
-              ) ?? null,
-            ),
-          );
-        expect(clientIdBinding?.value).toEqual({
-          kind: "secret",
-          secretId: SecretId.make("acme-client-id"),
-        });
-
-        const connectionBinding = yield* executor.openapi
-          .listSourceBindings("deferred", TEST_SCOPE)
-          .pipe(
-            Effect.map((bindings) =>
-              bindings.find(
-                (binding) => binding.slot === stored!.config.oauth2!.connectionSlot,
-              ) ?? null,
-            ),
-          );
-        expect(connectionBinding?.value).toEqual({
-          kind: "connection",
-          connectionId: "openapi-oauth2-pending-deferred",
-        });
-
-        // Tools should be listed even without a live connection; invocation
-        // is what requires the token, not registration.
-        const tools = yield* executor.tools.list();
-        expect(tools.some((t) => t.id.startsWith("deferred."))).toBe(true);
-      }),
+      // Tools should be listed even without a live connection; invocation
+      // is what requires the token, not registration.
+      const tools = yield* executor.tools.list();
+      expect(tools.some((t) => t.id.startsWith("deferred."))).toBe(true);
+    }),
   );
 });

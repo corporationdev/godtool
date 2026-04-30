@@ -44,21 +44,14 @@ const wrapErr =
     });
   };
 
-export const makePostgresBlobStore = (
-  options: MakePostgresBlobStoreOptions,
-): BlobStore => ({
+export const makePostgresBlobStore = (options: MakePostgresBlobStoreOptions): BlobStore => ({
   get: (namespace, key) =>
     Effect.tryPromise({
       try: async () => {
         const rows = await options.db
           .select({ value: blobTable.value })
           .from(blobTable)
-          .where(
-            and(
-              eq(blobTable.namespace, namespace),
-              eq(blobTable.key, key),
-            ),
-          )
+          .where(and(eq(blobTable.namespace, namespace), eq(blobTable.key, key)))
           .limit(1);
         return rows[0]?.value ?? null;
       },
@@ -75,12 +68,7 @@ export const makePostgresBlobStore = (
                 value: blobTable.value,
               })
               .from(blobTable)
-              .where(
-                and(
-                  inArray(blobTable.namespace, [...namespaces]),
-                  eq(blobTable.key, key),
-                ),
-              );
+              .where(and(inArray(blobTable.namespace, [...namespaces]), eq(blobTable.key, key)));
             const out = new Map<string, string>();
             for (const row of rows) out.set(row.namespace, row.value);
             return out as ReadonlyMap<string, string>;
@@ -105,12 +93,7 @@ export const makePostgresBlobStore = (
       try: async () => {
         await options.db
           .delete(blobTable)
-          .where(
-            and(
-              eq(blobTable.namespace, namespace),
-              eq(blobTable.key, key),
-            ),
-          );
+          .where(and(eq(blobTable.namespace, namespace), eq(blobTable.key, key)));
       },
       catch: wrapErr("delete"),
     }),
@@ -120,12 +103,7 @@ export const makePostgresBlobStore = (
         const rows = await options.db
           .select({ key: blobTable.key })
           .from(blobTable)
-          .where(
-            and(
-              eq(blobTable.namespace, namespace),
-              eq(blobTable.key, key),
-            ),
-          )
+          .where(and(eq(blobTable.namespace, namespace), eq(blobTable.key, key)))
           .limit(1);
         return rows.length > 0;
       },

@@ -1,10 +1,7 @@
 import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from "@effect/platform";
 import { Schema } from "effect";
 
-import {
-  ConnectionId,
-  ScopeId,
-} from "@executor/sdk";
+import { ConnectionId, ScopeId } from "@executor/sdk";
 
 import { InternalError } from "../observability";
 
@@ -36,9 +33,7 @@ const ConnectionRefResponse = Schema.Struct({
 
 export class ConnectionsApi extends HttpApiGroup.make("connections")
   .add(
-    HttpApiEndpoint.get(
-      "list",
-    )`/scopes/${scopeIdParam}/connections`.addSuccess(
+    HttpApiEndpoint.get("list")`/scopes/${scopeIdParam}/connections`.addSuccess(
       Schema.Array(ConnectionRefResponse),
     ),
   )

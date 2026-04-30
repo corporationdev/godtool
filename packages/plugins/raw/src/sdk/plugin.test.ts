@@ -28,14 +28,12 @@ const memoryProvider: SecretProvider = (() => {
   return {
     key: "memory",
     writable: true,
-    get: (id, scope) =>
-      Effect.sync(() => store.get(`${scope}\u0000${id}`) ?? null),
+    get: (id, scope) => Effect.sync(() => store.get(`${scope}\u0000${id}`) ?? null),
     set: (id, value, scope) =>
       Effect.sync(() => {
         store.set(`${scope}\u0000${id}`, value);
       }),
-    delete: (id, scope) =>
-      Effect.sync(() => store.delete(`${scope}\u0000${id}`)),
+    delete: (id, scope) => Effect.sync(() => store.delete(`${scope}\u0000${id}`)),
   };
 })();
 
@@ -93,26 +91,22 @@ describe("rawPlugin", () => {
 
   it.effect("resolves configured headers and performs scoped fetches", () =>
     Effect.gen(function* () {
-      const fetchSpy = vi
-        .spyOn(globalThis, "fetch")
-        .mockImplementation(async (input, init) => {
-          const request = toRequest(input, init);
-          expect(request.url).toBe("https://api.example.com/v1/users");
-          expect(request.headers.get("authorization")).toBe(
-            "Bearer secret-value-123",
-          );
-          expect(request.headers.get("x-static")).toBe("override");
-          return new Response(
-            JSON.stringify({
-              authorization: request.headers.get("authorization"),
-              xStatic: request.headers.get("x-static"),
-            }),
-            {
-              status: 200,
-              headers: { "content-type": "application/json" },
-            },
-          );
-        });
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+        const request = toRequest(input, init);
+        expect(request.url).toBe("https://api.example.com/v1/users");
+        expect(request.headers.get("authorization")).toBe("Bearer secret-value-123");
+        expect(request.headers.get("x-static")).toBe("override");
+        return new Response(
+          JSON.stringify({
+            authorization: request.headers.get("authorization"),
+            xStatic: request.headers.get("x-static"),
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      });
 
       try {
         const executor = yield* makeExecutor();
@@ -169,16 +163,26 @@ describe("rawPlugin", () => {
       }).toString(),
     ).toBe("https://api.example.com/v1/users?limit=10");
 
-    expect(() =>
-      buildRequestUrl("https://api.example.com/v1", "https://evil.test", {}),
-    ).toThrow(/relative/);
-    expect(() =>
-      buildRequestUrl("https://api.example.com/v1", "../admin", {}),
-    ).toThrow(/escapes/);
+    expect(() => buildRequestUrl("https://api.example.com/v1", "https://evil.test", {})).toThrow(
+      /relative/,
+    );
+    expect(() => buildRequestUrl("https://api.example.com/v1", "../admin", {})).toThrow(/escapes/);
   });
 
-  it("ships only the Slack and Notion raw HTTP presets", () => {
-    expect(rawPresets.map((preset) => preset.id)).toEqual(["slack", "notion"]);
+  it("ships managed-auth ready raw HTTP presets", () => {
+    expect(rawPresets.map((preset) => preset.id)).toEqual([
+      "slack",
+      "notion",
+      "twitter",
+      "supabase",
+      "airtable",
+      "hubspot",
+      "gong",
+      "salesforce",
+      "canvas",
+      "zendesk",
+      "discord",
+    ]);
     expect(rawPresets.find((preset) => preset.id === "slack")).toMatchObject({
       baseUrl: "https://slack.com/api",
     });
@@ -187,6 +191,10 @@ describe("rawPlugin", () => {
       defaultHeaders: {
         "Notion-Version": "2022-06-28",
       },
+    });
+    expect(rawPresets.find((preset) => preset.id === "hubspot")).toMatchObject({
+      baseUrl: "https://api.hubapi.com",
+      composio: { app: "hubspot" },
     });
   });
 });

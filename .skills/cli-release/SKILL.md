@@ -6,16 +6,19 @@ description: Runbook for releasing the `executor` CLI package (stable and beta).
 # Executor CLI release runbook
 
 ## Authoritative doc
+
 `RELEASING.md` at repo root is the source of truth. This skill encodes the owner's preferences on top of it.
 
 ## What the `executor` CLI actually ships
 
 The CLI binary bundles:
+
 - `apps/cli/**` — CLI source + daemon
 - `apps/local/**` — the web UI (embedded as a virtual module via `apps/cli/src/build.ts:178`) + drizzle migrations (`build.ts:205`)
 - `packages/**` — `core`, `kernel`, `hosts/mcp`, `runtime-quickjs`, and every plugin under `packages/plugins/**`
 
 Does **not** ship in the CLI:
+
 - `apps/cloud/**` (Cloudflare Workers deployment)
 - `apps/marketing/**`, `apps/desktop/**`
 - `examples/**`, `tests/**`
@@ -35,13 +38,17 @@ Does **not** ship in the CLI:
 The owner doesn't want GitHub's auto-generated "PR title by @user" list. Release notes live at `apps/cli/release-notes/` and `apps/cli/src/release.ts` prefers them over `--generate-notes`.
 
 ### How it's wired
+
 `apps/cli/src/release.ts:198` picks the notes file in this order:
+
 1. `apps/cli/release-notes/v<version>.md` (archived per release)
 2. `apps/cli/release-notes/next.md` (rolling draft)
 3. Fall back to `gh release create --generate-notes`
 
 ### Writing conventions
+
 Structure release-notes files as:
+
 ```
 ## Highlights
 ### <user-facing story>     # e.g. "Per-user OAuth for OpenAPI and MCP sources"
@@ -61,16 +68,20 @@ Structure release-notes files as:
 Lead with **user-visible stories**, not commit subjects. Group related commits into one story (e.g. 6 commits about Connections → one "Per-user OAuth" section). Include before/after CLI snippets for any breaking change.
 
 ### When drafting from `git log`
+
 - Look at `git diff v<last>..HEAD -- README.md` first — it's the best single view of user-facing changes.
 - Read commit messages in bulk (`git log --oneline v<last>..HEAD -- apps/cli apps/local packages`), then bucket by theme before writing prose.
 - Don't list every commit. Merge PRs and refactor-chain commits into one line.
 
 ### Changeset body vs release notes file
+
 - The `.changeset/*.md` body shows up in the Version Packages PR description. Use the same content (or a condensed version) as the release-notes file.
 - Frontmatter is `"executor": patch` (or `minor`/`major` if owner says so).
 
 ### Post-release archival (manual)
+
 After a release publishes, rename `apps/cli/release-notes/next.md` → `apps/cli/release-notes/v<version>.md` and commit on `main` (or in a small follow-up PR). This:
+
 - Preserves the historical notes file-by-version (matches `release.ts`'s preferred lookup path).
 - Resets `next.md` absence so the next cycle starts from a blank file — no chance of last release's content leaking into the next one.
 

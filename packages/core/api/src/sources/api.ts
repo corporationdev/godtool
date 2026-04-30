@@ -1,10 +1,6 @@
 import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from "@effect/platform";
 import { Schema } from "effect";
-import {
-  ScopeId,
-  SourceRemovalNotAllowedError,
-  ToolId,
-} from "@executor/sdk";
+import { ScopeId, SourceRemovalNotAllowedError, ToolId } from "@executor/sdk";
 
 import { InternalError } from "../observability";
 

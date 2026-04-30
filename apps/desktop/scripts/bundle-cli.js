@@ -65,7 +65,9 @@ const signComputerUseBinary = (binaryPath) => {
     { stdio: "inherit" },
   );
   if (result.status !== 0) {
-    console.warn("computer-use mac sidecar signing failed; permissions may not persist across rebuilds");
+    console.warn(
+      "computer-use mac sidecar signing failed; permissions may not persist across rebuilds",
+    );
   }
 };
 
@@ -141,7 +143,9 @@ if (process.platform === "darwin") {
     chmodSync(join(targetComputerUseDir, computerUseBinaryName), 0o755);
     console.log(`computer-use binary copied to ${targetComputerUseDir}`);
   } else {
-    console.warn("computer-use mac sidecar failed to build; packaged computer use tools will be unavailable");
+    console.warn(
+      "computer-use mac sidecar failed to build; packaged computer use tools will be unavailable",
+    );
   }
 }
 

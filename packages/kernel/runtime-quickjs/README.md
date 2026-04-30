@@ -33,11 +33,11 @@ const engine = createExecutionEngine({
 
 ### Options
 
-| Option              | Default    | Description                                  |
-| ------------------- | ---------- | -------------------------------------------- |
-| `timeoutMs`         | `5_000`    | Max wall-clock time per execution            |
-| `memoryLimitBytes`  | `64 * 1MB` | Max memory the VM can allocate               |
-| `maxStackSizeBytes` | `1 * 1MB`  | Max call-stack depth                         |
+| Option              | Default    | Description                       |
+| ------------------- | ---------- | --------------------------------- |
+| `timeoutMs`         | `5_000`    | Max wall-clock time per execution |
+| `memoryLimitBytes`  | `64 * 1MB` | Max memory the VM can allocate    |
+| `maxStackSizeBytes` | `1 * 1MB`  | Max call-stack depth              |
 
 ### Swapping the QuickJS build
 
@@ -53,7 +53,7 @@ Use this when you want a different WASM variant (e.g. debug builds, QuickJS-NG) 
 
 ## Status
 
-Pre-`1.0`. APIs may still change between beta releases. Part of the [executor monorepo](https://github.com/RhysSullivan/executor).
+Pre-`1.0`. APIs may still change between beta releases. Part of the [executor monorepo](https://github.com/corporationdev/godtool).
 
 ## License
 

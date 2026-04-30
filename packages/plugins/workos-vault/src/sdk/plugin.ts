@@ -54,36 +54,32 @@ const buildClient = (
     return makeConfiguredWorkOSVaultClient(options.credentials);
   }
   return Effect.fail(
-    new Error(
-      "workosVaultPlugin requires either `client` or `credentials` to be provided",
-    ),
+    new Error("workosVaultPlugin requires either `client` or `credentials` to be provided"),
   );
 };
 
-export const workosVaultPlugin = definePlugin(
-  (options?: WorkOSVaultPluginOptions) => ({
-    id: "workosVault" as const,
-    schema: workosVaultSchema,
-    storage: (deps): WorkosVaultPluginStore => makeWorkosVaultStore(deps),
+export const workosVaultPlugin = definePlugin((options?: WorkOSVaultPluginOptions) => ({
+  id: "workosVault" as const,
+  schema: workosVaultSchema,
+  storage: (deps): WorkosVaultPluginStore => makeWorkosVaultStore(deps),
 
-    extension: (_ctx): WorkOSVaultExtension => ({
-      providerKey: WORKOS_VAULT_PROVIDER_KEY,
-    }),
-
-    secretProviders: (ctx) => {
-      // Build (or accept) the WorkOS client once at startup. If
-      // credentials are bad this throws synchronously via Effect.runSync,
-      // which is what we want — the executor fails to start rather
-      // than surfacing bad credentials on first secret access.
-      const client = Effect.runSync(buildClient(options));
-      return [
-        makeWorkOSVaultSecretProvider({
-          client,
-          store: ctx.storage,
-          objectPrefix: options?.objectPrefix,
-          contextForScope: options?.contextForScope,
-        }),
-      ];
-    },
+  extension: (_ctx): WorkOSVaultExtension => ({
+    providerKey: WORKOS_VAULT_PROVIDER_KEY,
   }),
-);
+
+  secretProviders: (ctx) => {
+    // Build (or accept) the WorkOS client once at startup. If
+    // credentials are bad this throws synchronously via Effect.runSync,
+    // which is what we want — the executor fails to start rather
+    // than surfacing bad credentials on first secret access.
+    const client = Effect.runSync(buildClient(options));
+    return [
+      makeWorkOSVaultSecretProvider({
+        client,
+        store: ctx.storage,
+        objectPrefix: options?.objectPrefix,
+        contextForScope: options?.contextForScope,
+      }),
+    ];
+  },
+}));

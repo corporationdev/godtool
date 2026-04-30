@@ -43,38 +43,48 @@ export const OnePasswordHandlers = HttpApiBuilder.group(
   (handlers) =>
     handlers
       .handle("getConfig", () =>
-        capture(Effect.gen(function* () {
-          const ext = yield* OnePasswordExtensionService;
-          return yield* ext.getConfig();
-        })),
+        capture(
+          Effect.gen(function* () {
+            const ext = yield* OnePasswordExtensionService;
+            return yield* ext.getConfig();
+          }),
+        ),
       )
       .handle("configure", ({ payload }) =>
-        capture(Effect.gen(function* () {
-          const ext = yield* OnePasswordExtensionService;
-          yield* ext.configure(payload);
-        })),
+        capture(
+          Effect.gen(function* () {
+            const ext = yield* OnePasswordExtensionService;
+            yield* ext.configure(payload);
+          }),
+        ),
       )
       .handle("removeConfig", () =>
-        capture(Effect.gen(function* () {
-          const ext = yield* OnePasswordExtensionService;
-          yield* ext.removeConfig();
-        })),
+        capture(
+          Effect.gen(function* () {
+            const ext = yield* OnePasswordExtensionService;
+            yield* ext.removeConfig();
+          }),
+        ),
       )
       .handle("status", () =>
-        capture(Effect.gen(function* () {
-          const ext = yield* OnePasswordExtensionService;
-          return yield* ext.status();
-        })),
+        capture(
+          Effect.gen(function* () {
+            const ext = yield* OnePasswordExtensionService;
+            return yield* ext.status();
+          }),
+        ),
       )
       .handle("listVaults", ({ urlParams }) =>
-        capture(Effect.gen(function* () {
-          const ext = yield* OnePasswordExtensionService;
-          const auth =
-            urlParams.authKind === "desktop-app"
-              ? { kind: "desktop-app" as const, accountName: urlParams.account }
-              : { kind: "service-account" as const, tokenSecretId: urlParams.account };
-          const vaults = yield* ext.listVaults(auth);
-          return { vaults: [...vaults] };
-        })),
+        capture(
+          Effect.gen(function* () {
+            const ext = yield* OnePasswordExtensionService;
+            const auth =
+              urlParams.authKind === "desktop-app"
+                ? { kind: "desktop-app" as const, accountName: urlParams.account }
+                : { kind: "service-account" as const, tokenSecretId: urlParams.account };
+            const vaults = yield* ext.listVaults(auth);
+            return { vaults: [...vaults] };
+          }),
+        ),
       ),
 );

@@ -81,10 +81,7 @@ export const setSecret = ExecutorApiClient.mutation("secrets", "set");
 
 export const removeSecret = ExecutorApiClient.mutation("secrets", "remove");
 
-export const removeConnection = ExecutorApiClient.mutation(
-  "connections",
-  "remove",
-);
+export const removeConnection = ExecutorApiClient.mutation("connections", "remove");
 
 export const removeSource = ExecutorApiClient.mutation("sources", "remove");
 

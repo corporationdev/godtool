@@ -54,8 +54,8 @@ And app-side, once per request inside a transaction (so `SET LOCAL`
 takes):
 
 ```ts
-yield* sql`SET LOCAL app.scope_chain = ${toPgArray(chain)}`;
-yield* sql`SET LOCAL app.write_scope = ${writeScope}`;
+yield * sql`SET LOCAL app.scope_chain = ${toPgArray(chain)}`;
+yield * sql`SET LOCAL app.write_scope = ${writeScope}`;
 ```
 
 `current_setting('…', true)` returns null when the setting is missing,
@@ -69,7 +69,7 @@ scope sees zero rows, not an error that might be handled into a 500.
    tables is whatever `executor-schema.ts` exports with a `scope_id`
    column — same set the scope adapter already knows about.
 2. Add an Effect layer that wraps the DbService to issue the two `SET
-   LOCAL`s at connection acquire. `postgres.js`'s `sql.begin` already
+LOCAL`s at connection acquire. `postgres.js`'s `sql.begin` already
    gives us the transaction boundary.
 3. Leave `BYPASSRLS` off the worker's role so we actually get the
    enforcement; grant it on the role used by the migration / admin

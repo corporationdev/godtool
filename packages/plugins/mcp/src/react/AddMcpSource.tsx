@@ -32,6 +32,7 @@ import {
   SourceIdentityFields,
   useSourceIdentity,
 } from "@executor/react/plugins/source-identity";
+import { SourceAdvancedSettings } from "@executor/react/plugins/source-advanced-settings";
 import { useSecretPickerSecrets } from "@executor/react/plugins/use-secret-picker-secrets";
 
 type RemoteAuthMode = "none" | "header" | "oauth2";
@@ -760,10 +761,6 @@ export default function AddMcpSource(props: {
             </CardStackContent>
           </CardStack>
 
-          {probe && (
-            <SourceIdentityFields identity={remoteIdentity} namePlaceholder="e.g. Linear" />
-          )}
-
           {/* Authentication */}
           {probe && (
             <section className="space-y-2.5">
@@ -855,7 +852,16 @@ export default function AddMcpSource(props: {
             </section>
           )}
 
-          {/* Additional headers */}
+          {probe && (
+            <SourceAdvancedSettings>
+              <SourceIdentityFields
+                identity={remoteIdentity}
+                namePlaceholder="e.g. Linear"
+                asEntries
+              />
+            </SourceAdvancedSettings>
+          )}
+
           {probe && (
             <section className="space-y-2.5">
               <div>

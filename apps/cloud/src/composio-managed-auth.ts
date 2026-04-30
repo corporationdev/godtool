@@ -234,20 +234,20 @@ const completeConnect = (request: Request) =>
       getComposioConnectedAccount(apiKey, connectedAccountId),
     );
     const result = {
-        ok: true,
-        managedAuth: {
-          kind: "composio",
-          app: payload.app,
-          authConfigId: payload.authConfigId,
-          connectionId: payload.connectionId,
-        },
-        managedConnection: {
-          connectionId: payload.connectionId,
-          provider: payload.provider,
-          identityLabel: account.displayName ?? account.appName ?? payload.app,
-          connectedAccountId,
-        },
-      };
+      ok: true,
+      managedAuth: {
+        kind: "composio",
+        app: payload.app,
+        authConfigId: payload.authConfigId,
+        connectionId: payload.connectionId,
+      },
+      managedConnection: {
+        connectionId: payload.connectionId,
+        provider: payload.provider,
+        identityLabel: account.displayName ?? account.appName ?? payload.app,
+        connectedAccountId,
+      },
+    };
     return html(
       payload.desktopCallbackUrl
         ? desktopCallbackHtml(payload.desktopCallbackUrl, result)
@@ -277,9 +277,10 @@ const proxy = (request: Request) =>
     const apiKey = env.COMPOSIO_API_KEY;
     if (!apiKey) return json({ error: "managed_auth_not_configured" }, { status: 503 });
 
-    const payload = (yield* Effect.promise(() =>
-      request.json().catch(() => null),
-    )) as { readonly connectedAccountId?: unknown; readonly request?: unknown } | null;
+    const payload = (yield* Effect.promise(() => request.json().catch(() => null))) as {
+      readonly connectedAccountId?: unknown;
+      readonly request?: unknown;
+    } | null;
     const connectedAccountId =
       typeof payload?.connectedAccountId === "string" ? payload.connectedAccountId : "";
     const managedRequest = payload?.request as ManagedHttpRequest | undefined;

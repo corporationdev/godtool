@@ -71,11 +71,7 @@ export {
 } from "./core-schema";
 
 // Secrets
-export {
-  SecretRef,
-  SetSecretInput,
-  type SecretProvider,
-} from "./secrets";
+export { SecretRef, SetSecretInput, type SecretProvider } from "./secrets";
 
 // Connections
 export {
@@ -140,22 +136,13 @@ export {
 } from "./executor";
 
 // CLI config
-export {
-  defineExecutorConfig,
-  type ExecutorCliConfig,
-  type ExecutorDialect,
-} from "./config";
+export { defineExecutorConfig, type ExecutorCliConfig, type ExecutorDialect } from "./config";
 
 // Test helper
 export { makeTestConfig } from "./testing";
 
 // JSON schema $ref helpers (used by openapi for $defs handling)
-export {
-  hoistDefinitions,
-  collectRefs,
-  reattachDefs,
-  normalizeRefs,
-} from "./schema-refs";
+export { hoistDefinitions, collectRefs, reattachDefs, normalizeRefs } from "./schema-refs";
 
 // TypeScript preview generation from JSON schemas
 export {

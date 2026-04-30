@@ -92,9 +92,7 @@ export class OrgApi extends HttpApiGroup.make("org")
       .addError(WorkOSError),
   )
   .add(
-    HttpApiEndpoint.get("listRoles")`/org/roles`
-      .addSuccess(OrgRolesResponse)
-      .addError(WorkOSError),
+    HttpApiEndpoint.get("listRoles")`/org/roles`.addSuccess(OrgRolesResponse).addError(WorkOSError),
   )
   .add(
     HttpApiEndpoint.post("invite")`/org/invite`

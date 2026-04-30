@@ -297,11 +297,7 @@ function PropertyChildren(props: { schema: JsonSchema; root: JsonSchema; depth: 
   const { schema: rawSchema, root, depth } = props;
 
   if (depth > 6) {
-    return (
-      <p className="px-4 py-2 text-sm text-muted-foreground">
-        Nested too deep to display.
-      </p>
-    );
+    return <p className="px-4 py-2 text-sm text-muted-foreground">Nested too deep to display.</p>;
   }
 
   const schema = deepResolve(rawSchema, root);

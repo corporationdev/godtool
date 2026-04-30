@@ -25,9 +25,7 @@ const isJsonContentType = (ct: string | null | undefined): boolean => {
   const normalized = normalizeContentType(ct);
   if (!normalized) return false;
   return (
-    normalized === "application/json" ||
-    normalized.includes("+json") ||
-    normalized.includes("json")
+    normalized === "application/json" || normalized.includes("+json") || normalized.includes("json")
   );
 };
 
@@ -36,22 +34,14 @@ const asRecord = (value: unknown): Record<string, unknown> =>
     ? (value as Record<string, unknown>)
     : {};
 
-const HTTP_METHODS = [
-  "GET",
-  "POST",
-  "PUT",
-  "PATCH",
-  "DELETE",
-  "HEAD",
-  "OPTIONS",
-] as const;
+const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"] as const;
 
 type HttpMethod = (typeof HTTP_METHODS)[number];
 
-export const normalizeMethod = (
-  value: unknown,
-): HttpMethod => {
-  const normalized = String(value ?? "GET").trim().toUpperCase();
+export const normalizeMethod = (value: unknown): HttpMethod => {
+  const normalized = String(value ?? "GET")
+    .trim()
+    .toUpperCase();
   if ((HTTP_METHODS as readonly string[]).includes(normalized)) {
     return normalized as HttpMethod;
   }
@@ -62,10 +52,7 @@ export const normalizeMethod = (
 };
 
 export const requiresApprovalForMethod = (method: string): boolean =>
-  method === "POST" ||
-  method === "PUT" ||
-  method === "PATCH" ||
-  method === "DELETE";
+  method === "POST" || method === "PUT" || method === "PATCH" || method === "DELETE";
 
 export const resolveHeaders = (
   headers: Record<string, HeaderValue>,
@@ -161,7 +148,10 @@ export const buildRequestUrl = (
   const basePrefix = base.pathname;
   const urlPath = url.pathname;
 
-  if (url.origin !== base.origin || !(urlPath === basePrefix.slice(0, -1) || urlPath.startsWith(basePrefix))) {
+  if (
+    url.origin !== base.origin ||
+    !(urlPath === basePrefix.slice(0, -1) || urlPath.startsWith(basePrefix))
+  ) {
     throw new RawInvocationError({
       message: `Path "${inputPath}" escapes the configured base URL`,
       statusCode: Option.none(),
@@ -182,10 +172,7 @@ export const buildRequestUrl = (
   return url;
 };
 
-const requestFor = (
-  method: HttpMethod,
-  url: string,
-): HttpClientRequest.HttpClientRequest => {
+const requestFor = (method: HttpMethod, url: string): HttpClientRequest.HttpClientRequest => {
   switch (method) {
     case "GET":
       return HttpClientRequest.get(url);

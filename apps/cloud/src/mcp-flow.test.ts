@@ -24,12 +24,7 @@
 // MCP session coverage lives in `mcp-miniflare.e2e.node.test.ts`.
 // ---------------------------------------------------------------------------
 
-import {
-  env,
-  runDurableObjectAlarm,
-  runInDurableObject,
-  SELF,
-} from "cloudflare:test";
+import { env, runDurableObjectAlarm, runInDurableObject, SELF } from "cloudflare:test";
 import { Effect } from "effect";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -146,9 +141,7 @@ describe("/mcp CORS preflight", () => {
 
     expect(response.status).toBe(204);
     expect(response.headers.get("access-control-allow-origin")).toBe("*");
-    expect(response.headers.get("access-control-allow-methods")).toBe(
-      "GET, POST, DELETE, OPTIONS",
-    );
+    expect(response.headers.get("access-control-allow-methods")).toBe("GET, POST, DELETE, OPTIONS");
     const allowedHeaders = response.headers.get("access-control-allow-headers") ?? "";
     expect(allowedHeaders).toContain("mcp-session-id");
     expect(allowedHeaders).toContain("authorization");

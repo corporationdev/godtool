@@ -17,12 +17,14 @@ import { getServerHandlers } from "./server/main";
 
 const DEFAULT_ALLOWED_HOSTS = ["localhost", "127.0.0.1", "[::1]", "::1"];
 
-const makeIsAllowedHost = (allowed: ReadonlySet<string>) => (request: Request): boolean => {
-  const host = request.headers.get("host");
-  if (!host) return true;
-  const hostname = host.replace(/:\d+$/, "");
-  return allowed.has(hostname);
-};
+const makeIsAllowedHost =
+  (allowed: ReadonlySet<string>) =>
+  (request: Request): boolean => {
+    const host = request.headers.get("host");
+    if (!host) return true;
+    const hostname = host.replace(/:\d+$/, "");
+    return allowed.has(hostname);
+  };
 
 // ---------------------------------------------------------------------------
 // Static files

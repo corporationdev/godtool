@@ -56,9 +56,7 @@ export interface ErrorCaptureShape {
    * can later look up. Implementations (Sentry, console, etc.) decide
    * how to persist it.
    */
-  readonly captureException: (
-    cause: Cause.Cause<unknown>,
-  ) => Effect.Effect<string>;
+  readonly captureException: (cause: Cause.Cause<unknown>) => Effect.Effect<string>;
 }
 
 export class ErrorCapture extends Context.Tag("@executor/api/ErrorCapture")<
@@ -77,9 +75,7 @@ export class ErrorCapture extends Context.Tag("@executor/api/ErrorCapture")<
 // typecheck; if it's there, we use it; if not, trace ids are empty.
 const resolveCapture = Effect.serviceOption(ErrorCapture).pipe(
   Effect.map((opt) =>
-    Option.isSome(opt)
-      ? opt.value
-      : ({ captureException: () => Effect.succeed("") } as const),
+    Option.isSome(opt) ? opt.value : ({ captureException: () => Effect.succeed("") } as const),
   ),
 );
 
@@ -107,9 +103,7 @@ export const capture = <A, E, R>(
     Effect.catchTag("StorageError", (err) =>
       resolveCapture.pipe(
         Effect.flatMap((c) => c.captureException(Cause.fail(err))),
-        Effect.flatMap((traceId) =>
-          Effect.fail(new InternalError({ traceId })),
-        ),
+        Effect.flatMap((traceId) => Effect.fail(new InternalError({ traceId }))),
       ),
     ),
   ) as Effect.Effect<A, Exclude<E, StorageFailure> | InternalError, R>;
@@ -136,9 +130,7 @@ export const captureEngineError = <A, R>(
         ? Effect.fail(err)
         : resolveCapture.pipe(
             Effect.flatMap((c) => c.captureException(Cause.fail(err))),
-            Effect.flatMap((traceId) =>
-              Effect.fail(new InternalError({ traceId })),
-            ),
+            Effect.flatMap((traceId) => Effect.fail(new InternalError({ traceId }))),
           ),
     ),
   );
@@ -173,10 +165,7 @@ export const observabilityMiddleware = <
         Effect.catchAllCause(httpApp, (cause) =>
           Effect.gen(function* () {
             const traceId = yield* c.captureException(cause);
-            return HttpServerResponse.unsafeJson(
-              new InternalError({ traceId }),
-              { status: 500 },
-            );
+            return HttpServerResponse.unsafeJson(new InternalError({ traceId }), { status: 500 });
           }),
         );
     }),

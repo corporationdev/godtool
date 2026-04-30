@@ -5,11 +5,7 @@
 
 import { Effect, Schema } from "effect";
 
-import {
-  defineSchema,
-  type StorageDeps,
-  type StorageFailure,
-} from "@executor/sdk";
+import { defineSchema, type StorageDeps, type StorageFailure } from "@executor/sdk";
 
 import { McpToolBinding, McpStoredSourceData } from "./types";
 import { McpOAuthSession } from "./oauth";
@@ -144,10 +140,7 @@ export interface McpBindingStore {
     scope: string,
   ) => Effect.Effect<McpStoredSourceData | null, StorageFailure>;
   readonly putSource: (source: McpStoredSource) => Effect.Effect<void, StorageFailure>;
-  readonly removeSource: (
-    namespace: string,
-    scope: string,
-  ) => Effect.Effect<void, StorageFailure>;
+  readonly removeSource: (namespace: string, scope: string) => Effect.Effect<void, StorageFailure>;
 
   readonly putOAuthSession: (
     sessionId: string,
@@ -164,9 +157,7 @@ export interface McpBindingStore {
 // Factory
 // ---------------------------------------------------------------------------
 
-export const makeMcpStore = ({
-  adapter: db,
-}: StorageDeps<McpSchema>): McpBindingStore => {
+export const makeMcpStore = ({ adapter: db }: StorageDeps<McpSchema>): McpBindingStore => {
   return {
     getBinding: (toolId, scope) =>
       Effect.gen(function* () {

@@ -11,14 +11,14 @@
     "executor",
     "local-first"
   ],
-  "homepage": "https://github.com/RhysSullivan/executor",
+  "homepage": "https://github.com/corporationdev/godtool",
   "bugs": {
-    "url": "https://github.com/RhysSullivan/executor/issues"
+    "url": "https://github.com/corporationdev/godtool/issues"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/RhysSullivan/executor.git"
+    "url": "git+https://github.com/corporationdev/godtool.git"
   },
   "workspaces": [
     "packages/*/*",
@@ -76,6 +76,7 @@
     "@effect/language-service": "^0.84.2",
     "@effect/platform": "catalog:",
     "@effect/vitest": "catalog:",
+    "@typescript/native-preview": "^7.0.0-dev.20260410.1",
     "@vitest/expect": "catalog:",
     "@vitest/mocker": "catalog:",
     "@vitest/pretty-format": "catalog:",
@@ -83,7 +84,6 @@
     "@vitest/snapshot": "catalog:",
     "@vitest/spy": "catalog:",
     "@vitest/utils": "catalog:",
-    "@typescript/native-preview": "^7.0.0-dev.20260410.1",
     "atmn": "^1.1.8",
     "effect": "catalog:",
     "knip": "^6.3.0",

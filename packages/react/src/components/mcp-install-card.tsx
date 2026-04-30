@@ -8,7 +8,6 @@ import { Button } from "./button";
 import { CodeBlock } from "./code-block";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./tabs";
 import { CardStack, CardStackHeader, CardStackContent } from "./card-stack";
-import { cn } from "../lib/utils";
 import { useScopeInfo } from "../api/scope-context";
 import { useManagedAuthAccess } from "../plugins/managed-auth";
 
@@ -100,25 +99,20 @@ export function McpInstallCard(props: { className?: string }) {
   }, [commandUrl]);
 
   const agentLogos = (
-    <div className="flex shrink-0 items-center gap-2 text-muted-foreground">
-      <span className="text-xs text-muted-foreground">Work with your agent</span>
-      <div className="group/agents flex items-center">
-        {SUPPORTED_AGENTS.map(({ key, label, Icon }, index) => (
-          <span
-            key={key}
-            title={label}
-            aria-label={label}
-            style={{ zIndex: SUPPORTED_AGENTS.length - index }}
-            className={cn(
-              "flex h-6 items-center justify-center rounded-md border border-border/60 bg-background px-1.5 transition-[margin] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]",
-              index > 0 && "-ml-2 group-hover/agents:ml-1",
-            )}
-          >
-            <Icon size={14} />
-          </span>
-        ))}
-      </div>
-      <span className="text-xs text-muted-foreground">and more</span>
+    <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+      <span className="mr-0.5">Works with</span>
+      {SUPPORTED_AGENTS.map(({ key, label, Icon }) => (
+        <span
+          key={key}
+          title={label}
+          aria-label={label}
+          className="inline-flex h-6 items-center gap-1 rounded-md border border-border/60 bg-background/70 px-1.5 text-foreground/80"
+        >
+          <Icon size={14} />
+          <span>{label}</span>
+        </span>
+      ))}
+      <span>and more</span>
     </div>
   );
 
@@ -146,27 +140,33 @@ export function McpInstallCard(props: { className?: string }) {
   );
 
   const body = (
-    <CardStackContent>
-      <div className="px-4 pt-1 pb-3">
-        <CodeBlock code={command} lang="bash" />
+    <CardStackContent className="[&>*+*]:before:bg-border/40">
+      <div className="px-4 py-3">
+        <CodeBlock
+          code={command}
+          lang="bash"
+          className="rounded-md bg-background/60 [&_pre]:!p-2.5 [&_pre]:!text-xs [&_pre]:!leading-6 [&_code]:!text-xs"
+        />
       </div>
       {remoteLocked && (
-        <div className="px-4 pb-3">
-          <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-muted/20 px-3 py-2">
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-muted/15 px-4 py-2.5">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-background text-muted-foreground ring-1 ring-border/60">
+              <LockIcon className="size-3.5" />
+            </span>
             <div className="min-w-0">
-              <div className="flex items-center gap-1.5 text-sm font-medium text-foreground">
-                <LockIcon className="size-3.5 text-muted-foreground" />
+              <div className="text-sm font-medium leading-5 text-foreground">
                 Remote MCP requires Pro
               </div>
-              <p className="mt-0.5 truncate text-xs text-muted-foreground">{mcpUrlLabel}</p>
+              <p className="truncate text-xs leading-4 text-muted-foreground">{mcpUrlLabel}</p>
             </div>
-            <Button asChild size="sm">
-              <Link to="/settings/billing">Upgrade to Pro</Link>
-            </Button>
           </div>
+          <Button asChild size="xs">
+            <Link to="/settings/billing">Upgrade to Pro</Link>
+          </Button>
         </div>
       )}
-      <div className="flex items-center px-4 py-3">{agentLogos}</div>
+      <div className="flex items-center px-4 py-2.5">{agentLogos}</div>
     </CardStackContent>
   );
 

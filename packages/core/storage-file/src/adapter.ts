@@ -28,16 +28,12 @@ export interface MakeSqliteAdapterOptions {
   readonly generateId?: () => string;
 }
 
-export const makeSqliteAdapter = (
-  options: MakeSqliteAdapterOptions,
-): DBAdapter =>
+export const makeSqliteAdapter = (options: MakeSqliteAdapterOptions): DBAdapter =>
   drizzleAdapter({
     db: options.db,
     schema: options.schema,
     provider: "sqlite",
     adapterId: options.adapterId ?? "sqlite",
     supportsTransaction: true,
-    customIdGenerator: options.generateId
-      ? () => options.generateId!()
-      : undefined,
+    customIdGenerator: options.generateId ? () => options.generateId!() : undefined,
   });

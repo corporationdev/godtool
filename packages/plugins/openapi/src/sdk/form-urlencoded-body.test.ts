@@ -36,14 +36,12 @@ const memoryProvider: SecretProvider = (() => {
   return {
     key: "memory",
     writable: true,
-    get: (id, scope) =>
-      Effect.sync(() => store.get(`${scope}\u0000${id}`) ?? null),
+    get: (id, scope) => Effect.sync(() => store.get(`${scope}\u0000${id}`) ?? null),
     set: (id, value, scope) =>
       Effect.sync(() => {
         store.set(`${scope}\u0000${id}`, value);
       }),
-    delete: (id, scope) =>
-      Effect.sync(() => store.delete(`${scope}\u0000${id}`)),
+    delete: (id, scope) => Effect.sync(() => store.delete(`${scope}\u0000${id}`)),
     list: () => Effect.sync(() => []),
   };
 })();
@@ -61,31 +59,29 @@ type Captured = {
 
 const startEchoServer = () =>
   Effect.acquireRelease(
-    Effect.async<{ baseUrl: string; captured: Captured; close: () => void }>(
-      (resume) => {
-        const captured: Captured = { contentType: "", body: "" };
-        const server = createServer((req, res) => {
-          const chunks: Buffer[] = [];
-          req.on("data", (c: Buffer) => chunks.push(c));
-          req.on("end", () => {
-            captured.contentType = req.headers["content-type"] ?? "";
-            captured.body = Buffer.concat(chunks).toString("utf8");
-            res.writeHead(200, { "content-type": "application/json" });
-            res.end(JSON.stringify({ ok: true }));
-          });
+    Effect.async<{ baseUrl: string; captured: Captured; close: () => void }>((resume) => {
+      const captured: Captured = { contentType: "", body: "" };
+      const server = createServer((req, res) => {
+        const chunks: Buffer[] = [];
+        req.on("data", (c: Buffer) => chunks.push(c));
+        req.on("end", () => {
+          captured.contentType = req.headers["content-type"] ?? "";
+          captured.body = Buffer.concat(chunks).toString("utf8");
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(JSON.stringify({ ok: true }));
         });
-        server.listen(0, "127.0.0.1", () => {
-          const port = (server.address() as AddressInfo).port;
-          resume(
-            Effect.succeed({
-              baseUrl: `http://127.0.0.1:${port}`,
-              captured,
-              close: () => server.close(),
-            }),
-          );
-        });
-      },
-    ),
+      });
+      server.listen(0, "127.0.0.1", () => {
+        const port = (server.address() as AddressInfo).port;
+        resume(
+          Effect.succeed({
+            baseUrl: `http://127.0.0.1:${port}`,
+            captured,
+            close: () => server.close(),
+          }),
+        );
+      });
+    }),
     (s) => Effect.sync(() => s.close()),
   );
 
@@ -130,40 +126,38 @@ const formSpec = JSON.stringify({
 });
 
 describe("OpenAPI non-JSON request body serialization", () => {
-  it.scoped(
-    "form-urlencoded object body is properly encoded (no '[object Object]')",
-    () =>
-      Effect.gen(function* () {
-        const { baseUrl, captured } = yield* startEchoServer();
+  it.scoped("form-urlencoded object body is properly encoded (no '[object Object]')", () =>
+    Effect.gen(function* () {
+      const { baseUrl, captured } = yield* startEchoServer();
 
-        const executor = yield* createExecutor(
-          makeTestConfig({
-            plugins: [
-              openApiPlugin({ httpClientLayer: FetchHttpClient.layer }),
-              memorySecretsPlugin(),
-            ] as const,
-          }),
-        );
+      const executor = yield* createExecutor(
+        makeTestConfig({
+          plugins: [
+            openApiPlugin({ httpClientLayer: FetchHttpClient.layer }),
+            memorySecretsPlugin(),
+          ] as const,
+        }),
+      );
 
-        yield* executor.openapi.addSpec({
-          spec: formSpec,
-          scope: TEST_SCOPE,
-          namespace: "form",
-          baseUrl,
-        });
+      yield* executor.openapi.addSpec({
+        spec: formSpec,
+        scope: TEST_SCOPE,
+        namespace: "form",
+        baseUrl,
+      });
 
-        yield* executor.tools.invoke(
-          "form.forms.submit",
-          { body: { name: "Acme", email: "a@b.com" } },
-          autoApprove,
-        );
+      yield* executor.tools.invoke(
+        "form.forms.submit",
+        { body: { name: "Acme", email: "a@b.com" } },
+        autoApprove,
+      );
 
-        expect(captured.contentType).toBe("application/x-www-form-urlencoded");
-        expect(captured.body).not.toBe("[object Object]");
+      expect(captured.contentType).toBe("application/x-www-form-urlencoded");
+      expect(captured.body).not.toBe("[object Object]");
 
-        const parsed = new URLSearchParams(captured.body);
-        expect(parsed.get("name")).toBe("Acme");
-        expect(parsed.get("email")).toBe("a@b.com");
-      }),
+      const parsed = new URLSearchParams(captured.body);
+      expect(parsed.get("name")).toBe("Acme");
+      expect(parsed.get("email")).toBe("a@b.com");
+    }),
   );
 });

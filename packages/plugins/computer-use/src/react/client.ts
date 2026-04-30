@@ -6,11 +6,8 @@ import { ComputerUseGroup } from "../api/group";
 
 const ComputerUseApi = addGroup(ComputerUseGroup);
 
-export const ComputerUseClient = AtomHttpApi.Tag<"ComputerUseClient">()(
-  "ComputerUseClient",
-  {
-    api: ComputerUseApi,
-    httpClient: FetchHttpClient.layer,
-    baseUrl: getBaseUrl(),
-  },
-);
+export const ComputerUseClient = AtomHttpApi.Tag<"ComputerUseClient">()("ComputerUseClient", {
+  api: ComputerUseApi,
+  httpClient: FetchHttpClient.layer,
+  baseUrl: getBaseUrl(),
+});

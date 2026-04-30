@@ -1,14 +1,14 @@
 {
   "name": "@executor/plugin-google-discovery",
   "version": "0.0.1",
-  "homepage": "https://github.com/RhysSullivan/executor/tree/main/packages/plugins/google-discovery",
+  "homepage": "https://github.com/corporationdev/godtool/tree/main/packages/plugins/google-discovery",
   "bugs": {
-    "url": "https://github.com/RhysSullivan/executor/issues"
+    "url": "https://github.com/corporationdev/godtool/issues"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/RhysSullivan/executor.git",
+    "url": "git+https://github.com/corporationdev/godtool.git",
     "directory": "packages/plugins/google-discovery"
   },
   "files": [

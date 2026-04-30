@@ -123,12 +123,11 @@ type PlanLike = {
 };
 
 const isProPlanActive = (plans: unknown): boolean => {
-  const list =
-    Array.isArray(plans)
-      ? plans
-      : plans && typeof plans === "object" && "list" in plans && Array.isArray(plans.list)
-        ? plans.list
-        : [];
+  const list = Array.isArray(plans)
+    ? plans
+    : plans && typeof plans === "object" && "list" in plans && Array.isArray(plans.list)
+      ? plans.list
+      : [];
 
   return list.some((plan: PlanLike) => {
     if (plan?.id !== "pro") return false;

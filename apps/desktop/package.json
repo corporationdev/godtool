@@ -1,9 +1,9 @@
 {
   "name": "@executor/desktop",
-  "version": "1.4.12",
+  "version": "1.4.13",
   "private": true,
-  "description": "GOD TOOL desktop app",
-  "homepage": "https://github.com/RhysSullivan/executor",
+  "description": "GODTOOL desktop app",
+  "homepage": "https://github.com/corporationdev/godtool",
   "author": {
     "name": "Rhys Sullivan",
     "email": "39114868+RhysSullivan@users.noreply.github.com"
@@ -29,7 +29,7 @@
   },
   "build": {
     "appId": "com.godtool.desktop",
-    "productName": "GOD TOOL",
+    "productName": "GODTOOL",
     "publish": null,
     "directories": {
       "output": "release"
@@ -72,7 +72,7 @@
       "icon": "build/icons"
     },
     "dmg": {
-      "title": "GOD TOOL",
+      "title": "GODTOOL",
       "contents": [
         {
           "x": 130,

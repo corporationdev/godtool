@@ -43,8 +43,7 @@ import { Scope } from "./scope";
 // ---------------------------------------------------------------------------
 
 const makeFailingAdapter = (failure: StorageFailure): DBAdapter => {
-  const fail = () =>
-    Effect.fail(failure) as Effect.Effect<never, StorageFailure, never>;
+  const fail = () => Effect.fail(failure) as Effect.Effect<never, StorageFailure, never>;
   return {
     id: "failing",
     create: fail as DBAdapter["create"],
@@ -86,9 +85,7 @@ describe("typed-error edge model — SDK", () => {
         message: "backend lost its mind",
         cause: new Error("driver kaboom"),
       });
-      const executor = yield* createExecutor(
-        baseConfig(makeFailingAdapter(failure)),
-      );
+      const executor = yield* createExecutor(baseConfig(makeFailingAdapter(failure)));
 
       const result = yield* executor.tools.list().pipe(Effect.flip);
       expect(result).toBeInstanceOf(StorageError);
@@ -135,9 +132,7 @@ describe("typed-error edge model — SDK", () => {
                 model: err.model ?? null,
               }),
             ),
-            Effect.map((r) =>
-              "caught" in r ? r : { caught: false as const, model: null },
-            ),
+            Effect.map((r) => ("caught" in r ? r : { caught: false as const, model: null })),
           ),
     }),
     extension: (ctx) => ({
@@ -166,9 +161,7 @@ describe("typed-error edge model — SDK", () => {
       // type-check (R would leak) nor run (would crash at construction).
       const executor = yield* createExecutor(
         baseConfig(
-          makeFailingAdapter(
-            new StorageError({ message: "doesn't matter", cause: undefined }),
-          ),
+          makeFailingAdapter(new StorageError({ message: "doesn't matter", cause: undefined })),
         ),
       );
       // Sanity: the executor surface exists and methods are callable.

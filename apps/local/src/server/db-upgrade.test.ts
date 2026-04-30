@@ -156,9 +156,9 @@ describe("move-aside + fresh migrate end-to-end", () => {
       migrationsFolder: join(__dirname, "../../drizzle"),
     });
     // migrate() should have produced the new schema — source now has scope_id.
-    const cols = db
-      .prepare("PRAGMA table_info('source')")
-      .all() as ReadonlyArray<{ readonly name: string }>;
+    const cols = db.prepare("PRAGMA table_info('source')").all() as ReadonlyArray<{
+      readonly name: string;
+    }>;
     expect(cols.some((c) => c.name === "scope_id")).toBe(true);
     db.close();
   });
@@ -169,12 +169,18 @@ describe("readLegacySecrets", () => {
     const path = join(workDir, "data.db");
     seed(path, PRE_SCOPE_SCHEMA);
     const db = new Database(path);
-    db.prepare(
-      "INSERT INTO secret (id, name, provider, created_at) VALUES (?, ?, ?, ?)",
-    ).run("sec_1", "GitHub Token", "onepassword", 1700000000);
-    db.prepare(
-      "INSERT INTO secret (id, name, provider, created_at) VALUES (?, ?, ?, ?)",
-    ).run("sec_2", "Stripe", "keychain", 1700000001);
+    db.prepare("INSERT INTO secret (id, name, provider, created_at) VALUES (?, ?, ?, ?)").run(
+      "sec_1",
+      "GitHub Token",
+      "onepassword",
+      1700000000,
+    );
+    db.prepare("INSERT INTO secret (id, name, provider, created_at) VALUES (?, ?, ?, ?)").run(
+      "sec_2",
+      "Stripe",
+      "keychain",
+      1700000001,
+    );
     db.close();
 
     const rows = readLegacySecrets(path);
@@ -248,9 +254,7 @@ describe("importLegacySecrets", () => {
   it("uses INSERT OR IGNORE so a second import of the same ids is a no-op", () => {
     const path = join(workDir, "data.db");
     const db = createScopedDb(path);
-    const rows = [
-      { id: "sec_1", name: "GH", provider: "onepassword", createdAt: 1 },
-    ];
+    const rows = [{ id: "sec_1", name: "GH", provider: "onepassword", createdAt: 1 }];
     importLegacySecrets(db, "scope_a", rows);
     // If the user's already re-registered the secret via a different
     // provider, the legacy row must NOT clobber it.

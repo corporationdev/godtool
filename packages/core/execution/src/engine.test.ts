@@ -27,7 +27,9 @@ describe("formatExecuteResult image extraction", () => {
     expect(formatted.contentImages).toHaveLength(1);
     expect(formatted.contentImages[0]).toMatchObject({ data: PNG_BASE64, mimeType: "image/png" });
     expect(formatted.contentImages[0]?.path).toMatch(new RegExp(`^${artifactsDir}/image-`));
-    expect(readFileSync(formatted.contentImages[0]!.path!)).toEqual(Buffer.from(PNG_BASE64, "base64"));
+    expect(readFileSync(formatted.contentImages[0]!.path!)).toEqual(
+      Buffer.from(PNG_BASE64, "base64"),
+    );
     expect(formatted.structured.result).toMatchObject({
       mimeType: "image/png",
       byteLength: 8,

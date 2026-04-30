@@ -14,7 +14,4 @@ export {
 } from "./store";
 export { invoke, invokeWithLayer, resolveHeaders, buildRequestUrl } from "./invoke";
 export { RawInvocationError } from "./errors";
-export {
-  HeaderValue,
-  RawFetchResult,
-} from "./types";
+export { HeaderValue, RawFetchResult } from "./types";

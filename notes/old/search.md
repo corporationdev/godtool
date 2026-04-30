@@ -9,7 +9,7 @@ whatever) without baking any of it into the core.
 
 1. `executor.tools.list()` — `SELECT * FROM tool WHERE scope_id = ?`.
 2. In JS, for every tool: normalize + tokenize `id / sourceId / name /
-   description`, score per field with weights, apply coverage + exact-
+description`, score per field with weights, apply coverage + exact-
    phrase boosts, filter, sort, slice.
 
 O(N) per query over the scope. Fine at hundreds of tools, painful past
@@ -74,11 +74,13 @@ type. Same pattern as plugin `storage:` options and the future `coreStorage:`.
 ## Override shapes
 
 **Replace entirely:**
+
 ```ts
 search: ({ listTools }) => algoliaSearch({ listTools }),
 ```
 
 **Decorate — mix in logging/timing:**
+
 ```ts
 search: ({ defaults }) => ({
   query: (q) => Effect.gen(function* () {
@@ -91,6 +93,7 @@ search: ({ defaults }) => ({
 ```
 
 **Hybrid — try Algolia, fall back to local:**
+
 ```ts
 search: ({ listTools, defaults }) => ({
   query: (q) =>
@@ -109,6 +112,7 @@ it's a storage concern. Handled by wrapping the core store (see
 delegate to the default and mirror to the external index.
 
 The two halves are independent:
+
 - Indexing only (manual reindex): override `coreStorage`, leave `search`
   as default.
 - Search only (some other populates the index): override `search`, leave
@@ -122,7 +126,7 @@ scorer:
 1. **Projection on `tools.list`** — expose a `select` option so search
    doesn't pull `input_schema` / `output_schema`. Biggest per-query win.
 2. **Postgres FTS** — `tsvector` generated column on `(name, description,
-   id, source_id)`, GIN index, use `websearch_to_tsquery`. Native
+id, source_id)`, GIN index, use `websearch_to_tsquery`. Native
    ranking, fuzzy via `pg_trgm`. Would replace the in-memory scorer for
    the cloud app.
 3. **Per-scope LRU** — cache scored results; invalidate on source

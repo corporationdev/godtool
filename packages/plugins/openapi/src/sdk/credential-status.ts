@@ -33,15 +33,9 @@ export const effectiveBindingForScope = (
 ): BindingRowForCredentialStatus | null =>
   rows
     .filter(
-      (row) =>
-        row.slot === slot &&
-        scopeRank(ranks, row.scopeId) >= scopeRank(ranks, targetScope),
+      (row) => row.slot === slot && scopeRank(ranks, row.scopeId) >= scopeRank(ranks, targetScope),
     )
-    .sort(
-      (a, b) =>
-        scopeRank(ranks, a.scopeId) -
-        scopeRank(ranks, b.scopeId),
-    )[0] ?? null;
+    .sort((a, b) => scopeRank(ranks, a.scopeId) - scopeRank(ranks, b.scopeId))[0] ?? null;
 
 const hasSecretBinding = (
   rows: readonly BindingRowForCredentialStatus[],
@@ -90,9 +84,7 @@ export function missingCredentialLabels(
   }
 
   if (!hasConnectionBinding(bindings, oauth2.connectionSlot, targetScope, ranks)) {
-    missing.push(
-      oauth2.flow === "clientCredentials" ? "OAuth client connection" : "OAuth sign-in",
-    );
+    missing.push(oauth2.flow === "clientCredentials" ? "OAuth client connection" : "OAuth sign-in");
   }
 
   return missing;

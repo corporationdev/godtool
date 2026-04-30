@@ -7,10 +7,7 @@ const generators: Record<string, SchemaGenerator> = {
   drizzle: generateDrizzleSchema,
 };
 
-export const generateSchema = (
-  adapter: string,
-  ...args: Parameters<SchemaGenerator>
-) => {
+export const generateSchema = (adapter: string, ...args: Parameters<SchemaGenerator>) => {
   const generator = generators[adapter];
   if (!generator) {
     throw new Error(

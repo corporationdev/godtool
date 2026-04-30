@@ -9,11 +9,7 @@ import {
   type StorageFailure,
 } from "@executor/sdk";
 
-import {
-  WorkOSVaultClientError,
-  type WorkOSVaultClient,
-  type WorkOSVaultObject,
-} from "./client";
+import { WorkOSVaultClientError, type WorkOSVaultClient, type WorkOSVaultObject } from "./client";
 
 export const WORKOS_VAULT_PROVIDER_KEY = "workos-vault";
 
@@ -60,21 +56,13 @@ interface MetadataRow {
 // ---------------------------------------------------------------------------
 
 export interface WorkosVaultStore {
-  readonly get: (
-    id: string,
-    scope: string,
-  ) => Effect.Effect<MetadataRow | null, StorageFailure>;
+  readonly get: (id: string, scope: string) => Effect.Effect<MetadataRow | null, StorageFailure>;
   readonly upsert: (row: MetadataRow) => Effect.Effect<void, StorageFailure>;
-  readonly remove: (
-    id: string,
-    scope: string,
-  ) => Effect.Effect<boolean, StorageFailure>;
+  readonly remove: (id: string, scope: string) => Effect.Effect<boolean, StorageFailure>;
   readonly list: () => Effect.Effect<readonly MetadataRow[], StorageFailure>;
 }
 
-export const makeWorkosVaultStore = (
-  deps: StorageDeps<WorkosVaultSchema>,
-): WorkosVaultStore => {
+export const makeWorkosVaultStore = (deps: StorageDeps<WorkosVaultSchema>): WorkosVaultStore => {
   const { adapter: db } = deps;
 
   // Every read/write to a specific row pins BOTH `id` and `scope_id`.
@@ -141,13 +129,13 @@ export const makeWorkosVaultStore = (
         return true;
       }),
     list: () =>
-      db.findMany({ model: "workos_vault_metadata" }).pipe(
-        Effect.map((rows): readonly MetadataRow[] =>
-          [...rows].sort(
-            (l, r) => l.created_at.getTime() - r.created_at.getTime(),
+      db
+        .findMany({ model: "workos_vault_metadata" })
+        .pipe(
+          Effect.map((rows): readonly MetadataRow[] =>
+            [...rows].sort((l, r) => l.created_at.getTime() - r.created_at.getTime()),
           ),
         ),
-      ),
   };
 };
 
@@ -161,8 +149,7 @@ const unwrapVaultError = (error: unknown): unknown =>
 const isStatusError = (error: unknown, status: number): boolean => {
   const cause = unwrapVaultError(error);
   return (
-    ((cause instanceof GenericServerException ||
-      cause instanceof NotFoundException) &&
+    ((cause instanceof GenericServerException || cause instanceof NotFoundException) &&
       cause.status === status) ||
     (typeof cause === "object" &&
       cause !== null &&
@@ -198,13 +185,9 @@ const isKekNotReadyError = (error: unknown): boolean => {
 //
 // Callers with other scope shapes can override via
 // `WorkOSVaultSecretProviderOptions.contextForScope`.
-export type WorkOSVaultContextForScope = (
-  scopeId: string,
-) => Record<string, string>;
+export type WorkOSVaultContextForScope = (scopeId: string) => Record<string, string>;
 
-export const defaultWorkOSVaultContextForScope: WorkOSVaultContextForScope = (
-  scopeId,
-) => {
+export const defaultWorkOSVaultContextForScope: WorkOSVaultContextForScope = (scopeId) => {
   const m = scopeId.match(/^user-org:([^:]+):([^:]+)$/);
   const base: Record<string, string> = {
     app: "executor",
@@ -214,21 +197,13 @@ export const defaultWorkOSVaultContextForScope: WorkOSVaultContextForScope = (
   return base;
 };
 
-const encodeObjectNameSegment = (segment: string): string =>
-  encodeURIComponent(segment);
+const encodeObjectNameSegment = (segment: string): string => encodeURIComponent(segment);
 
-const secretObjectName = (
-  prefix: string,
-  scopeId: string,
-  secretId: string,
-): string =>
+const secretObjectName = (prefix: string, scopeId: string, secretId: string): string =>
   `${prefix}/${encodeObjectNameSegment(scopeId)}/secrets/${encodeObjectNameSegment(secretId)}`;
 
-const legacySecretObjectName = (
-  prefix: string,
-  scopeId: string,
-  secretId: string,
-): string => `${prefix}/${scopeId}/secrets/${secretId}`;
+const legacySecretObjectName = (prefix: string, scopeId: string, secretId: string): string =>
+  `${prefix}/${scopeId}/secrets/${secretId}`;
 
 const loadSecretObject = (
   client: WorkOSVaultClient,
@@ -245,13 +220,15 @@ const loadSecretObject = (
       const legacyName = legacySecretObjectName(prefix, scopeId, secretId);
       if (legacyName === encodedName) return Effect.succeed(null);
 
-      return client.readObjectByName(legacyName).pipe(
-        Effect.catchAll((legacyError) =>
-          isStatusError(legacyError, 404) || isStatusError(legacyError, 400)
-            ? Effect.succeed(null)
-            : Effect.fail(legacyError),
-        ),
-      );
+      return client
+        .readObjectByName(legacyName)
+        .pipe(
+          Effect.catchAll((legacyError) =>
+            isStatusError(legacyError, 404) || isStatusError(legacyError, 400)
+              ? Effect.succeed(null)
+              : Effect.fail(legacyError),
+          ),
+        );
     }),
   );
 
@@ -296,9 +273,7 @@ const upsertSecretValue = (
               `(${MAX_KEK_NOT_READY_ATTEMPTS - remainingKekAttempts + 1}/${MAX_KEK_NOT_READY_ATTEMPTS})`,
           );
           return Effect.sleep(KEK_NOT_READY_BACKOFF_MS).pipe(
-            Effect.flatMap(() =>
-              attemptWrite(remainingConflictAttempts, remainingKekAttempts - 1),
-            ),
+            Effect.flatMap(() => attemptWrite(remainingConflictAttempts, remainingKekAttempts - 1)),
           );
         }
         if (isKekNotReadyError(error)) {
@@ -358,8 +333,7 @@ export const makeWorkOSVaultSecretProvider = (
   options: WorkOSVaultSecretProviderOptions,
 ): SecretProvider => {
   const prefix = options.objectPrefix ?? DEFAULT_OBJECT_PREFIX;
-  const contextForScope =
-    options.contextForScope ?? defaultWorkOSVaultContextForScope;
+  const contextForScope = options.contextForScope ?? defaultWorkOSVaultContextForScope;
   const { client, store } = options;
 
   return {
@@ -396,16 +370,12 @@ export const makeWorkOSVaultSecretProvider = (
       Effect.gen(function* () {
         const meta = yield* store.get(id, scope);
         if (!meta) return false;
-        yield* deleteSecretValue(client, prefix, scope, id).pipe(
-          Effect.mapError(formatVaultError),
-        );
+        yield* deleteSecretValue(client, prefix, scope, id).pipe(Effect.mapError(formatVaultError));
         yield* store.remove(id, scope);
         return true;
       }),
 
     list: () =>
-      store
-        .list()
-        .pipe(Effect.map((rows) => rows.map((r) => ({ id: r.id, name: r.name })))),
+      store.list().pipe(Effect.map((rows) => rows.map((r) => ({ id: r.id, name: r.name })))),
   };
 };

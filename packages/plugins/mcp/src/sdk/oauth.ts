@@ -119,8 +119,7 @@ export const startMcpOAuthAuthorization = (input: {
       input.authorizationServerUrl || input.resourceMetadataUrl
         ? {
             authorizationServerUrl:
-              input.authorizationServerUrl ??
-              new URL("/", input.endpoint).toString(),
+              input.authorizationServerUrl ?? new URL("/", input.endpoint).toString(),
             resourceMetadataUrl: input.resourceMetadataUrl ?? undefined,
           }
         : undefined;

@@ -95,9 +95,7 @@ describe("migrateLegacyConnections", () => {
     });
 
     const ownedSecrets = db
-      .prepare(
-        "SELECT id, owned_by_connection_id FROM secret WHERE scope_id = ? ORDER BY id",
-      )
+      .prepare("SELECT id, owned_by_connection_id FROM secret WHERE scope_id = ? ORDER BY id")
       .all("scope-1");
     expect(ownedSecrets).toEqual([
       {

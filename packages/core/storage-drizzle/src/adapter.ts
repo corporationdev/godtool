@@ -41,11 +41,7 @@ import type {
   DBSchema,
   JoinConfig,
 } from "@executor/storage-core";
-import {
-  StorageError,
-  UniqueViolationError,
-  createAdapter,
-} from "@executor/storage-core";
+import { StorageError, UniqueViolationError, createAdapter } from "@executor/storage-core";
 
 // Mirrors `StorageFailure` from @executor/storage-core/adapter — kept
 // local so we don't force a new named export on the public index. Both
@@ -91,11 +87,9 @@ const ilikeOrLike = (col: AnyTable, pattern: string, provider: DrizzleProvider) 
   return sql`LOWER(${col}) LIKE LOWER(${pattern})`;
 };
 
-const insensitiveEq = (col: AnyTable, value: string) =>
-  sql`LOWER(${col}) = LOWER(${value})`;
+const insensitiveEq = (col: AnyTable, value: string) => sql`LOWER(${col}) = LOWER(${value})`;
 
-const insensitiveNe = (col: AnyTable, value: string) =>
-  sql`LOWER(${col}) <> LOWER(${value})`;
+const insensitiveNe = (col: AnyTable, value: string) => sql`LOWER(${col}) <> LOWER(${value})`;
 
 // ---------------------------------------------------------------------------
 // Where compiler — CleanedWhere[] → drizzle-orm SQL
@@ -116,21 +110,17 @@ const buildCond = (
 ): SQL | undefined => {
   const col = table[w.field];
   if (!col) {
-    throw new Error(
-      `[storage-drizzle] unknown column "${w.field}" on drizzle table`,
-    );
+    throw new Error(`[storage-drizzle] unknown column "${w.field}" on drizzle table`);
   }
   const mode = w.mode;
   const isInsensitive =
     mode === "insensitive" &&
     (typeof w.value === "string" ||
-      (Array.isArray(w.value) &&
-        (w.value as unknown[]).every((v) => typeof v === "string")));
+      (Array.isArray(w.value) && (w.value as unknown[]).every((v) => typeof v === "string")));
 
   switch (w.operator) {
     case "in":
-      if (!Array.isArray(w.value))
-        throw new Error("Value must be an array for `in`");
+      if (!Array.isArray(w.value)) throw new Error("Value must be an array for `in`");
       if (isInsensitive) {
         const values = w.value as readonly string[];
         if (values.length === 0) return sql`1 = 0`;
@@ -139,8 +129,7 @@ const buildCond = (
       }
       return inArray(col, w.value as unknown[]);
     case "not_in":
-      if (!Array.isArray(w.value))
-        throw new Error("Value must be an array for `not_in`");
+      if (!Array.isArray(w.value)) throw new Error("Value must be an array for `not_in`");
       if (isInsensitive) {
         const values = w.value as readonly string[];
         if (values.length === 0) return sql`1 = 1`;
@@ -196,26 +185,17 @@ const compileWhere = (
   if (where.length === 1) {
     return buildCond(table, where[0]!, provider);
   }
-  const andGroup = where.filter(
-    (w) => w.connector === "AND" || !w.connector,
-  );
+  const andGroup = where.filter((w) => w.connector === "AND" || !w.connector);
   const orGroup = where.filter((w) => w.connector === "OR");
   const andClause =
-    andGroup.length > 0
-      ? and(...andGroup.map((w) => buildCond(table, w, provider)))
-      : undefined;
+    andGroup.length > 0 ? and(...andGroup.map((w) => buildCond(table, w, provider))) : undefined;
   const orClause =
-    orGroup.length > 0
-      ? or(...orGroup.map((w) => buildCond(table, w, provider)))
-      : undefined;
+    orGroup.length > 0 ? or(...orGroup.map((w) => buildCond(table, w, provider))) : undefined;
   if (andClause && orClause) return and(andClause, orClause);
   return andClause ?? orClause;
 };
 
-const rowIdentityClause = (
-  table: AnyTable,
-  row: Record<string, unknown>,
-): SQL => {
+const rowIdentityClause = (table: AnyTable, row: Record<string, unknown>): SQL => {
   const idClause = eq(table.id, row.id);
   if (table.scope_id && typeof row.scope_id === "string") {
     return and(eq(table.scope_id, row.scope_id), idClause) as SQL;
@@ -291,16 +271,10 @@ const unwrapDriverCause = (cause: unknown): unknown => {
   return cur;
 };
 
-const classifyError = (
-  op: string,
-  model: string | undefined,
-  cause: unknown,
-): StorageFailure => {
+const classifyError = (op: string, model: string | undefined, cause: unknown): StorageFailure => {
   const driverCause = unwrapDriverCause(cause);
   if (isUniqueViolation(driverCause)) {
-    return model !== undefined
-      ? new UniqueViolationError({ model })
-      : new UniqueViolationError({});
+    return model !== undefined ? new UniqueViolationError({ model }) : new UniqueViolationError({});
   }
   return new StorageError({
     message: `[storage-drizzle] ${op} failed: ${driverCause instanceof Error ? driverCause.message : String(driverCause)}`,
@@ -387,8 +361,7 @@ const withReturning = (
       }
       return yield* Effect.fail(
         new StorageError({
-          message:
-            "[storage-drizzle] mysql insert: id not provided, cannot recover row",
+          message: "[storage-drizzle] mysql insert: id not provided, cannot recover row",
           cause: undefined,
         }),
       );
@@ -437,14 +410,7 @@ export const drizzleAdapter = (options: DrizzleAdapterOptions): DBAdapter => {
       Effect.gen(function* () {
         const table = getTable(model);
         const builder = db.insert(table).values(data);
-        const row = yield* withReturning(
-          db,
-          provider,
-          table,
-          builder,
-          data,
-          model,
-        );
+        const row = yield* withReturning(db, provider, table, builder, data, model);
         return row as never;
       }).pipe(
         Effect.withSpan("executor.storage.backend.create", {
@@ -506,11 +472,10 @@ export const drizzleAdapter = (options: DrizzleAdapterOptions): DBAdapter => {
         }
         let q = db.select().from(table);
         if (clause) q = q.where(clause);
-        const rows = (yield* runPromise(
-          "findOne select",
-          () => q.limit(1),
-          model,
-        )) as Record<string, unknown>[];
+        const rows = (yield* runPromise("findOne select", () => q.limit(1), model)) as Record<
+          string,
+          unknown
+        >[];
         return (rows[0] ?? null) as never;
       }).pipe(
         Effect.withSpan("executor.storage.backend.find_one", {
@@ -575,11 +540,9 @@ export const drizzleAdapter = (options: DrizzleAdapterOptions): DBAdapter => {
         const clause = compileWhere(table, where, provider);
         let q = db.select({ c: count() }).from(table);
         if (clause) q = q.where(clause);
-        const rows = (yield* runPromise(
-          "count select",
-          () => Promise.resolve(q),
-          model,
-        )) as { c: number | string | bigint }[];
+        const rows = (yield* runPromise("count select", () => Promise.resolve(q), model)) as {
+          c: number | string | bigint;
+        }[];
         const raw = rows[0]?.c ?? 0;
         return typeof raw === "number" ? raw : Number(raw);
       }).pipe(
@@ -613,11 +576,7 @@ export const drizzleAdapter = (options: DrizzleAdapterOptions): DBAdapter => {
           )) as Record<string, unknown>[];
           return (rows[0] ?? null) as never;
         }
-        yield* runPromise(
-          "mysql update execute",
-          () => updQ.execute(),
-          model,
-        );
+        yield* runPromise("mysql update execute", () => updQ.execute(), model);
         const reread = (yield* runPromise(
           "mysql update reread",
           () => db.select().from(table).where(identity).limit(1),
@@ -647,11 +606,7 @@ export const drizzleAdapter = (options: DrizzleAdapterOptions): DBAdapter => {
         if (n === 0) return 0;
         let updQ = db.update(table).set(update);
         if (clause) updQ = updQ.where(clause);
-        yield* runPromise(
-          "updateMany execute",
-          () => Promise.resolve(updQ),
-          model,
-        );
+        yield* runPromise("updateMany execute", () => Promise.resolve(updQ), model);
         return n;
       }).pipe(
         Effect.withSpan("executor.storage.backend.update_many", {
@@ -699,11 +654,7 @@ export const drizzleAdapter = (options: DrizzleAdapterOptions): DBAdapter => {
         if (n === 0) return 0;
         let delQ = db.delete(table);
         if (clause) delQ = delQ.where(clause);
-        yield* runPromise(
-          "deleteMany exec",
-          () => Promise.resolve(delQ),
-          model,
-        );
+        yield* runPromise("deleteMany exec", () => Promise.resolve(delQ), model);
         return n;
       }).pipe(
         Effect.withSpan("executor.storage.backend.delete_many", {
@@ -727,11 +678,9 @@ export const drizzleAdapter = (options: DrizzleAdapterOptions): DBAdapter => {
   //   mysql: same raw-statement path as sqlite, untested in-tree.
   const txFn: DBAdapterFactoryConfig["transaction"] = options.supportsTransaction
     ? <R, E>(
-        cb: (trx: Parameters<DBAdapter["transaction"]>[0] extends (
-          t: infer T,
-        ) => unknown
-          ? T
-          : never) => Effect.Effect<R, E>,
+        cb: (
+          trx: Parameters<DBAdapter["transaction"]>[0] extends (t: infer T) => unknown ? T : never,
+        ) => Effect.Effect<R, E>,
       ) => {
         if (provider === "pg") {
           // Wrap drizzle's real transaction. The nested adapter runs
@@ -757,7 +706,8 @@ export const drizzleAdapter = (options: DrizzleAdapterOptions): DBAdapter => {
                 }) as TxShape;
                 const exit = await Effect.runPromise(
                   Effect.either(cb(nested)) as Effect.Effect<
-                    { readonly _tag: "Right"; readonly right: R } | { readonly _tag: "Left"; readonly left: E },
+                    | { readonly _tag: "Right"; readonly right: R }
+                    | { readonly _tag: "Left"; readonly left: E },
                     never
                   >,
                 );

@@ -47,6 +47,7 @@ const BROWSER_HOST_PORT = Number(process.env.GODTOOL_BROWSER_HOST_PORT ?? "14789
 const BROWSER_DEBUGGING_PORT = Number(process.env.GODTOOL_BROWSER_DEBUGGING_PORT ?? "9333");
 const BROWSER_MAX_SESSIONS = Number(process.env.GODTOOL_BROWSER_MAX_SESSIONS ?? "5");
 const COMPUTER_USE_HOST_PORT = Number(process.env.GODTOOL_COMPUTER_USE_HOST_PORT ?? "14790");
+const APP_NAME = "GODTOOL";
 const SERVER_STARTUP_TIMEOUT_MS = 30_000;
 const SETTINGS_DIR = join(homedir(), ".godtool");
 const SETTINGS_PATH = join(SETTINGS_DIR, "desktop-settings.json");
@@ -61,6 +62,7 @@ const CLI_BIN_PATH = join(CLI_BIN_DIR, process.platform === "win32" ? "godtool.e
 app.commandLine.appendSwitch("remote-debugging-address", "127.0.0.1");
 app.commandLine.appendSwitch("remote-debugging-port", String(BROWSER_DEBUGGING_PORT));
 app.commandLine.appendSwitch("remote-allow-origins", DEV_SERVER_URL);
+app.setName(APP_NAME);
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -771,7 +773,7 @@ const createWindow = (): BrowserWindow => {
     ...bounds,
     minWidth: 800,
     minHeight: 600,
-    title: "GOD TOOL",
+    title: APP_NAME,
     titleBarStyle: "hidden",
     trafficLightPosition: { x: 12, y: 12 },
     webPreferences: {
@@ -953,7 +955,7 @@ const stopComputerUseHost = (): void => {
 const loadScope = async (scopePath: string): Promise<void> => {
   if (!mainWindow) return;
 
-  mainWindow.setTitle(`GOD TOOL — ${basename(scopePath)}`);
+  mainWindow.setTitle(`${APP_NAME} - ${basename(scopePath)}`);
 
   if (isDev) {
     // In dev mode, the Vite dev server handles both UI and API.
@@ -1102,7 +1104,11 @@ const startManagedAuthConnect = async (input: unknown): Promise<ManagedAuthConne
       "content-type": "application/json",
       cookie,
     },
-    body: JSON.stringify({ ...(input && typeof input === "object" ? input : {}), channel, desktopCallbackUrl }),
+    body: JSON.stringify({
+      ...(input && typeof input === "object" ? input : {}),
+      channel,
+      desktopCallbackUrl,
+    }),
   });
   const data = (await response.json().catch(() => null)) as {
     readonly redirectUrl?: string;
@@ -1226,7 +1232,7 @@ const desktopAuthCallbackHTML = (message: string): string => `<!DOCTYPE html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>GOD TOOL</title>
+  <title>GODTOOL</title>
   <style>
     body {
       margin: 0;
@@ -1246,7 +1252,7 @@ const desktopAuthCallbackHTML = (message: string): string => `<!DOCTYPE html>
 <body>
   <main>
     <h1>${message}</h1>
-    <p>You can return to GOD TOOL.</p>
+    <p>You can return to GODTOOL.</p>
   </main>
   <script>
     try { history.replaceState(null, "", "/auth/complete"); } catch {}
@@ -1266,7 +1272,10 @@ const startDesktopAuthCallbackServer = async (): Promise<void> => {
       const header = request.headers.authorization ?? "";
       const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length).trim() : "";
       if (!token || token !== expected) {
-        response.writeHead(401, { "content-type": "application/json", "cache-control": "no-store" });
+        response.writeHead(401, {
+          "content-type": "application/json",
+          "cache-control": "no-store",
+        });
         response.end(JSON.stringify({ error: "unauthorized" }));
         return;
       }

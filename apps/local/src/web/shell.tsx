@@ -1,7 +1,15 @@
 import { Link, Outlet, useLocation, useMatches } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import type { ComponentType } from "react";
-import { ArrowLeft, CreditCard, DatabaseZap, Folder, Globe, KeyRound, Settings } from "lucide-react";
+import {
+  ArrowLeft,
+  CreditCard,
+  DatabaseZap,
+  Folder,
+  Globe,
+  KeyRound,
+  Settings,
+} from "lucide-react";
 import { useAtomRefresh } from "@effect-atom/atom-react";
 import { sourcesAtom, toolsAtom } from "@executor/react/api/atoms";
 import { useScope } from "@executor/react/api/scope-context";

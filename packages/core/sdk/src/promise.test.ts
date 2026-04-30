@@ -33,8 +33,7 @@ const echoPlugin = definePlugin(() => ({
     },
   ],
   extension: () => ({
-    greet: (name: string) =>
-      Effect.succeed(`hello, ${name}`) as Effect.Effect<string, never>,
+    greet: (name: string) => Effect.succeed(`hello, ${name}`) as Effect.Effect<string, never>,
   }),
 }));
 

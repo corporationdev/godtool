@@ -16,21 +16,18 @@ import { Scope } from "./scope";
 // need multi-scope behavior can pass `scopes` explicitly.
 // ---------------------------------------------------------------------------
 
-export const makeTestConfig = <
-  const TPlugins extends readonly AnyPlugin[] = [],
->(options?: {
+export const makeTestConfig = <const TPlugins extends readonly AnyPlugin[] = []>(options?: {
   readonly scopeName?: string;
   readonly scopes?: readonly Scope[];
   readonly plugins?: TPlugins;
 }): ExecutorConfig<TPlugins> => {
-  const scopes =
-    options?.scopes ?? [
-      new Scope({
-        id: ScopeId.make("test-scope"),
-        name: options?.scopeName ?? "test",
-        createdAt: new Date(),
-      }),
-    ];
+  const scopes = options?.scopes ?? [
+    new Scope({
+      id: ScopeId.make("test-scope"),
+      name: options?.scopeName ?? "test",
+      createdAt: new Date(),
+    }),
+  ];
 
   const schema = collectSchemas(options?.plugins ?? []);
 

@@ -10,6 +10,8 @@ export interface OpenApiPreset {
   };
 }
 
+const favicon = (domain: string) => `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
+
 export const openApiPresets: readonly OpenApiPreset[] = [
   {
     id: "stripe",
@@ -143,5 +145,64 @@ export const openApiPresets: readonly OpenApiPreset[] = [
     url: "https://raw.githubusercontent.com/sonallux/spotify-web-api/refs/heads/main/official-spotify-open-api.yml",
     icon: "https://spotify.com/favicon.ico",
     composio: { app: "spotify" },
+  },
+  {
+    id: "microsoft-outlook",
+    name: "Microsoft Outlook",
+    summary: "Mail, calendars, contacts, and Microsoft 365 scheduling via Graph.",
+    url: "https://raw.githubusercontent.com/microsoftgraph/msgraph-metadata/master/openapi/v1.0/openapi.yaml",
+    icon: favicon("outlook.live.com"),
+    featured: true,
+    composio: { app: "outlook" },
+  },
+  {
+    id: "microsoft-teams",
+    name: "Microsoft Teams",
+    summary: "Teams, channels, chats, meetings, and collaboration via Graph.",
+    url: "https://raw.githubusercontent.com/microsoftgraph/msgraph-metadata/master/openapi/v1.0/openapi.yaml",
+    icon: favicon("microsoft.com"),
+    featured: true,
+    composio: { app: "microsoft_teams" },
+  },
+  {
+    id: "pipedrive",
+    name: "Pipedrive",
+    summary: "Deals, leads, people, organizations, activities, and CRM pipelines.",
+    url: "https://developers.pipedrive.com/docs/api/v2/openapi.yaml",
+    icon: "https://www.pipedrive.com/favicon.ico",
+    composio: { app: "pipedrive" },
+  },
+  {
+    id: "figma",
+    name: "Figma",
+    summary: "Files, projects, comments, variables, and design resources.",
+    url: "https://raw.githubusercontent.com/figma/rest-api-spec/main/openapi/openapi.yaml",
+    icon: "https://static.figma.com/app/icon/1/favicon.png",
+    composio: { app: "figma" },
+  },
+  {
+    id: "jira-cloud",
+    name: "Jira Cloud",
+    summary: "Issues, projects, users, workflows, and Atlassian work tracking.",
+    url: "https://developer.atlassian.com/cloud/jira/platform/swagger-v3.v3.json",
+    icon: "https://www.atlassian.com/favicon.ico",
+    featured: true,
+    composio: { app: "jira" },
+  },
+  {
+    id: "confluence-cloud",
+    name: "Confluence Cloud",
+    summary: "Pages, spaces, comments, search, and Atlassian knowledge bases.",
+    url: "https://developer.atlassian.com/cloud/confluence/swagger.v3.json",
+    icon: "https://www.atlassian.com/favicon.ico",
+    composio: { app: "confluence" },
+  },
+  {
+    id: "intercom",
+    name: "Intercom",
+    summary: "Contacts, conversations, companies, messages, and support workflows.",
+    url: "https://raw.githubusercontent.com/intercom/Intercom-OpenAPI/main/descriptions/2.14/api.intercom.io.yaml",
+    icon: favicon("intercom.com"),
+    composio: { app: "intercom" },
   },
 ];

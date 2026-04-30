@@ -137,7 +137,12 @@ const renderTransportMessage = (value: unknown): string => {
     return value.message;
   }
 
-  if (typeof value === "object" && value !== null && "message" in value && typeof value.message === "string") {
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    "message" in value &&
+    typeof value.message === "string"
+  ) {
     return value.message;
   }
 

@@ -119,14 +119,12 @@ const makeMemorySecretsPlugin = () => {
   const provider: SecretProvider = {
     key: "memory",
     writable: true,
-    get: (id, scope) =>
-      Effect.sync(() => store.get(`${scope}\u0000${id}`) ?? null),
+    get: (id, scope) => Effect.sync(() => store.get(`${scope}\u0000${id}`) ?? null),
     set: (id, value, scope) =>
       Effect.sync(() => {
         store.set(`${scope}\u0000${id}`, value);
       }),
-    delete: (id, scope) =>
-      Effect.sync(() => store.delete(`${scope}\u0000${id}`)),
+    delete: (id, scope) => Effect.sync(() => store.delete(`${scope}\u0000${id}`)),
     list: () =>
       Effect.sync(() =>
         Array.from(store.keys()).map((k) => {
@@ -161,11 +159,7 @@ describe("Google Discovery plugin", () => {
         init?: RequestInit,
       ) => {
         const url =
-          typeof input === "string"
-            ? input
-            : input instanceof URL
-              ? input.toString()
-              : input.url;
+          typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
         if (url === "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest") {
           return Promise.resolve(
             new Response(fixtureText, {
@@ -265,11 +259,7 @@ describe("Google Discovery plugin", () => {
           init?: RequestInit,
         ) => {
           const url =
-            typeof input === "string"
-              ? input
-              : input instanceof URL
-                ? input.toString()
-                : input.url;
+            typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
           if (url === "https://oauth2.googleapis.com/token") {
             expect(init?.method).toBe("POST");
             return Promise.resolve(
@@ -342,9 +332,7 @@ describe("Google Discovery plugin", () => {
         try {
           // A connection wraps the access token (+ optional refresh) and
           // the invoke path resolves via ctx.connections.accessToken.
-          const connectionId = ConnectionId.make(
-            "google-discovery-oauth2-test",
-          );
+          const connectionId = ConnectionId.make("google-discovery-oauth2-test");
           yield* executor.connections.create(
             new CreateConnectionInput({
               id: connectionId,
@@ -456,10 +444,7 @@ describe("Google Discovery plugin", () => {
             "shared",
             USER_SCOPE as string,
           );
-          const orgView = yield* executor.googleDiscovery.getSource(
-            "shared",
-            ORG_SCOPE as string,
-          );
+          const orgView = yield* executor.googleDiscovery.getSource("shared", ORG_SCOPE as string);
 
           // Both rows must coexist — innermost-wins reads come from the
           // executor; the store's scope-pinned getters return the exact row.
@@ -502,19 +487,13 @@ describe("Google Discovery plugin", () => {
             auth: { kind: "none" },
           });
 
-          yield* executor.googleDiscovery.removeSource(
-            "shared",
-            USER_SCOPE as string,
-          );
+          yield* executor.googleDiscovery.removeSource("shared", USER_SCOPE as string);
 
           const userView = yield* executor.googleDiscovery.getSource(
             "shared",
             USER_SCOPE as string,
           );
-          const orgView = yield* executor.googleDiscovery.getSource(
-            "shared",
-            ORG_SCOPE as string,
-          );
+          const orgView = yield* executor.googleDiscovery.getSource("shared", ORG_SCOPE as string);
 
           expect(userView).toBeNull();
           expect(orgView?.name).toBe("Org Drive");
@@ -569,10 +548,7 @@ describe("Google Discovery plugin", () => {
             "shared",
             USER_SCOPE as string,
           );
-          const orgView = yield* executor.googleDiscovery.getSource(
-            "shared",
-            ORG_SCOPE as string,
-          );
+          const orgView = yield* executor.googleDiscovery.getSource("shared", ORG_SCOPE as string);
 
           expect(userView?.name).toBe("User Drive v2");
           expect(userView?.scope).toBe(USER_SCOPE as string);

@@ -21,10 +21,7 @@ import { Effect } from "effect";
 import { StorageError } from "@executor/storage-core";
 
 export interface BlobStore {
-  readonly get: (
-    namespace: string,
-    key: string,
-  ) => Effect.Effect<string | null, StorageError>;
+  readonly get: (namespace: string, key: string) => Effect.Effect<string | null, StorageError>;
   /** Multi-namespace lookup for a single key. Backends issue one query
    *  (`WHERE namespace IN (...) AND key = ?`) and return the hits keyed
    *  by namespace — the caller applies its own precedence. Lets
@@ -39,14 +36,8 @@ export interface BlobStore {
     key: string,
     value: string,
   ) => Effect.Effect<void, StorageError>;
-  readonly delete: (
-    namespace: string,
-    key: string,
-  ) => Effect.Effect<void, StorageError>;
-  readonly has: (
-    namespace: string,
-    key: string,
-  ) => Effect.Effect<boolean, StorageError>;
+  readonly delete: (namespace: string, key: string) => Effect.Effect<void, StorageError>;
+  readonly has: (namespace: string, key: string) => Effect.Effect<boolean, StorageError>;
 }
 
 export interface PluginBlobStore {
@@ -69,10 +60,7 @@ export interface PluginBlobStore {
   readonly has: (key: string) => Effect.Effect<boolean, StorageError>;
 }
 
-const assertScope = (
-  scope: string,
-  scopes: readonly string[],
-): Effect.Effect<void, StorageError> =>
+const assertScope = (scope: string, scopes: readonly string[]): Effect.Effect<void, StorageError> =>
   scopes.includes(scope)
     ? Effect.void
     : Effect.fail(

@@ -21,7 +21,7 @@ to preserve auth state across the upgrade.
 
 1. `INSERT INTO connection` with the new pointer's `connectionId`,
    `provider = "openapi:oauth2"`, and `provider_state` = `{flow,
-   tokenUrl, clientIdSecretId, clientSecretSecretId, scopes}` lifted
+tokenUrl, clientIdSecretId, clientSecretSecretId, scopes}` lifted
    from the legacy row. `access_token_secret_id` + `refresh_token_secret_id`
    reuse the legacy secret ids — tokens themselves never move, only
    ownership links flip.

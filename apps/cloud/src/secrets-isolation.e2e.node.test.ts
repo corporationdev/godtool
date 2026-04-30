@@ -31,192 +31,180 @@ import { Effect } from "effect";
 
 import { ScopeId, SecretId } from "@executor/sdk";
 
-import {
-  asUser,
-  testUserOrgScopeId,
-} from "./services/__test-harness__/api-harness";
+import { asUser, testUserOrgScopeId } from "./services/__test-harness__/api-harness";
 
 const uniq = () => crypto.randomUUID().slice(0, 8);
 const nextOrgId = () => `org_iso_${uniq()}`;
 const nextUserId = () => `user_iso_${uniq()}`;
 
 describe("cloud secret isolation (HTTP, user-org scope stack)", () => {
-  it.effect(
-    "users in different orgs cannot read each other's org-scoped secrets",
-    () =>
-      Effect.gen(function* () {
-        const orgA = nextOrgId();
-        const orgB = nextOrgId();
-        const alice = nextUserId();
-        const charlie = nextUserId();
-        const id = `sec_${uniq()}`;
+  it.effect("users in different orgs cannot read each other's org-scoped secrets", () =>
+    Effect.gen(function* () {
+      const orgA = nextOrgId();
+      const orgB = nextOrgId();
+      const alice = nextUserId();
+      const charlie = nextUserId();
+      const id = `sec_${uniq()}`;
 
-        yield* asUser(alice, orgA, (client) =>
-          client.secrets.set({
-            path: { scopeId: ScopeId.make(orgA) },
-            payload: {
-              id: SecretId.make(id),
-              name: "Shared",
-              value: "alice-org-secret",
-            },
-          }),
-        );
+      yield* asUser(alice, orgA, (client) =>
+        client.secrets.set({
+          path: { scopeId: ScopeId.make(orgA) },
+          payload: {
+            id: SecretId.make(id),
+            name: "Shared",
+            value: "alice-org-secret",
+          },
+        }),
+      );
 
-        const charlieStatus = yield* asUser(charlie, orgB, (client) =>
-          client.secrets.status({
-            path: { scopeId: ScopeId.make(orgB), secretId: SecretId.make(id) },
-          }),
-        );
-        expect(charlieStatus.status).toBe("missing");
+      const charlieStatus = yield* asUser(charlie, orgB, (client) =>
+        client.secrets.status({
+          path: { scopeId: ScopeId.make(orgB), secretId: SecretId.make(id) },
+        }),
+      );
+      expect(charlieStatus.status).toBe("missing");
 
-        const charlieList = yield* asUser(charlie, orgB, (client) =>
-          client.secrets.list({ path: { scopeId: ScopeId.make(orgB) } }),
-        );
-        expect(charlieList.map((s) => s.id)).not.toContain(id);
-
-      }),
+      const charlieList = yield* asUser(charlie, orgB, (client) =>
+        client.secrets.list({ path: { scopeId: ScopeId.make(orgB) } }),
+      );
+      expect(charlieList.map((s) => s.id)).not.toContain(id);
+    }),
   );
 
-  it.effect(
-    "users in same org cannot read each other's user-scoped secrets",
-    () =>
-      Effect.gen(function* () {
-        const orgId = nextOrgId();
-        const aliceId = nextUserId();
-        const bobId = nextUserId();
-        const id = `sec_${uniq()}`;
+  it.effect("users in same org cannot read each other's user-scoped secrets", () =>
+    Effect.gen(function* () {
+      const orgId = nextOrgId();
+      const aliceId = nextUserId();
+      const bobId = nextUserId();
+      const id = `sec_${uniq()}`;
 
-        // Alice writes at her per-user scope — where OAuth tokens land.
-        yield* asUser(aliceId, orgId, (client) =>
-          client.secrets.set({
-            path: { scopeId: ScopeId.make(testUserOrgScopeId(aliceId, orgId)) },
-            payload: {
-              id: SecretId.make(id),
-              name: "Alice's token",
-              value: "alice-token-value",
-            },
-          }),
-        );
+      // Alice writes at her per-user scope — where OAuth tokens land.
+      yield* asUser(aliceId, orgId, (client) =>
+        client.secrets.set({
+          path: { scopeId: ScopeId.make(testUserOrgScopeId(aliceId, orgId)) },
+          payload: {
+            id: SecretId.make(id),
+            name: "Alice's token",
+            value: "alice-token-value",
+          },
+        }),
+      );
 
-        // Bob is in the same org — his user-org scope differs. He should
-        // not see the token in a list.
-        const bobList = yield* asUser(bobId, orgId, (client) =>
-          client.secrets.list({
-            path: { scopeId: ScopeId.make(testUserOrgScopeId(bobId, orgId)) },
-          }),
-        );
-        expect(bobList.map((s) => s.id)).not.toContain(id);
+      // Bob is in the same org — his user-org scope differs. He should
+      // not see the token in a list.
+      const bobList = yield* asUser(bobId, orgId, (client) =>
+        client.secrets.list({
+          path: { scopeId: ScopeId.make(testUserOrgScopeId(bobId, orgId)) },
+        }),
+      );
+      expect(bobList.map((s) => s.id)).not.toContain(id);
 
-        const bobStatus = yield* asUser(bobId, orgId, (client) =>
-          client.secrets.status({
-            path: {
-              scopeId: ScopeId.make(testUserOrgScopeId(bobId, orgId)),
-              secretId: SecretId.make(id),
-            },
-          }),
-        );
-        expect(bobStatus.status).toBe("missing");
+      const bobStatus = yield* asUser(bobId, orgId, (client) =>
+        client.secrets.status({
+          path: {
+            scopeId: ScopeId.make(testUserOrgScopeId(bobId, orgId)),
+            secretId: SecretId.make(id),
+          },
+        }),
+      );
+      expect(bobStatus.status).toBe("missing");
 
-        // And Alice still sees her own token metadata.
-        const aliceStatus = yield* asUser(aliceId, orgId, (client) =>
-          client.secrets.status({
-            path: {
-              scopeId: ScopeId.make(testUserOrgScopeId(aliceId, orgId)),
-              secretId: SecretId.make(id),
-            },
-          }),
-        );
-        expect(aliceStatus.status).toBe("resolved");
-      }),
+      // And Alice still sees her own token metadata.
+      const aliceStatus = yield* asUser(aliceId, orgId, (client) =>
+        client.secrets.status({
+          path: {
+            scopeId: ScopeId.make(testUserOrgScopeId(aliceId, orgId)),
+            secretId: SecretId.make(id),
+          },
+        }),
+      );
+      expect(aliceStatus.status).toBe("resolved");
+    }),
   );
 
-  it.effect(
-    "org-scoped secrets are visible to every user in that org",
-    () =>
-      Effect.gen(function* () {
-        const orgId = nextOrgId();
-        const adminId = nextUserId();
-        const memberId = nextUserId();
-        const id = `sec_${uniq()}`;
+  it.effect("org-scoped secrets are visible to every user in that org", () =>
+    Effect.gen(function* () {
+      const orgId = nextOrgId();
+      const adminId = nextUserId();
+      const memberId = nextUserId();
+      const id = `sec_${uniq()}`;
 
-        yield* asUser(adminId, orgId, (client) =>
-          client.secrets.set({
-            path: { scopeId: ScopeId.make(orgId) },
-            payload: {
-              id: SecretId.make(id),
-              name: "Org API Key",
-              value: "shared-org-key",
-            },
-          }),
-        );
+      yield* asUser(adminId, orgId, (client) =>
+        client.secrets.set({
+          path: { scopeId: ScopeId.make(orgId) },
+          payload: {
+            id: SecretId.make(id),
+            name: "Org API Key",
+            value: "shared-org-key",
+          },
+        }),
+      );
 
-        const adminStatus = yield* asUser(adminId, orgId, (client) =>
-          client.secrets.status({
-            path: { scopeId: ScopeId.make(orgId), secretId: SecretId.make(id) },
-          }),
-        );
-        const memberStatus = yield* asUser(memberId, orgId, (client) =>
-          client.secrets.status({
-            path: { scopeId: ScopeId.make(orgId), secretId: SecretId.make(id) },
-          }),
-        );
-        expect(adminStatus.status).toBe("resolved");
-        expect(memberStatus.status).toBe("resolved");
-      }),
+      const adminStatus = yield* asUser(adminId, orgId, (client) =>
+        client.secrets.status({
+          path: { scopeId: ScopeId.make(orgId), secretId: SecretId.make(id) },
+        }),
+      );
+      const memberStatus = yield* asUser(memberId, orgId, (client) =>
+        client.secrets.status({
+          path: { scopeId: ScopeId.make(orgId), secretId: SecretId.make(id) },
+        }),
+      );
+      expect(adminStatus.status).toBe("resolved");
+      expect(memberStatus.status).toBe("resolved");
+    }),
   );
 
-  it.effect(
-    "same userId in different orgs gets distinct per-user scopes",
-    () =>
-      Effect.gen(function* () {
-        const userId = nextUserId();
-        const orgA = nextOrgId();
-        const orgB = nextOrgId();
-        const id = `sec_${uniq()}`;
+  it.effect("same userId in different orgs gets distinct per-user scopes", () =>
+    Effect.gen(function* () {
+      const userId = nextUserId();
+      const orgA = nextOrgId();
+      const orgB = nextOrgId();
+      const id = `sec_${uniq()}`;
 
-        yield* asUser(userId, orgA, (client) =>
-          client.secrets.set({
-            path: { scopeId: ScopeId.make(testUserOrgScopeId(userId, orgA)) },
-            payload: {
-              id: SecretId.make(id),
-              name: "A token",
-              value: "value-in-a",
-            },
-          }),
-        );
+      yield* asUser(userId, orgA, (client) =>
+        client.secrets.set({
+          path: { scopeId: ScopeId.make(testUserOrgScopeId(userId, orgA)) },
+          payload: {
+            id: SecretId.make(id),
+            name: "A token",
+            value: "value-in-a",
+          },
+        }),
+      );
 
-        // Same user id, different org → distinct user-org scope. The
-        // secret written in org A must not be visible when the same user
-        // logs into org B.
-        const listInB = yield* asUser(userId, orgB, (client) =>
-          client.secrets.list({
-            path: { scopeId: ScopeId.make(testUserOrgScopeId(userId, orgB)) },
-          }),
-        );
-        expect(listInB.map((s) => s.id)).not.toContain(id);
+      // Same user id, different org → distinct user-org scope. The
+      // secret written in org A must not be visible when the same user
+      // logs into org B.
+      const listInB = yield* asUser(userId, orgB, (client) =>
+        client.secrets.list({
+          path: { scopeId: ScopeId.make(testUserOrgScopeId(userId, orgB)) },
+        }),
+      );
+      expect(listInB.map((s) => s.id)).not.toContain(id);
 
-        const statusInB = yield* asUser(userId, orgB, (client) =>
-          client.secrets.status({
-            path: {
-              scopeId: ScopeId.make(testUserOrgScopeId(userId, orgB)),
-              secretId: SecretId.make(id),
-            },
-          }),
-        );
-        expect(statusInB.status).toBe("missing");
+      const statusInB = yield* asUser(userId, orgB, (client) =>
+        client.secrets.status({
+          path: {
+            scopeId: ScopeId.make(testUserOrgScopeId(userId, orgB)),
+            secretId: SecretId.make(id),
+          },
+        }),
+      );
+      expect(statusInB.status).toBe("missing");
 
-        // Sanity: the original write is still visible under the org-A
-        // user-org scope.
-        const statusInA = yield* asUser(userId, orgA, (client) =>
-          client.secrets.status({
-            path: {
-              scopeId: ScopeId.make(testUserOrgScopeId(userId, orgA)),
-              secretId: SecretId.make(id),
-            },
-          }),
-        );
-        expect(statusInA.status).toBe("resolved");
-      }),
+      // Sanity: the original write is still visible under the org-A
+      // user-org scope.
+      const statusInA = yield* asUser(userId, orgA, (client) =>
+        client.secrets.status({
+          path: {
+            scopeId: ScopeId.make(testUserOrgScopeId(userId, orgA)),
+            secretId: SecretId.make(id),
+          },
+        }),
+      );
+      expect(statusInA.status).toBe("resolved");
+    }),
   );
 
   it.effect("secrets.set rejects a scope outside the executor's stack", () =>

@@ -55,10 +55,7 @@ const isRef = (value: unknown): value is { $ref: string } =>
 // ---------------------------------------------------------------------------
 
 /** Substitute `{var}` placeholders in a templated URL using a plain map. */
-export const substituteUrlVariables = (
-  url: string,
-  values: Record<string, string>,
-): string => {
+export const substituteUrlVariables = (url: string, values: Record<string, string>): string => {
   let out = url;
   for (const [name, value] of Object.entries(values)) {
     out = out.replaceAll(`{${name}}`, value);
@@ -68,9 +65,7 @@ export const substituteUrlVariables = (
 
 type ServerLike = {
   url: string;
-  variables: import("effect/Option").Option<
-    Record<string, { default: string } | string>
-  >;
+  variables: import("effect/Option").Option<Record<string, { default: string } | string>>;
 };
 
 export const resolveBaseUrl = (servers: readonly ServerLike[]): string => {

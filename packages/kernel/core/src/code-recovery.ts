@@ -1,8 +1,7 @@
 import { parse } from "@babel/parser";
 
 const FENCED_CODE_BLOCK = /```(?:[^\n`]*)?\s*\n([\s\S]*?)```/i;
-const FUNCTION_DECLARATION =
-  /^(?:async\s+)?function(?:\s+([a-zA-Z_$][a-zA-Z0-9_$]*))?\s*\(/;
+const FUNCTION_DECLARATION = /^(?:async\s+)?function(?:\s+([a-zA-Z_$][a-zA-Z0-9_$]*))?\s*\(/;
 const CALLABLE_ERROR = "Code must evaluate to a function";
 
 const extractCandidateSource = (code: string): string => {
@@ -47,7 +46,9 @@ const unwrapExpression = (expression: { type: string; expression?: unknown }): u
     case "TSTypeAssertion":
     case "TSNonNullExpression":
     case "TSInstantiationExpression":
-      return expression.expression ? unwrapExpression(expression.expression as { type: string }) : expression;
+      return expression.expression
+        ? unwrapExpression(expression.expression as { type: string })
+        : expression;
     default:
       return expression;
   }
@@ -97,10 +98,13 @@ const renderParsedBody = (source: string): string => {
 
   switch (statement.type) {
     case "ExpressionStatement": {
-      const expression = unwrapExpression(statement.expression as { type: string; expression?: unknown }) as {
+      const expression = unwrapExpression(
+        statement.expression as { type: string; expression?: unknown },
+      ) as {
         type?: string;
       };
-      return expression?.type === "ArrowFunctionExpression" || expression?.type === "FunctionExpression"
+      return expression?.type === "ArrowFunctionExpression" ||
+        expression?.type === "FunctionExpression"
         ? wrapCallableBody(source)
         : source;
     }

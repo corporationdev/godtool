@@ -4,7 +4,7 @@
       "kind": "openapi",
       "spec": "https://raw.githubusercontent.com/cloudflare/api-schemas/main/openapi.json",
       "baseUrl": "https://api.cloudflare.com/client/v4",
-      "namespace": "cloudflare_api"
-    }
-  ]
+      "namespace": "cloudflare_api",
+    },
+  ],
 }

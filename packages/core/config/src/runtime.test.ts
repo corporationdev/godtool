@@ -28,12 +28,8 @@ describe("runtime stage urls", () => {
   });
 
   it("derives the deployed cloud worker name from the stage", () => {
-    expect(getStageCloudWorkerName("dev-isaac-1234abcd")).toBe(
-      "godtool-web-dev-isaac-1234abcd",
-    );
-    expect(getStageCloudWorkerName("preview-code-server")).toBe(
-      "godtool-web-preview-code-server",
-    );
+    expect(getStageCloudWorkerName("dev-isaac-1234abcd")).toBe("godtool-web-dev-isaac-1234abcd");
+    expect(getStageCloudWorkerName("preview-code-server")).toBe("godtool-web-preview-code-server");
     expect(getStageCloudWorkerName("production")).toBe("godtool-web-production");
   });
 

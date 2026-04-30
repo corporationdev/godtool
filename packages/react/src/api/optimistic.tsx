@@ -46,9 +46,7 @@ export const usePendingResource = <T,>(resource: string) => {
   const add = React.useCallback(
     (entry: PendingEntry<T>) =>
       setPending((prev) => [
-        ...(prev as ReadonlyArray<PendingEntry<T>>).filter(
-          (p) => p.id !== entry.id,
-        ),
+        ...(prev as ReadonlyArray<PendingEntry<T>>).filter((p) => p.id !== entry.id),
         entry,
       ]),
     [setPending],
@@ -56,9 +54,7 @@ export const usePendingResource = <T,>(resource: string) => {
 
   const remove = React.useCallback(
     (id: string) =>
-      setPending((prev) =>
-        (prev as ReadonlyArray<PendingEntry<T>>).filter((p) => p.id !== id),
-      ),
+      setPending((prev) => (prev as ReadonlyArray<PendingEntry<T>>).filter((p) => p.id !== id)),
     [setPending],
   );
 
@@ -167,9 +163,7 @@ export const useConnectionsWithPendingRemovals = (scopeId: ScopeId) => {
   React.useEffect(() => {
     if (!Result.isSuccess(result) || pending.length === 0) return;
 
-    const serverIds = new Set(
-      result.value.map((connection) => connection.id as string),
-    );
+    const serverIds = new Set(result.value.map((connection) => connection.id as string));
     for (const entry of pending) {
       if (!serverIds.has(entry.id)) remove(entry.id);
     }
@@ -180,9 +174,7 @@ export const useConnectionsWithPendingRemovals = (scopeId: ScopeId) => {
       Result.map(result, (connections) => {
         if (pending.length === 0) return connections;
         const hiddenIds = new Set(pending.map((entry) => entry.id));
-        return connections.filter(
-          (connection) => !hiddenIds.has(connection.id as string),
-        );
+        return connections.filter((connection) => !hiddenIds.has(connection.id as string));
       }),
     [result, pending],
   );

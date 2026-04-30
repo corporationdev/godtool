@@ -6,11 +6,7 @@ import { collectSchemas } from "@executor/sdk/core";
 import { getConfig } from "../utils/get-config.js";
 import { generateDrizzleSchema } from "../generators/drizzle.js";
 
-async function generateAction(opts: {
-  cwd: string;
-  config?: string;
-  output?: string;
-}) {
+async function generateAction(opts: { cwd: string; config?: string; output?: string }) {
   const cwd = path.resolve(opts.cwd);
   if (!existsSync(cwd)) {
     console.error(`The directory "${cwd}" does not exist.`);
@@ -51,17 +47,7 @@ async function generateAction(opts: {
 
 export const generate = new Command("generate")
   .description("Generate a drizzle schema file from the executor config")
-  .option(
-    "-c, --cwd <cwd>",
-    "the working directory",
-    process.cwd(),
-  )
-  .option(
-    "--config <config>",
-    "path to the executor config file",
-  )
-  .option(
-    "--output <output>",
-    "output file path for the generated schema",
-  )
+  .option("-c, --cwd <cwd>", "the working directory", process.cwd())
+  .option("--config <config>", "path to the executor config file")
+  .option("--output <output>", "output file path for the generated schema")
   .action(generateAction);

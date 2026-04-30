@@ -1,14 +1,14 @@
 {
   "name": "@executor/runtime-quickjs",
   "version": "0.0.1",
-  "homepage": "https://github.com/RhysSullivan/executor/tree/main/packages/kernel/runtime-quickjs",
+  "homepage": "https://github.com/corporationdev/godtool/tree/main/packages/kernel/runtime-quickjs",
   "bugs": {
-    "url": "https://github.com/RhysSullivan/executor/issues"
+    "url": "https://github.com/corporationdev/godtool/issues"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/RhysSullivan/executor.git",
+    "url": "git+https://github.com/corporationdev/godtool.git",
     "directory": "packages/kernel/runtime-quickjs"
   },
   "files": [

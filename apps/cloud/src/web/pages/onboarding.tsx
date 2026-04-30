@@ -11,9 +11,7 @@ export const OnboardingPage = () => {
   const auth = useAuth();
 
   const suggestedName =
-    auth.status === "authenticated" &&
-    auth.user.name != null &&
-    auth.user.name.trim() !== ""
+    auth.status === "authenticated" && auth.user.name != null && auth.user.name.trim() !== ""
       ? `${auth.user.name}'s Organization`
       : "";
 

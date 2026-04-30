@@ -156,7 +156,7 @@ import { createExecutor } from "@executor/sdk";
 
 ## Status
 
-Pre-`1.0`. APIs may still change between beta releases. See the [executor monorepo](https://github.com/RhysSullivan/executor) for the current development branch and roadmap.
+Pre-`1.0`. APIs may still change between beta releases. See the [executor monorepo](https://github.com/corporationdev/godtool) for the current development branch and roadmap.
 
 ## License
 

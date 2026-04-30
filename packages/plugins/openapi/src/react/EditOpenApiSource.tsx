@@ -2,15 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Result, useAtomSet, useAtomValue } from "@effect-atom/atom-react";
 
 import { openOAuthPopup, type OAuthPopupResult } from "@executor/plugin-oauth2/react";
-import {
-  connectionsAtom,
-  sourceAtom,
-} from "@executor/react/api/atoms";
+import { connectionsAtom, sourceAtom } from "@executor/react/api/atoms";
 import { useScope, useScopeStack, useUserScope } from "@executor/react/api/scope-context";
-import {
-  connectionWriteKeys,
-  sourceWriteKeys,
-} from "@executor/react/api/reactivity-keys";
+import { connectionWriteKeys, sourceWriteKeys } from "@executor/react/api/reactivity-keys";
 import { Button } from "@executor/react/components/button";
 import { CopyButton } from "@executor/react/components/copy-button";
 import {
@@ -100,15 +94,9 @@ const effectiveBindingForScope = (
 ) =>
   rows
     .filter(
-      (row) =>
-        row.slot === slot &&
-        scopeRank(ranks, row.scopeId) >= scopeRank(ranks, targetScope),
+      (row) => row.slot === slot && scopeRank(ranks, row.scopeId) >= scopeRank(ranks, targetScope),
     )
-    .sort(
-      (a, b) =>
-        scopeRank(ranks, a.scopeId) -
-        scopeRank(ranks, b.scopeId),
-    )[0] ?? null;
+    .sort((a, b) => scopeRank(ranks, a.scopeId) - scopeRank(ranks, b.scopeId))[0] ?? null;
 
 const isSecretBindingValue = (
   value: unknown,
@@ -159,12 +147,9 @@ export default function EditOpenApiSource(props: {
   const doRemoveBinding = useAtomSet(removeOpenApiSourceBinding, { mode: "promise" });
   const doStartOAuth = useAtomSet(startOpenApiOAuth, { mode: "promise" });
 
-  const source =
-    Result.isSuccess(sourceResult) && sourceResult.value ? sourceResult.value : null;
-  const bindingRows =
-    Result.isSuccess(bindingsResult) ? bindingsResult.value : [];
-  const connections =
-    Result.isSuccess(connectionsResult) ? connectionsResult.value : [];
+  const source = Result.isSuccess(sourceResult) && sourceResult.value ? sourceResult.value : null;
+  const bindingRows = Result.isSuccess(bindingsResult) ? bindingsResult.value : [];
+  const connections = Result.isSuccess(connectionsResult) ? connectionsResult.value : [];
   const oauth2RedirectUrl =
     typeof window !== "undefined"
       ? `${window.location.origin}${OPENAPI_OAUTH_CALLBACK_PATH}`
@@ -237,15 +222,7 @@ export default function EditOpenApiSource(props: {
     }, 600);
 
     return () => window.clearTimeout(timeout);
-  }, [
-    baseUrl,
-    doUpdate,
-    loadedSourceKey,
-    name,
-    props.sourceId,
-    source,
-    sourceScopeId,
-  ]);
+  }, [baseUrl, doUpdate, loadedSourceKey, name, props.sourceId, source, sourceScopeId]);
 
   const secretSlots = useMemo(() => {
     if (!source) return [] as SlotDef[];
@@ -311,11 +288,7 @@ export default function EditOpenApiSource(props: {
     );
   }
 
-  const setSecretBinding = async (
-    targetScope: ScopeId,
-    slot: string,
-    secretId: string,
-  ) => {
+  const setSecretBinding = async (targetScope: ScopeId, slot: string, secretId: string) => {
     const inputKey = `${targetScope}:${slot}`;
     const trimmed = secretId.trim();
     if (!trimmed) return;
@@ -381,7 +354,10 @@ export default function EditOpenApiSource(props: {
       setError("Client ID must be bound before connecting");
       return;
     }
-    if (oauth2.flow === "clientCredentials" && (!clientSecretBinding || !isSecretBindingValue(clientSecretBinding.value))) {
+    if (
+      oauth2.flow === "clientCredentials" &&
+      (!clientSecretBinding || !isSecretBindingValue(clientSecretBinding.value))
+    ) {
       setError("Client secret must be bound before connecting");
       return;
     }
@@ -525,8 +501,8 @@ export default function EditOpenApiSource(props: {
       <div>
         <h1 className="text-xl font-semibold text-foreground">OpenAPI Source</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Shared source settings stay on the source. Credentials can be saved
-          personally or shared with the organization.
+          Shared source settings stay on the source. Credentials can be saved personally or shared
+          with the organization.
         </p>
       </div>
 
@@ -579,8 +555,7 @@ export default function EditOpenApiSource(props: {
               <CardStackEntryContent>
                 <CardStackEntryTitle>Credentials</CardStackEntryTitle>
                 <CardStackEntryDescription>
-                  Choose whether each credential is personal or shared with the
-                  organization.
+                  Choose whether each credential is personal or shared with the organization.
                 </CardStackEntryDescription>
               </CardStackEntryContent>
               <FilterTabs
@@ -597,11 +572,7 @@ export default function EditOpenApiSource(props: {
           {secretSlots
             .filter((slot) => slot.kind === "secret")
             .map((slot) => {
-              const exact = exactBindingForScope(
-                bindingRows,
-                slot.slot,
-                activeCredentialScopeId,
-              );
+              const exact = exactBindingForScope(bindingRows, slot.slot, activeCredentialScopeId);
               const effective = effectiveBindingForScope(
                 bindingRows,
                 slot.slot,
@@ -622,7 +593,10 @@ export default function EditOpenApiSource(props: {
                     ? (effective.value.secretId as string)
                     : null;
               return (
-                <CardStackEntryField key={`${slot.slot}:${activeCredentialScopeId}`} label={slot.label}>
+                <CardStackEntryField
+                  key={`${slot.slot}:${activeCredentialScopeId}`}
+                  label={slot.label}
+                >
                   <div className="space-y-2">
                     <CreatableSecretPicker
                       value={currentSecretId}
@@ -652,9 +626,7 @@ export default function EditOpenApiSource(props: {
                           variant="outline"
                           size="sm"
                           onClick={() => void clearBinding(activeCredentialScopeId, slot.slot)}
-                          disabled={
-                            busyKey === `${activeCredentialScopeId}:${slot.slot}:clear`
-                          }
+                          disabled={busyKey === `${activeCredentialScopeId}:${slot.slot}:clear`}
                         >
                           Clear
                         </Button>
@@ -707,9 +679,7 @@ export default function EditOpenApiSource(props: {
                       scopeRanks,
                     );
                   const connectionBinding =
-                    binding && isConnectionBindingValue(binding.value)
-                      ? binding.value
-                      : null;
+                    binding && isConnectionBindingValue(binding.value) ? binding.value : null;
                   const connection = connectionBinding
                     ? connections.find((entry) => entry.id === connectionBinding.connectionId)
                     : null;

@@ -54,7 +54,7 @@ source: {
 Effect.catchAll((e) => {
   const message = e instanceof Error ? e.message : String(e);
   return executor.sources.recordError({ source, message }).pipe(Effect.asVoid);
-})
+});
 ```
 
 `executor.sources.recordError` is a new core method that writes a
@@ -76,6 +76,7 @@ a special case — current `removeSource` already works regardless of
 ## Scope
 
 Not for the scope-refactor PR. Separate change:
+
 - Schema migration adds two columns.
 - `executor.sources.recordError` on the core SDK.
 - Wire up in config-sync.

@@ -5,10 +5,10 @@ deleting one silently drops coverage that the others can't replace.
 
 ## Suites at a glance
 
-| file | pool | drives | what it proves |
-|---|---|---|---|
-| `apps/cloud/src/mcp-session.e2e.node.test.ts` | node | `InMemoryTransport` + SDK `Client` | engine + plugin wiring; schema drift; elicitation semantics |
-| `apps/cloud/src/mcp-flow.test.ts` | workerd (vitest-pool-workers) | `SELF.fetch` + hand-rolled JSON-RPC | edge HTTP pipeline that does not require a live multi-request DO session |
+| file                                            | pool                          | drives                                              | what it proves                                                                                |
+| ----------------------------------------------- | ----------------------------- | --------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `apps/cloud/src/mcp-session.e2e.node.test.ts`   | node                          | `InMemoryTransport` + SDK `Client`                  | engine + plugin wiring; schema drift; elicitation semantics                                   |
+| `apps/cloud/src/mcp-flow.test.ts`               | workerd (vitest-pool-workers) | `SELF.fetch` + hand-rolled JSON-RPC                 | edge HTTP pipeline that does not require a live multi-request DO session                      |
 | `apps/cloud/src/mcp-miniflare.e2e.node.test.ts` | node + miniflare-on-real-port | SDK `Client` + real `StreamableHTTPClientTransport` | the long-lived-socket DO runtime actually works end-to-end; elicitation round-trips real HTTP |
 
 ## The workerd cross-request I/O wall
@@ -86,12 +86,12 @@ Pattern used in `mcp-miniflare.e2e.node.test.ts`:
 3. Read the bound port from `HttpServer.HttpServer.address` (TcpAddress tag)
    inside a `Layer.effect` that produces the test service.
 4. Generate the spec with `OpenApi.fromApi(api)` and inject
-   `servers: [{ url: `http://127.0.0.1:${port}` }]` before `JSON.stringify`.
+   `servers: [{ url: `http://127.0.0.1:${port}` }]`before`JSON.stringify`.
 5. SDK Client advertises `capabilities: { elicitation: { form: {} } }` and
    registers `client.setRequestHandler(ElicitRequestSchema, ...)` that returns
    `{ action: "accept", content: {} }`.
 6. Call `execute` with code that (a) calls `tools.openapi.addSource({ spec,
-   namespace })`, (b) invokes the POST operation.
+namespace })`, (b) invokes the POST operation.
 
 **Tool id format inside the `execute` sandbox.**
 `tools.<sourceId>.<group>.<operation>` for openapi. The Effect

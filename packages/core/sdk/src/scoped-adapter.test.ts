@@ -171,16 +171,12 @@ describe("scopeAdapter — read isolation", () => {
   it.effect("caller-supplied scope_id filter is stripped (can't bypass isolation)", () =>
     Effect.gen(function* () {
       const inner = makeMemoryAdapter({ schema });
-      yield* typedAdapter<typeof schema>(
-        scopeAdapter(inner, { scopes: ["c"] }, schema),
-      ).create({
+      yield* typedAdapter<typeof schema>(scopeAdapter(inner, { scopes: ["c"] }, schema)).create({
         model: "thing",
         data: { id: "t-hidden", scope_id: "c", value: "secret" },
       });
 
-      const reader = typedAdapter<typeof schema>(
-        scopeAdapter(inner, { scopes: ["a"] }, schema),
-      );
+      const reader = typedAdapter<typeof schema>(scopeAdapter(inner, { scopes: ["a"] }, schema));
       // Attempt to bypass by explicitly filtering for scope_id "c".
       const rows = yield* reader.findMany({
         model: "thing",

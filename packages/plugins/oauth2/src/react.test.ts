@@ -7,11 +7,7 @@
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  OAUTH_POPUP_MESSAGE_TYPE,
-  openOAuthPopup,
-  type OAuthPopupResult,
-} from "./react";
+import { OAUTH_POPUP_MESSAGE_TYPE, openOAuthPopup, type OAuthPopupResult } from "./react";
 
 type TestAuth = { accessToken: string };
 
@@ -143,7 +139,10 @@ describe("openOAuthPopup", () => {
 
     // Cross-origin message should be ignored.
     for (const listener of fakeWindow.messageListeners) {
-      listener({ origin: "https://evil.example.com", data: successMessage({ accessToken: "nope" }) });
+      listener({
+        origin: "https://evil.example.com",
+        data: successMessage({ accessToken: "nope" }),
+      });
     }
     expect(results).toHaveLength(0);
 

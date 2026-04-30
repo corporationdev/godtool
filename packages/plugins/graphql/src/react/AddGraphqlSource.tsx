@@ -12,6 +12,7 @@ import {
   SourceIdentityFields,
   useSourceIdentity,
 } from "@executor/react/plugins/source-identity";
+import { SourceAdvancedSettings } from "@executor/react/plugins/source-advanced-settings";
 import { useSecretPickerSecrets } from "@executor/react/plugins/use-secret-picker-secrets";
 import {
   startManagedAuthConnect,
@@ -69,7 +70,11 @@ export default function AddGraphqlSource(props: {
     ? "github"
     : endpoint.includes("linear.app")
       ? "linear"
-      : null;
+      : endpoint.includes("gitlab.com")
+        ? "gitlab"
+        : endpoint.includes("monday.com")
+          ? "monday"
+          : null;
   const canAdd =
     endpoint.trim().length > 0 && (managedAuth !== null || headers.length === 0 || headersValid);
 
@@ -163,8 +168,6 @@ export default function AddGraphqlSource(props: {
         </CardStackContent>
       </CardStack>
 
-      <SourceIdentityFields identity={identity} namePlaceholder="e.g. Shopify API" />
-
       {managedAuthApp && (
         <section className="space-y-2.5">
           <FieldLabel>Managed OAuth</FieldLabel>
@@ -184,7 +187,9 @@ export default function AddGraphqlSource(props: {
                 <Button
                   type="button"
                   variant={managedAuth ? "outline" : "default"}
-                  onClick={managedAuth || managedAuthAccess.allowed ? handleManagedAuth : goToBilling}
+                  onClick={
+                    managedAuth || managedAuthAccess.allowed ? handleManagedAuth : goToBilling
+                  }
                   disabled={managedAuthAccess.loading || connectingManagedAuth || adding}
                 >
                   {managedAuthAccess.loading
@@ -212,6 +217,10 @@ export default function AddGraphqlSource(props: {
           sourceName={identity.name}
         />
       </section>
+
+      <SourceAdvancedSettings>
+        <SourceIdentityFields identity={identity} namePlaceholder="e.g. Shopify API" asEntries />
+      </SourceAdvancedSettings>
 
       {/* Error */}
       {addError && (

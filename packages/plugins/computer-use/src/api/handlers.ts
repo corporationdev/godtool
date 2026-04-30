@@ -18,27 +18,35 @@ export const ComputerUseHandlers = HttpApiBuilder.group(
   (handlers) =>
     handlers
       .handle("status", () =>
-        capture(Effect.gen(function* () {
-          const ext = yield* ComputerUseExtensionService;
-          return yield* ext.status();
-        })),
+        capture(
+          Effect.gen(function* () {
+            const ext = yield* ComputerUseExtensionService;
+            return yield* ext.status();
+          }),
+        ),
       )
       .handle("requestAccessibilityPermission", () =>
-        capture(Effect.gen(function* () {
-          const ext = yield* ComputerUseExtensionService;
-          return yield* ext.requestAccessibilityPermission();
-        })),
+        capture(
+          Effect.gen(function* () {
+            const ext = yield* ComputerUseExtensionService;
+            return yield* ext.requestAccessibilityPermission();
+          }),
+        ),
       )
       .handle("requestScreenRecordingPermission", () =>
-        capture(Effect.gen(function* () {
-          const ext = yield* ComputerUseExtensionService;
-          return yield* ext.requestScreenRecordingPermission();
-        })),
+        capture(
+          Effect.gen(function* () {
+            const ext = yield* ComputerUseExtensionService;
+            return yield* ext.requestScreenRecordingPermission();
+          }),
+        ),
       )
       .handle("addSource", ({ path }) =>
-        capture(Effect.gen(function* () {
-          const ext = yield* ComputerUseExtensionService;
-          return yield* ext.addSource({ scope: path.scopeId });
-        })),
+        capture(
+          Effect.gen(function* () {
+            const ext = yield* ComputerUseExtensionService;
+            return yield* ext.addSource({ scope: path.scopeId });
+          }),
+        ),
       ),
 );

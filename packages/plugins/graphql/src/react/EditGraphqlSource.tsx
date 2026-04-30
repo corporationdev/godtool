@@ -10,10 +10,7 @@ import {
   type HeaderState,
 } from "@executor/react/plugins/secret-header-auth";
 import { HeadersList } from "@executor/react/plugins/headers-list";
-import {
-  SourceIdentityFields,
-  useSourceIdentity,
-} from "@executor/react/plugins/source-identity";
+import { SourceIdentityFields, useSourceIdentity } from "@executor/react/plugins/source-identity";
 import { Button } from "@executor/react/components/button";
 import {
   CardStack,
@@ -33,11 +30,7 @@ type EditableSource = Omit<StoredGraphqlSource, "scope">;
 // Edit form
 // ---------------------------------------------------------------------------
 
-function EditForm(props: {
-  sourceId: string;
-  initial: EditableSource;
-  onSave: () => void;
-}) {
+function EditForm(props: { sourceId: string; initial: EditableSource; onSave: () => void }) {
   const scopeId = useScope();
   const doUpdate = useAtomSet(updateGraphqlSource, { mode: "promise" });
   const secretList = useSecretPickerSecrets();

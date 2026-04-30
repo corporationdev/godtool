@@ -1,14 +1,14 @@
 {
   "name": "@executor/storage-core",
   "version": "0.0.1",
-  "homepage": "https://github.com/RhysSullivan/executor/tree/main/packages/core/storage-core",
+  "homepage": "https://github.com/corporationdev/godtool/tree/main/packages/core/storage-core",
   "bugs": {
-    "url": "https://github.com/RhysSullivan/executor/issues"
+    "url": "https://github.com/corporationdev/godtool/issues"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/RhysSullivan/executor.git",
+    "url": "git+https://github.com/corporationdev/godtool.git",
     "directory": "packages/core/storage-core"
   },
   "files": [
@@ -53,6 +53,12 @@
     "@standard-schema/spec": "^1.0.0",
     "effect": "catalog:"
   },
+  "devDependencies": {
+    "@effect/vitest": "catalog:",
+    "tsup": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
   "peerDependencies": {
     "@effect/vitest": "catalog:",
     "vitest": "catalog:"
@@ -64,11 +70,5 @@
     "vitest": {
       "optional": true
     }
-  },
-  "devDependencies": {
-    "@effect/vitest": "catalog:",
-    "tsup": "catalog:",
-    "typescript": "catalog:",
-    "vitest": "catalog:"
   }
 }

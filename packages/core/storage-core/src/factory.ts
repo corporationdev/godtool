@@ -72,8 +72,7 @@ const withApplyDefault = (
   // when they passed null for a required field (upstream convention —
   // explicit null on an optional/nullable field is preserved). Without the
   // `required` gate we'd silently overwrite legitimate null writes.
-  const triggerDefault =
-    value === undefined || (field.required === true && value === null);
+  const triggerDefault = value === undefined || (field.required === true && value === null);
   if (triggerDefault && field.defaultValue !== undefined) {
     return typeof field.defaultValue === "function"
       ? (field.defaultValue as () => DBPrimitive)()
@@ -96,9 +95,7 @@ export interface CreateAdapterOptions {
  * Wrap a CustomAdapter into a full DBAdapter that applies schema-driven
  * transforms. This is the single codepath every backend shares.
  */
-export const createAdapter = (
-  options: CreateAdapterOptions,
-): DBAdapter => {
+export const createAdapter = (options: CreateAdapterOptions): DBAdapter => {
   const { schema, adapter: inner } = options;
   const config: Required<
     Pick<
@@ -110,7 +107,8 @@ export const createAdapter = (
       | "supportsArrays"
       | "disableIdGeneration"
     >
-  > & DBAdapterFactoryConfig = {
+  > &
+    DBAdapterFactoryConfig = {
     ...options.config,
     supportsJSON: options.config.supportsJSON ?? false,
     supportsDates: options.config.supportsDates ?? true,
@@ -126,9 +124,7 @@ export const createAdapter = (
     return defaultGenerateId();
   };
 
-  const getModelDef = (
-    model: string,
-  ): Effect.Effect<DBSchema[string], StorageError> =>
+  const getModelDef = (model: string): Effect.Effect<DBSchema[string], StorageError> =>
     Effect.gen(function* () {
       const def = schema[model];
       if (!def) {
@@ -156,8 +152,7 @@ export const createAdapter = (
   // arg in mapKeysTransformInput/Output when callers pass physical names.
   // We deliberately *don't* support plural or physical-name inputs — our
   // plugins always pass the logical key — so getModelName is identity.
-  const getModelName = (model: string): string =>
-    getModelDefSync(model).modelName ?? model;
+  const getModelName = (model: string): string => getModelDefSync(model).modelName ?? model;
 
   // Field name (logical → physical). Honors mapKeysTransformInput override.
   const getPhysicalField = (model: string, logical: string): string => {
@@ -179,10 +174,7 @@ export const createAdapter = (
   // Value encode / decode based on supports* flags.
   // ---------------------------------------------------------------------------
 
-  const encodeValue = (
-    attr: DBFieldAttribute | undefined,
-    value: unknown,
-  ): unknown => {
+  const encodeValue = (attr: DBFieldAttribute | undefined, value: unknown): unknown => {
     if (value === undefined) return undefined;
     if (value === null) return null;
     if (!attr) return value;
@@ -215,10 +207,7 @@ export const createAdapter = (
     return value;
   };
 
-  const decodeValue = (
-    attr: DBFieldAttribute | undefined,
-    value: unknown,
-  ): unknown => {
+  const decodeValue = (attr: DBFieldAttribute | undefined, value: unknown): unknown => {
     if (value === undefined || value === null) return value;
     if (!attr) return value;
     const type = attr.type;
@@ -239,10 +228,7 @@ export const createAdapter = (
     if (type === "boolean" && typeof value === "number") {
       return value === 1;
     }
-    if (
-      (type === "string[]" || type === "number[]") &&
-      typeof value === "string"
-    ) {
+    if ((type === "string[]" || type === "number[]") && typeof value === "string") {
       try {
         return JSON.parse(value);
       } catch {
@@ -446,8 +432,7 @@ export const createAdapter = (
     for (const [target, raw] of Object.entries(join)) {
       if (raw === false) continue;
       const targetDef = getModelDefSync(target);
-      const limit =
-        typeof raw === "object" && raw.limit !== undefined ? raw.limit : undefined;
+      const limit = typeof raw === "object" && raw.limit !== undefined ? raw.limit : undefined;
 
       // child → parent
       let found: JoinConfig[string] | undefined;
@@ -456,9 +441,7 @@ export const createAdapter = (
           found = {
             on: {
               from: getPhysicalField(base, fieldName),
-              to:
-                getPhysicalField(target, attr.references.field) ||
-                attr.references.field,
+              to: getPhysicalField(target, attr.references.field) || attr.references.field,
             },
             relation: "one-to-one",
             ...(limit !== undefined ? { limit } : {}),
@@ -472,9 +455,7 @@ export const createAdapter = (
           if (attr.references?.model === base) {
             found = {
               on: {
-                from:
-                  getPhysicalField(base, attr.references.field) ||
-                  attr.references.field,
+                from: getPhysicalField(base, attr.references.field) || attr.references.field,
                 to: getPhysicalField(target, fieldName),
               },
               relation: "one-to-many",
@@ -505,16 +486,13 @@ export const createAdapter = (
       const connector = w.connector ?? "AND";
       const mode = w.mode ?? "sensitive";
       const logical = w.field;
-      const attr =
-        logical === "id" ? undefined : def.fields[logical];
+      const attr = logical === "id" ? undefined : def.fields[logical];
       const physical = getPhysicalField(model, logical);
 
       let value: Where["value"] = w.value;
       if (attr) {
         if (Array.isArray(value)) {
-          value = (value as unknown[]).map((v) =>
-            encodeValue(attr, v),
-          ) as typeof value;
+          value = (value as unknown[]).map((v) => encodeValue(attr, v)) as typeof value;
         } else {
           value = encodeValue(attr, value) as typeof value;
         }
@@ -576,10 +554,7 @@ export const createAdapter = (
           const decoded: unknown[] = [];
           for (const n of nested) {
             if (n && typeof n === "object") {
-              const t = yield* transformOutput(
-                target,
-                n as Record<string, unknown>,
-              );
+              const t = yield* transformOutput(target, n as Record<string, unknown>);
               decoded.push(t);
             } else {
               decoded.push(n);
@@ -587,10 +562,7 @@ export const createAdapter = (
           }
           merged[target] = decoded;
         } else if (typeof nested === "object") {
-          merged[target] = yield* transformOutput(
-            target,
-            nested as Record<string, unknown>,
-          );
+          merged[target] = yield* transformOutput(target, nested as Record<string, unknown>);
         } else {
           merged[target] = nested;
         }
@@ -603,9 +575,7 @@ export const createAdapter = (
     row: Record<string, unknown> | null,
     select?: string[],
   ): Effect.Effect<Record<string, unknown> | null, StorageFailure> =>
-    config.disableTransformOutput
-      ? Effect.succeed(row)
-      : transformOutput(model, row, select);
+    config.disableTransformOutput ? Effect.succeed(row) : transformOutput(model, row, select);
 
   // ---------------------------------------------------------------------------
   // DBAdapter surface
@@ -781,19 +751,10 @@ export const createAdapter = (
         }),
       ),
 
-    update: <T>(data: {
-      model: string;
-      where: Where[];
-      update: Record<string, unknown>;
-    }) =>
+    update: <T>(data: { model: string; where: Where[]; update: Record<string, unknown> }) =>
       Effect.gen(function* () {
         const where = cleanWhere(data.model, data.where) ?? [];
-        const update = yield* maybeTransformInput(
-          data.model,
-          data.update,
-          "update",
-          false,
-        );
+        const update = yield* maybeTransformInput(data.model, data.update, "update", false);
         const res = yield* inner.update<Record<string, unknown>>({
           model: getModelName(data.model),
           where,
@@ -810,19 +771,10 @@ export const createAdapter = (
         }),
       ),
 
-    updateMany: (data: {
-      model: string;
-      where: Where[];
-      update: Record<string, unknown>;
-    }) =>
+    updateMany: (data: { model: string; where: Where[]; update: Record<string, unknown> }) =>
       Effect.gen(function* () {
         const where = cleanWhere(data.model, data.where) ?? [];
-        const update = yield* maybeTransformInput(
-          data.model,
-          data.update,
-          "update",
-          false,
-        );
+        const update = yield* maybeTransformInput(data.model, data.update, "update", false);
         return yield* inner.updateMany({
           model: getModelName(data.model),
           where,
@@ -869,9 +821,7 @@ export const createAdapter = (
         }),
       ),
 
-    transaction: <R, E>(
-      callback: (trx: DBTransactionAdapter) => Effect.Effect<R, E>,
-    ) => {
+    transaction: <R, E>(callback: (trx: DBTransactionAdapter) => Effect.Effect<R, E>) => {
       const txFn = config.transaction;
       const ran = !txFn ? callback(self) : txFn(callback);
       return ran.pipe(
@@ -887,9 +837,7 @@ export const createAdapter = (
     // Forward the backend's createSchema verbatim. Upstream better-auth
     // mutates the `tables` set here to drop session when secondaryStorage
     // is set; we intentionally don't replicate that auth-specific concern.
-    createSchema: inner.createSchema
-      ? (props) => inner.createSchema!(props)
-      : undefined,
+    createSchema: inner.createSchema ? (props) => inner.createSchema!(props) : undefined,
 
     // Expose the full factory config + the inner adapter's own options to
     // plugin authors at runtime. Mirrors upstream's `options` field on

@@ -53,10 +53,7 @@ const makeSharedOrgExecutors = () =>
 
     const makeFor = (innerId: ScopeId) =>
       createExecutor({
-        scopes: [
-          new Scope({ id: innerId, name: "Personal", createdAt: new Date() }),
-          orgScope,
-        ],
+        scopes: [new Scope({ id: innerId, name: "Personal", createdAt: new Date() }), orgScope],
         adapter,
         blobs,
         plugins,
@@ -141,8 +138,7 @@ describe("MCP cross-user isolation within the same org", () => {
 
   it.effect("A sees A's source, B sees org's, neither sees the other's inner", () =>
     Effect.gen(function* () {
-      const { execA, execB, aInnerId, bInnerId, orgScopeId } =
-        yield* makeSharedOrgExecutors();
+      const { execA, execB, aInnerId, bInnerId, orgScopeId } = yield* makeSharedOrgExecutors();
 
       yield* seedSource(execA.mcp.addSource, {
         scope: aInnerId,

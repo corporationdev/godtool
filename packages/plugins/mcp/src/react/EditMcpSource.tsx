@@ -3,10 +3,7 @@ import { useAtomValue, useAtomSet, Result } from "@effect-atom/atom-react";
 import { mcpSourceAtom, updateMcpSource } from "./atoms";
 import { useScope } from "@executor/react/api/scope-context";
 import { sourceWriteKeys } from "@executor/react/api/reactivity-keys";
-import {
-  SourceIdentityFields,
-  useSourceIdentity,
-} from "@executor/react/plugins/source-identity";
+import { SourceIdentityFields, useSourceIdentity } from "@executor/react/plugins/source-identity";
 import { Button } from "@executor/react/components/button";
 import {
   CardStack,

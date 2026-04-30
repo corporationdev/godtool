@@ -260,12 +260,15 @@ export class DeviceSessionDO extends DurableObject<DeviceSessionEnv> {
 
   private activeSocketForDevice(deviceId: string): WebSocket | null {
     return (
-      this.ctx.getWebSockets(deviceId).find((socket) => socket.readyState === WebSocket.OPEN) ?? null
+      this.ctx.getWebSockets(deviceId).find((socket) => socket.readyState === WebSocket.OPEN) ??
+      null
     );
   }
 
   private deviceIdForSocket(socket: WebSocket): string | null {
-    const attachment = socket.deserializeAttachment() as { readonly deviceId?: unknown } | undefined;
+    const attachment = socket.deserializeAttachment() as
+      | { readonly deviceId?: unknown }
+      | undefined;
     return typeof attachment?.deviceId === "string" ? attachment.deviceId : null;
   }
 

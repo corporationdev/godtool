@@ -1,12 +1,6 @@
 import { describe, it, expect } from "@effect/vitest";
 import { Effect } from "effect";
-import {
-  ScopeId,
-  SecretId,
-  SetSecretInput,
-  createExecutor,
-  makeTestConfig,
-} from "@executor/sdk";
+import { ScopeId, SecretId, SetSecretInput, createExecutor, makeTestConfig } from "@executor/sdk";
 import { keychainPlugin } from "./index";
 
 describe("keychain plugin", () => {

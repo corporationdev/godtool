@@ -88,332 +88,318 @@ const TestLayer = HttpApiBuilder.serve().pipe(
 // ---------------------------------------------------------------------------
 
 layer(TestLayer)("OpenAPI multi-scope bearer (Vercel-style)", (it) => {
-  it.effect(
-    "admin-added source; each user's per-scope token wins on invocation",
-    () =>
-      Effect.gen(function* () {
-        // Scope-partitioning in-memory provider. The composite key is
-        // what makes the tier-1 fix observable: same secret id, different
-        // value per scope. A flat `Map<id, value>` provider would lose
-        // one of the users' tokens on the second write.
-        const secretStore = new Map<string, string>();
-        const key = (scope: string, id: string) => `${scope}\u0000${id}`;
-        const memoryProvider: SecretProvider = {
-          key: "memory",
-          writable: true,
-          get: (id, scope) =>
-            Effect.sync(() => secretStore.get(key(scope, id)) ?? null),
-          set: (id, value, scope) =>
-            Effect.sync(() => {
-              secretStore.set(key(scope, id), value);
-            }),
-          delete: (id, scope) =>
-            Effect.sync(() => secretStore.delete(key(scope, id))),
-        };
-        const memorySecretsPlugin = definePlugin(() => ({
-          id: "memory-secrets" as const,
-          storage: () => ({}),
-          secretProviders: [memoryProvider],
-        }));
+  it.effect("admin-added source; each user's per-scope token wins on invocation", () =>
+    Effect.gen(function* () {
+      // Scope-partitioning in-memory provider. The composite key is
+      // what makes the tier-1 fix observable: same secret id, different
+      // value per scope. A flat `Map<id, value>` provider would lose
+      // one of the users' tokens on the second write.
+      const secretStore = new Map<string, string>();
+      const key = (scope: string, id: string) => `${scope}\u0000${id}`;
+      const memoryProvider: SecretProvider = {
+        key: "memory",
+        writable: true,
+        get: (id, scope) => Effect.sync(() => secretStore.get(key(scope, id)) ?? null),
+        set: (id, value, scope) =>
+          Effect.sync(() => {
+            secretStore.set(key(scope, id), value);
+          }),
+        delete: (id, scope) => Effect.sync(() => secretStore.delete(key(scope, id))),
+      };
+      const memorySecretsPlugin = definePlugin(() => ({
+        id: "memory-secrets" as const,
+        storage: () => ({}),
+        secretProviders: [memoryProvider],
+      }));
 
-        const httpClient = yield* HttpClient.HttpClient;
-        const clientLayer = Layer.succeed(HttpClient.HttpClient, httpClient);
-        const plugins = [
-          openApiPlugin({ httpClientLayer: clientLayer }),
-          memorySecretsPlugin(),
-        ] as const;
+      const httpClient = yield* HttpClient.HttpClient;
+      const clientLayer = Layer.succeed(HttpClient.HttpClient, httpClient);
+      const plugins = [
+        openApiPlugin({ httpClientLayer: clientLayer }),
+        memorySecretsPlugin(),
+      ] as const;
 
-        // One adapter + blob store backing all three executors: mirrors a
-        // multi-tenant deployment where admin + users share infra but
-        // each sits at a different scope stack.
-        const schema = collectSchemas(plugins);
-        const adapter = makeMemoryAdapter({ schema });
-        const blobs = makeInMemoryBlobStore();
+      // One adapter + blob store backing all three executors: mirrors a
+      // multi-tenant deployment where admin + users share infra but
+      // each sits at a different scope stack.
+      const schema = collectSchemas(plugins);
+      const adapter = makeMemoryAdapter({ schema });
+      const blobs = makeInMemoryBlobStore();
 
-        const now = new Date();
-        const orgScope = new Scope({
-          id: ScopeId.make("org"),
-          name: "acme-org",
-          createdAt: now,
-        });
-        const aliceScope = new Scope({
-          id: ScopeId.make("user-alice"),
-          name: "alice",
-          createdAt: now,
-        });
-        const bobScope = new Scope({
-          id: ScopeId.make("user-bob"),
-          name: "bob",
-          createdAt: now,
-        });
+      const now = new Date();
+      const orgScope = new Scope({
+        id: ScopeId.make("org"),
+        name: "acme-org",
+        createdAt: now,
+      });
+      const aliceScope = new Scope({
+        id: ScopeId.make("user-alice"),
+        name: "alice",
+        createdAt: now,
+      });
+      const bobScope = new Scope({
+        id: ScopeId.make("user-bob"),
+        name: "bob",
+        createdAt: now,
+      });
 
-        const adminExec = yield* createExecutor({
-          scopes: [orgScope],
-          adapter,
-          blobs,
-          plugins,
-        });
-        const aliceExec = yield* createExecutor({
-          scopes: [aliceScope, orgScope],
-          adapter,
-          blobs,
-          plugins,
-        });
-        const bobExec = yield* createExecutor({
-          scopes: [bobScope, orgScope],
-          adapter,
-          blobs,
-          plugins,
-        });
+      const adminExec = yield* createExecutor({
+        scopes: [orgScope],
+        adapter,
+        blobs,
+        plugins,
+      });
+      const aliceExec = yield* createExecutor({
+        scopes: [aliceScope, orgScope],
+        adapter,
+        blobs,
+        plugins,
+      });
+      const bobExec = yield* createExecutor({
+        scopes: [bobScope, orgScope],
+        adapter,
+        blobs,
+        plugins,
+      });
 
-        // -------------------------------------------------------------
-        // 1. Admin adds the Vercel OpenAPI source at org scope. The
-        //    stored source carries a HeaderValue *reference* to the
-        //    secret id — the value itself is deliberately NOT written
-        //    at the org scope. Each user will supply their own.
-        // -------------------------------------------------------------
-        yield* adminExec.openapi.addSpec({
-          spec: specJson,
-          scope: orgScope.id as string,
-          namespace: "vercel",
-          baseUrl: "",
-          headers: {
-            Authorization: {
-              secretId: "vercel_api_token",
-              prefix: "Bearer ",
-            },
+      // -------------------------------------------------------------
+      // 1. Admin adds the Vercel OpenAPI source at org scope. The
+      //    stored source carries a HeaderValue *reference* to the
+      //    secret id — the value itself is deliberately NOT written
+      //    at the org scope. Each user will supply their own.
+      // -------------------------------------------------------------
+      yield* adminExec.openapi.addSpec({
+        spec: specJson,
+        scope: orgScope.id as string,
+        namespace: "vercel",
+        baseUrl: "",
+        headers: {
+          Authorization: {
+            secretId: "vercel_api_token",
+            prefix: "Bearer ",
           },
-        });
+        },
+      });
 
-        // -------------------------------------------------------------
-        // 2. Each user writes their personal access token under the
-        //    same secret id, but at their own scope. Tier-1 scope
-        //    routing means these coexist in the provider — alice's
-        //    write does not overwrite bob's.
-        // -------------------------------------------------------------
-        yield* aliceExec.secrets.set(
-          new SetSecretInput({
-            id: SecretId.make("vercel_api_token"),
-            scope: aliceScope.id,
-            name: "Vercel API Token (alice)",
-            value: "alice-vercel-token",
-          }),
-        );
-        yield* bobExec.secrets.set(
-          new SetSecretInput({
-            id: SecretId.make("vercel_api_token"),
-            scope: bobScope.id,
-            name: "Vercel API Token (bob)",
-            value: "bob-vercel-token",
-          }),
-        );
+      // -------------------------------------------------------------
+      // 2. Each user writes their personal access token under the
+      //    same secret id, but at their own scope. Tier-1 scope
+      //    routing means these coexist in the provider — alice's
+      //    write does not overwrite bob's.
+      // -------------------------------------------------------------
+      yield* aliceExec.secrets.set(
+        new SetSecretInput({
+          id: SecretId.make("vercel_api_token"),
+          scope: aliceScope.id,
+          name: "Vercel API Token (alice)",
+          value: "alice-vercel-token",
+        }),
+      );
+      yield* bobExec.secrets.set(
+        new SetSecretInput({
+          id: SecretId.make("vercel_api_token"),
+          scope: bobScope.id,
+          name: "Vercel API Token (bob)",
+          value: "bob-vercel-token",
+        }),
+      );
 
-        // -------------------------------------------------------------
-        // 3. Invoking the shared tool through each user's executor
-        //    resolves `vercel_api_token` via scope fall-through
-        //    (innermost first). Alice's scope yields her token; bob's
-        //    scope yields his. Same source, same tool, different
-        //    injected bearer.
-        // -------------------------------------------------------------
-        const aliceResult = (yield* aliceExec.tools.invoke(
-          "vercel.projects.list",
-          {},
-          autoApprove,
-        )) as { data: { authorization?: string } | null; error: unknown };
-        expect(aliceResult.error).toBeNull();
-        expect(aliceResult.data?.authorization).toBe("Bearer alice-vercel-token");
+      // -------------------------------------------------------------
+      // 3. Invoking the shared tool through each user's executor
+      //    resolves `vercel_api_token` via scope fall-through
+      //    (innermost first). Alice's scope yields her token; bob's
+      //    scope yields his. Same source, same tool, different
+      //    injected bearer.
+      // -------------------------------------------------------------
+      const aliceResult = (yield* aliceExec.tools.invoke(
+        "vercel.projects.list",
+        {},
+        autoApprove,
+      )) as { data: { authorization?: string } | null; error: unknown };
+      expect(aliceResult.error).toBeNull();
+      expect(aliceResult.data?.authorization).toBe("Bearer alice-vercel-token");
 
-        const bobResult = (yield* bobExec.tools.invoke(
-          "vercel.projects.list",
-          {},
-          autoApprove,
-        )) as { data: { authorization?: string } | null; error: unknown };
-        expect(bobResult.error).toBeNull();
-        expect(bobResult.data?.authorization).toBe("Bearer bob-vercel-token");
+      const bobResult = (yield* bobExec.tools.invoke("vercel.projects.list", {}, autoApprove)) as {
+        data: { authorization?: string } | null;
+        error: unknown;
+      };
+      expect(bobResult.error).toBeNull();
+      expect(bobResult.data?.authorization).toBe("Bearer bob-vercel-token");
 
-        // -------------------------------------------------------------
-        // 4. Scope attribution: each user's token is pinned to their
-        //    own scope, never smuggled into the org fallback.
-        // -------------------------------------------------------------
-        const aliceRows = yield* aliceExec.secrets.list();
-        const aliceToken = aliceRows.find(
-          (r) => (r.id as unknown as string) === "vercel_api_token",
-        );
-        expect(aliceToken?.scopeId as unknown as string).toBe("user-alice");
+      // -------------------------------------------------------------
+      // 4. Scope attribution: each user's token is pinned to their
+      //    own scope, never smuggled into the org fallback.
+      // -------------------------------------------------------------
+      const aliceRows = yield* aliceExec.secrets.list();
+      const aliceToken = aliceRows.find((r) => (r.id as unknown as string) === "vercel_api_token");
+      expect(aliceToken?.scopeId as unknown as string).toBe("user-alice");
 
-        const bobRows = yield* bobExec.secrets.list();
-        const bobToken = bobRows.find(
-          (r) => (r.id as unknown as string) === "vercel_api_token",
-        );
-        expect(bobToken?.scopeId as unknown as string).toBe("user-bob");
+      const bobRows = yield* bobExec.secrets.list();
+      const bobToken = bobRows.find((r) => (r.id as unknown as string) === "vercel_api_token");
+      expect(bobToken?.scopeId as unknown as string).toBe("user-bob");
 
-        // Admin's scope never received a token — `get` at the org
-        // scope yields null and the source is effectively unusable
-        // for the admin role, exactly as designed.
-        const adminToken = yield* adminExec.secrets.get("vercel_api_token");
-        expect(adminToken).toBeNull();
+      // Admin's scope never received a token — `get` at the org
+      // scope yields null and the source is effectively unusable
+      // for the admin role, exactly as designed.
+      const adminToken = yield* adminExec.secrets.get("vercel_api_token");
+      expect(adminToken).toBeNull();
 
-        // -------------------------------------------------------------
-        // 5. Cross-user isolation on enumeration: alice does not see
-        //    bob's token row, and vice versa.
-        // -------------------------------------------------------------
-        const aliceIds = new Set(
-          aliceRows.map((r) => `${r.scopeId as unknown as string}:${r.id as unknown as string}`),
-        );
-        expect(aliceIds).toContain("user-alice:vercel_api_token");
-        expect(aliceIds).not.toContain("user-bob:vercel_api_token");
+      // -------------------------------------------------------------
+      // 5. Cross-user isolation on enumeration: alice does not see
+      //    bob's token row, and vice versa.
+      // -------------------------------------------------------------
+      const aliceIds = new Set(
+        aliceRows.map((r) => `${r.scopeId as unknown as string}:${r.id as unknown as string}`),
+      );
+      expect(aliceIds).toContain("user-alice:vercel_api_token");
+      expect(aliceIds).not.toContain("user-bob:vercel_api_token");
 
-        const bobIds = new Set(
-          bobRows.map((r) => `${r.scopeId as unknown as string}:${r.id as unknown as string}`),
-        );
-        expect(bobIds).toContain("user-bob:vercel_api_token");
-        expect(bobIds).not.toContain("user-alice:vercel_api_token");
-      }),
+      const bobIds = new Set(
+        bobRows.map((r) => `${r.scopeId as unknown as string}:${r.id as unknown as string}`),
+      );
+      expect(bobIds).toContain("user-bob:vercel_api_token");
+      expect(bobIds).not.toContain("user-alice:vercel_api_token");
+    }),
   );
 
-  it.effect(
-    "per-user bindings can point the same shared header slot at different secret ids",
-    () =>
-      Effect.gen(function* () {
-        const secretStore = new Map<string, string>();
-        const key = (scope: string, id: string) => `${scope}\u0000${id}`;
-        const memoryProvider: SecretProvider = {
-          key: "memory",
-          writable: true,
-          get: (id, scope) =>
-            Effect.sync(() => secretStore.get(key(scope, id)) ?? null),
-          set: (id, value, scope) =>
-            Effect.sync(() => {
-              secretStore.set(key(scope, id), value);
-            }),
-          delete: (id, scope) =>
-            Effect.sync(() => secretStore.delete(key(scope, id))),
-        };
-        const memorySecretsPlugin = definePlugin(() => ({
-          id: "memory-secrets" as const,
-          storage: () => ({}),
-          secretProviders: [memoryProvider],
-        }));
+  it.effect("per-user bindings can point the same shared header slot at different secret ids", () =>
+    Effect.gen(function* () {
+      const secretStore = new Map<string, string>();
+      const key = (scope: string, id: string) => `${scope}\u0000${id}`;
+      const memoryProvider: SecretProvider = {
+        key: "memory",
+        writable: true,
+        get: (id, scope) => Effect.sync(() => secretStore.get(key(scope, id)) ?? null),
+        set: (id, value, scope) =>
+          Effect.sync(() => {
+            secretStore.set(key(scope, id), value);
+          }),
+        delete: (id, scope) => Effect.sync(() => secretStore.delete(key(scope, id))),
+      };
+      const memorySecretsPlugin = definePlugin(() => ({
+        id: "memory-secrets" as const,
+        storage: () => ({}),
+        secretProviders: [memoryProvider],
+      }));
 
-        const httpClient = yield* HttpClient.HttpClient;
-        const clientLayer = Layer.succeed(HttpClient.HttpClient, httpClient);
-        const plugins = [
-          openApiPlugin({ httpClientLayer: clientLayer }),
-          memorySecretsPlugin(),
-        ] as const;
+      const httpClient = yield* HttpClient.HttpClient;
+      const clientLayer = Layer.succeed(HttpClient.HttpClient, httpClient);
+      const plugins = [
+        openApiPlugin({ httpClientLayer: clientLayer }),
+        memorySecretsPlugin(),
+      ] as const;
 
-        const schema = collectSchemas(plugins);
-        const adapter = makeMemoryAdapter({ schema });
-        const blobs = makeInMemoryBlobStore();
+      const schema = collectSchemas(plugins);
+      const adapter = makeMemoryAdapter({ schema });
+      const blobs = makeInMemoryBlobStore();
 
-        const now = new Date();
-        const orgScope = new Scope({
-          id: ScopeId.make("org"),
-          name: "acme-org",
-          createdAt: now,
-        });
-        const aliceScope = new Scope({
-          id: ScopeId.make("user-alice"),
-          name: "alice",
-          createdAt: now,
-        });
-        const bobScope = new Scope({
-          id: ScopeId.make("user-bob"),
-          name: "bob",
-          createdAt: now,
-        });
+      const now = new Date();
+      const orgScope = new Scope({
+        id: ScopeId.make("org"),
+        name: "acme-org",
+        createdAt: now,
+      });
+      const aliceScope = new Scope({
+        id: ScopeId.make("user-alice"),
+        name: "alice",
+        createdAt: now,
+      });
+      const bobScope = new Scope({
+        id: ScopeId.make("user-bob"),
+        name: "bob",
+        createdAt: now,
+      });
 
-        const adminExec = yield* createExecutor({
-          scopes: [orgScope],
-          adapter,
-          blobs,
-          plugins,
-        });
-        const aliceExec = yield* createExecutor({
-          scopes: [aliceScope, orgScope],
-          adapter,
-          blobs,
-          plugins,
-        });
-        const bobExec = yield* createExecutor({
-          scopes: [bobScope, orgScope],
-          adapter,
-          blobs,
-          plugins,
-        });
+      const adminExec = yield* createExecutor({
+        scopes: [orgScope],
+        adapter,
+        blobs,
+        plugins,
+      });
+      const aliceExec = yield* createExecutor({
+        scopes: [aliceScope, orgScope],
+        adapter,
+        blobs,
+        plugins,
+      });
+      const bobExec = yield* createExecutor({
+        scopes: [bobScope, orgScope],
+        adapter,
+        blobs,
+        plugins,
+      });
 
-        yield* adminExec.openapi.addSpec({
-          spec: specJson,
-          scope: orgScope.id as string,
-          namespace: "vercel",
-          baseUrl: "",
-          headers: {
-            Authorization: new ConfiguredHeaderBinding({
-              kind: "binding",
-              slot: "auth:personal-token",
-              prefix: "Bearer ",
-            }),
+      yield* adminExec.openapi.addSpec({
+        spec: specJson,
+        scope: orgScope.id as string,
+        namespace: "vercel",
+        baseUrl: "",
+        headers: {
+          Authorization: new ConfiguredHeaderBinding({
+            kind: "binding",
+            slot: "auth:personal-token",
+            prefix: "Bearer ",
+          }),
+        },
+      });
+
+      yield* aliceExec.secrets.set(
+        new SetSecretInput({
+          id: SecretId.make("alice_vercel_pat"),
+          scope: aliceScope.id,
+          name: "Alice Vercel PAT",
+          value: "alice-vercel-token",
+        }),
+      );
+      yield* bobExec.secrets.set(
+        new SetSecretInput({
+          id: SecretId.make("bob_vercel_pat"),
+          scope: bobScope.id,
+          name: "Bob Vercel PAT",
+          value: "bob-vercel-token",
+        }),
+      );
+
+      yield* aliceExec.openapi.setSourceBinding(
+        new OpenApiSourceBindingInput({
+          sourceId: "vercel",
+          sourceScope: orgScope.id,
+          scope: aliceScope.id,
+          slot: "auth:personal-token",
+          value: {
+            kind: "secret",
+            secretId: SecretId.make("alice_vercel_pat"),
           },
-        });
+        }),
+      );
+      yield* bobExec.openapi.setSourceBinding(
+        new OpenApiSourceBindingInput({
+          sourceId: "vercel",
+          sourceScope: orgScope.id,
+          scope: bobScope.id,
+          slot: "auth:personal-token",
+          value: {
+            kind: "secret",
+            secretId: SecretId.make("bob_vercel_pat"),
+          },
+        }),
+      );
 
-        yield* aliceExec.secrets.set(
-          new SetSecretInput({
-            id: SecretId.make("alice_vercel_pat"),
-            scope: aliceScope.id,
-            name: "Alice Vercel PAT",
-            value: "alice-vercel-token",
-          }),
-        );
-        yield* bobExec.secrets.set(
-          new SetSecretInput({
-            id: SecretId.make("bob_vercel_pat"),
-            scope: bobScope.id,
-            name: "Bob Vercel PAT",
-            value: "bob-vercel-token",
-          }),
-        );
+      const aliceResult = (yield* aliceExec.tools.invoke(
+        "vercel.projects.list",
+        {},
+        autoApprove,
+      )) as { data: { authorization?: string } | null; error: unknown };
+      expect(aliceResult.error).toBeNull();
+      expect(aliceResult.data?.authorization).toBe("Bearer alice-vercel-token");
 
-        yield* aliceExec.openapi.setSourceBinding(
-          new OpenApiSourceBindingInput({
-            sourceId: "vercel",
-            sourceScope: orgScope.id,
-            scope: aliceScope.id,
-            slot: "auth:personal-token",
-            value: {
-              kind: "secret",
-              secretId: SecretId.make("alice_vercel_pat"),
-            },
-          }),
-        );
-        yield* bobExec.openapi.setSourceBinding(
-          new OpenApiSourceBindingInput({
-            sourceId: "vercel",
-            sourceScope: orgScope.id,
-            scope: bobScope.id,
-            slot: "auth:personal-token",
-            value: {
-              kind: "secret",
-              secretId: SecretId.make("bob_vercel_pat"),
-            },
-          }),
-        );
-
-        const aliceResult = (yield* aliceExec.tools.invoke(
-          "vercel.projects.list",
-          {},
-          autoApprove,
-        )) as { data: { authorization?: string } | null; error: unknown };
-        expect(aliceResult.error).toBeNull();
-        expect(aliceResult.data?.authorization).toBe("Bearer alice-vercel-token");
-
-        const bobResult = (yield* bobExec.tools.invoke(
-          "vercel.projects.list",
-          {},
-          autoApprove,
-        )) as { data: { authorization?: string } | null; error: unknown };
-        expect(bobResult.error).toBeNull();
-        expect(bobResult.data?.authorization).toBe("Bearer bob-vercel-token");
-      }),
+      const bobResult = (yield* bobExec.tools.invoke("vercel.projects.list", {}, autoApprove)) as {
+        data: { authorization?: string } | null;
+        error: unknown;
+      };
+      expect(bobResult.error).toBeNull();
+      expect(bobResult.data?.authorization).toBe("Bearer bob-vercel-token");
+    }),
   );
 
   it.effect(
@@ -425,14 +411,12 @@ layer(TestLayer)("OpenAPI multi-scope bearer (Vercel-style)", (it) => {
         const memoryProvider: SecretProvider = {
           key: "memory",
           writable: true,
-          get: (id, scope) =>
-            Effect.sync(() => secretStore.get(key(scope, id)) ?? null),
+          get: (id, scope) => Effect.sync(() => secretStore.get(key(scope, id)) ?? null),
           set: (id, value, scope) =>
             Effect.sync(() => {
               secretStore.set(key(scope, id), value);
             }),
-          delete: (id, scope) =>
-            Effect.sync(() => secretStore.delete(key(scope, id))),
+          delete: (id, scope) => Effect.sync(() => secretStore.delete(key(scope, id))),
         };
         const memorySecretsPlugin = definePlugin(() => ({
           id: "memory-secrets" as const,
@@ -663,119 +647,115 @@ layer(TestLayer)("OpenAPI multi-scope bearer (Vercel-style)", (it) => {
         namespace: "vercel",
       });
 
-      const source = yield* aliceExec.openapi.getSource(
-        "vercel",
-        aliceScope.id as string,
-      );
+      const source = yield* aliceExec.openapi.getSource("vercel", aliceScope.id as string);
       expect(source?.scope).toBe(aliceScope.id);
       expect(source?.config.baseUrl).toBe("https://api.vercel.example");
     }),
   );
 
-  it.effect("user-scope source shadows resolve inherited org bindings at the org source scope", () =>
-    Effect.gen(function* () {
-      const secretStore = new Map<string, string>();
-      const key = (scope: string, id: string) => `${scope}\u0000${id}`;
-      const memoryProvider: SecretProvider = {
-        key: "memory",
-        writable: true,
-        get: (id, scope) =>
-          Effect.sync(() => secretStore.get(key(scope, id)) ?? null),
-        set: (id, value, scope) =>
-          Effect.sync(() => {
-            secretStore.set(key(scope, id), value);
-          }),
-        delete: (id, scope) =>
-          Effect.sync(() => secretStore.delete(key(scope, id))),
-      };
-      const memorySecretsPlugin = definePlugin(() => ({
-        id: "memory-secrets" as const,
-        storage: () => ({}),
-        secretProviders: [memoryProvider],
-      }));
+  it.effect(
+    "user-scope source shadows resolve inherited org bindings at the org source scope",
+    () =>
+      Effect.gen(function* () {
+        const secretStore = new Map<string, string>();
+        const key = (scope: string, id: string) => `${scope}\u0000${id}`;
+        const memoryProvider: SecretProvider = {
+          key: "memory",
+          writable: true,
+          get: (id, scope) => Effect.sync(() => secretStore.get(key(scope, id)) ?? null),
+          set: (id, value, scope) =>
+            Effect.sync(() => {
+              secretStore.set(key(scope, id), value);
+            }),
+          delete: (id, scope) => Effect.sync(() => secretStore.delete(key(scope, id))),
+        };
+        const memorySecretsPlugin = definePlugin(() => ({
+          id: "memory-secrets" as const,
+          storage: () => ({}),
+          secretProviders: [memoryProvider],
+        }));
 
-      const httpClient = yield* HttpClient.HttpClient;
-      const clientLayer = Layer.succeed(HttpClient.HttpClient, httpClient);
-      const plugins = [
-        openApiPlugin({ httpClientLayer: clientLayer }),
-        memorySecretsPlugin(),
-      ] as const;
+        const httpClient = yield* HttpClient.HttpClient;
+        const clientLayer = Layer.succeed(HttpClient.HttpClient, httpClient);
+        const plugins = [
+          openApiPlugin({ httpClientLayer: clientLayer }),
+          memorySecretsPlugin(),
+        ] as const;
 
-      const schema = collectSchemas(plugins);
-      const adapter = makeMemoryAdapter({ schema });
-      const blobs = makeInMemoryBlobStore();
-      const now = new Date();
-      const orgScope = new Scope({
-        id: ScopeId.make("org"),
-        name: "acme-org",
-        createdAt: now,
-      });
-      const aliceScope = new Scope({
-        id: ScopeId.make("user-alice"),
-        name: "alice",
-        createdAt: now,
-      });
+        const schema = collectSchemas(plugins);
+        const adapter = makeMemoryAdapter({ schema });
+        const blobs = makeInMemoryBlobStore();
+        const now = new Date();
+        const orgScope = new Scope({
+          id: ScopeId.make("org"),
+          name: "acme-org",
+          createdAt: now,
+        });
+        const aliceScope = new Scope({
+          id: ScopeId.make("user-alice"),
+          name: "alice",
+          createdAt: now,
+        });
 
-      const adminExec = yield* createExecutor({
-        scopes: [orgScope],
-        adapter,
-        blobs,
-        plugins,
-      });
-      const aliceExec = yield* createExecutor({
-        scopes: [aliceScope, orgScope],
-        adapter,
-        blobs,
-        plugins,
-      });
+        const adminExec = yield* createExecutor({
+          scopes: [orgScope],
+          adapter,
+          blobs,
+          plugins,
+        });
+        const aliceExec = yield* createExecutor({
+          scopes: [aliceScope, orgScope],
+          adapter,
+          blobs,
+          plugins,
+        });
 
-      yield* adminExec.openapi.addSpec({
-        spec: specJson,
-        scope: orgScope.id as string,
-        namespace: "vercel",
-        baseUrl: "",
-        headers: {
-          Authorization: new ConfiguredHeaderBinding({
-            kind: "binding",
-            slot: "auth:token",
-            prefix: "Bearer ",
-          }),
-        },
-      });
-      yield* aliceExec.openapi.addSpec({
-        spec: specJson,
-        scope: aliceScope.id as string,
-        namespace: "vercel",
-      });
-
-      yield* aliceExec.secrets.set(
-        new SetSecretInput({
-          id: SecretId.make("alice_vercel_pat"),
-          scope: aliceScope.id,
-          name: "Alice Vercel PAT",
-          value: "alice-token",
-        }),
-      );
-      yield* aliceExec.openapi.setSourceBinding(
-        new OpenApiSourceBindingInput({
-          sourceId: "vercel",
-          sourceScope: orgScope.id,
-          scope: aliceScope.id,
-          slot: "auth:token",
-          value: {
-            kind: "secret",
-            secretId: SecretId.make("alice_vercel_pat"),
+        yield* adminExec.openapi.addSpec({
+          spec: specJson,
+          scope: orgScope.id as string,
+          namespace: "vercel",
+          baseUrl: "",
+          headers: {
+            Authorization: new ConfiguredHeaderBinding({
+              kind: "binding",
+              slot: "auth:token",
+              prefix: "Bearer ",
+            }),
           },
-        }),
-      );
+        });
+        yield* aliceExec.openapi.addSpec({
+          spec: specJson,
+          scope: aliceScope.id as string,
+          namespace: "vercel",
+        });
 
-      const result = (yield* aliceExec.tools.invoke(
-        "vercel.projects.list",
-        {},
-        autoApprove,
-      )) as { data: { authorization?: string } | null; error: unknown };
-      expect(result.error).toBeNull();
-      expect(result.data?.authorization).toBe("Bearer alice-token");
-    }),
+        yield* aliceExec.secrets.set(
+          new SetSecretInput({
+            id: SecretId.make("alice_vercel_pat"),
+            scope: aliceScope.id,
+            name: "Alice Vercel PAT",
+            value: "alice-token",
+          }),
+        );
+        yield* aliceExec.openapi.setSourceBinding(
+          new OpenApiSourceBindingInput({
+            sourceId: "vercel",
+            sourceScope: orgScope.id,
+            scope: aliceScope.id,
+            slot: "auth:token",
+            value: {
+              kind: "secret",
+              secretId: SecretId.make("alice_vercel_pat"),
+            },
+          }),
+        );
+
+        const result = (yield* aliceExec.tools.invoke("vercel.projects.list", {}, autoApprove)) as {
+          data: { authorization?: string } | null;
+          error: unknown;
+        };
+        expect(result.error).toBeNull();
+        expect(result.data?.authorization).toBe("Bearer alice-token");
+      }),
   );
 });

@@ -192,9 +192,7 @@ export type DBAdapter = {
    * "does my adapter support JSON?") without having to thread the config
    * manually. Populated by `createAdapter`.
    */
-  options?:
-    | ({ adapterConfig: DBAdapterFactoryConfig } & CustomAdapter["options"])
-    | undefined;
+  options?: ({ adapterConfig: DBAdapterFactoryConfig } & CustomAdapter["options"]) | undefined;
 };
 
 // ---------------------------------------------------------------------------
@@ -252,10 +250,7 @@ export interface CustomAdapter {
     join?: JoinConfig | undefined;
   }) => Effect.Effect<T[], StorageFailure>;
 
-  delete: (data: {
-    model: string;
-    where: CleanedWhere[];
-  }) => Effect.Effect<void, StorageFailure>;
+  delete: (data: { model: string; where: CleanedWhere[] }) => Effect.Effect<void, StorageFailure>;
 
   deleteMany: (data: {
     model: string;

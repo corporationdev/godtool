@@ -7,11 +7,7 @@ import type { DBAdapter, Where } from "@executor/storage-core";
 import { makeInMemoryBlobStore } from "./blob";
 import { CreateConnectionInput, TokenMaterial } from "./connections";
 import { collectSchemas, createExecutor } from "./executor";
-import {
-  ElicitationResponse,
-  FormElicitation,
-  UrlElicitation,
-} from "./elicitation";
+import { ElicitationResponse, FormElicitation, UrlElicitation } from "./elicitation";
 import { defineSchema, definePlugin } from "./plugin";
 import { SetSecretInput } from "./secrets";
 import { makeTestConfig } from "./testing";
@@ -24,10 +20,7 @@ type FindManyCall = {
   readonly where?: readonly Where[];
 };
 
-const recordFindMany = (
-  adapter: DBAdapter,
-  calls: FindManyCall[],
-): DBAdapter => ({
+const recordFindMany = (adapter: DBAdapter, calls: FindManyCall[]): DBAdapter => ({
   ...adapter,
   findMany: (data) => {
     calls.push({ model: data.model, where: data.where });
@@ -206,9 +199,7 @@ const memoryConnectionPlugin = definePlugin(() => ({
 describe("createExecutor", () => {
   it.effect("invokes a static tool via the in-memory pool", () =>
     Effect.gen(function* () {
-      const executor = yield* createExecutor(
-        makeTestConfig({ plugins: [testPlugin()] as const }),
-      );
+      const executor = yield* createExecutor(makeTestConfig({ plugins: [testPlugin()] as const }));
       const result = yield* executor.tools.invoke("test.control.echo", {
         text: "hi",
       });
@@ -218,9 +209,7 @@ describe("createExecutor", () => {
 
   it.effect("lists static tools alongside dynamic ones", () =>
     Effect.gen(function* () {
-      const executor = yield* createExecutor(
-        makeTestConfig({ plugins: [testPlugin()] as const }),
-      );
+      const executor = yield* createExecutor(makeTestConfig({ plugins: [testPlugin()] as const }));
       yield* executor.test.addThing("thing1", "hello");
 
       const tools = yield* executor.tools.list();
@@ -233,9 +222,7 @@ describe("createExecutor", () => {
 
   it.effect("filters tools by query", () =>
     Effect.gen(function* () {
-      const executor = yield* createExecutor(
-        makeTestConfig({ plugins: [testPlugin()] as const }),
-      );
+      const executor = yield* createExecutor(makeTestConfig({ plugins: [testPlugin()] as const }));
       yield* executor.test.addThing("thing1", "hello");
 
       const tools = yield* executor.tools.list({ query: "echo" });
@@ -257,24 +244,17 @@ describe("createExecutor", () => {
       findManyCalls.length = 0;
       const tools = yield* executor.tools.list({ sourceId: "thing1" });
 
-      expect(tools.map((t) => t.id).sort()).toEqual([
-        "thing1.read",
-        "thing1.write",
-      ]);
+      expect(tools.map((t) => t.id).sort()).toEqual(["thing1.read", "thing1.write"]);
       const toolRead = findManyCalls.find((call) => call.model === "tool");
       expect(toolRead?.where).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ field: "source_id", value: "thing1" }),
-        ]),
+        expect.arrayContaining([expect.objectContaining({ field: "source_id", value: "thing1" })]),
       );
     }),
   );
 
   it.effect("can list tools without resolving dynamic annotations", () =>
     Effect.gen(function* () {
-      const executor = yield* createExecutor(
-        makeTestConfig({ plugins: [testPlugin()] as const }),
-      );
+      const executor = yield* createExecutor(makeTestConfig({ plugins: [testPlugin()] as const }));
       yield* executor.test.addThing("thing1", "hello");
       testAnnotationResolveCount = 0;
 
@@ -284,19 +264,14 @@ describe("createExecutor", () => {
       });
 
       expect(testAnnotationResolveCount).toBe(0);
-      expect(tools.map((t) => t.id).sort()).toEqual([
-        "thing1.read",
-        "thing1.write",
-      ]);
+      expect(tools.map((t) => t.id).sort()).toEqual(["thing1.read", "thing1.write"]);
       expect(tools.every((tool) => tool.annotations === undefined)).toBe(true);
     }),
   );
 
   it.effect("invokes a dynamic tool through plugin.invokeTool", () =>
     Effect.gen(function* () {
-      const executor = yield* createExecutor(
-        makeTestConfig({ plugins: [testPlugin()] as const }),
-      );
+      const executor = yield* createExecutor(makeTestConfig({ plugins: [testPlugin()] as const }));
       yield* executor.test.addThing("thing1", "hello");
 
       const result = yield* executor.tools.invoke("thing1.read", {});
@@ -306,9 +281,7 @@ describe("createExecutor", () => {
 
   it.effect("enforces tool annotations before invoking", () =>
     Effect.gen(function* () {
-      const executor = yield* createExecutor(
-        makeTestConfig({ plugins: [testPlugin()] as const }),
-      );
+      const executor = yield* createExecutor(makeTestConfig({ plugins: [testPlugin()] as const }));
       yield* executor.test.addThing("thing1", "hello");
 
       // requiresApproval: true → declined → ElicitationDeclinedError
@@ -317,14 +290,11 @@ describe("createExecutor", () => {
           "thing1.write",
           { value: "updated" },
           {
-            onElicitation: () =>
-              Effect.succeed(new ElicitationResponse({ action: "decline" })),
+            onElicitation: () => Effect.succeed(new ElicitationResponse({ action: "decline" })),
           },
         )
         .pipe(Effect.flip);
-      expect((declined as { _tag: string })._tag).toBe(
-        "ElicitationDeclinedError",
-      );
+      expect((declined as { _tag: string })._tag).toBe("ElicitationDeclinedError");
 
       // auto-accept → succeeds
       const accepted = yield* executor.tools.invoke(
@@ -338,9 +308,7 @@ describe("createExecutor", () => {
 
   it.effect("sources.list unions static runtime sources and dynamic ones", () =>
     Effect.gen(function* () {
-      const executor = yield* createExecutor(
-        makeTestConfig({ plugins: [testPlugin()] as const }),
-      );
+      const executor = yield* createExecutor(makeTestConfig({ plugins: [testPlugin()] as const }));
       yield* executor.test.addThing("thing1", "hello");
 
       const sources = yield* executor.sources.list();
@@ -358,15 +326,9 @@ describe("createExecutor", () => {
 
   it.effect("rejects remove of a static source", () =>
     Effect.gen(function* () {
-      const executor = yield* createExecutor(
-        makeTestConfig({ plugins: [testPlugin()] as const }),
-      );
-      const err = yield* executor.sources
-        .remove("test.control")
-        .pipe(Effect.flip);
-      expect((err as { _tag: string })._tag).toBe(
-        "SourceRemovalNotAllowedError",
-      );
+      const executor = yield* createExecutor(makeTestConfig({ plugins: [testPlugin()] as const }));
+      const err = yield* executor.sources.remove("test.control").pipe(Effect.flip);
+      expect((err as { _tag: string })._tag).toBe("SourceRemovalNotAllowedError");
     }),
   );
 
@@ -413,10 +375,11 @@ describe("createExecutor", () => {
       expect(ids).toContain("cloudflare.zones.listZones");
 
       // Invoke by the exact id — dots are just characters, never parsed.
-      const result = (yield* executor.tools.invoke(
-        "cloudflare.dns.records.create",
-        {},
-      )) as { id: string; sourceId: string; name: string };
+      const result = (yield* executor.tools.invoke("cloudflare.dns.records.create", {})) as {
+        id: string;
+        sourceId: string;
+        name: string;
+      };
 
       // Structured fields round-trip cleanly: source_id and name are
       // the exact strings the plugin registered.
@@ -461,9 +424,7 @@ describe("createExecutor", () => {
 
   it.effect("ctx.transaction commits all nested writes on success", () =>
     Effect.gen(function* () {
-      const executor = yield* createExecutor(
-        makeTestConfig({ plugins: [testPlugin()] as const }),
-      );
+      const executor = yield* createExecutor(makeTestConfig({ plugins: [testPlugin()] as const }));
       // addThing wraps storage + sources.register in ctx.transaction.
       yield* executor.test.addThing("thing1", "hello");
 
@@ -521,9 +482,7 @@ describe("createExecutor", () => {
         makeTestConfig({ plugins: [rollbackPlugin()] as const }),
       );
 
-      const result = yield* executor.rollback
-        .doFailingTx()
-        .pipe(Effect.either);
+      const result = yield* executor.rollback.doFailingTx().pipe(Effect.either);
       expect(result._tag).toBe("Left");
 
       // Plugin storage row must not persist.
@@ -593,21 +552,15 @@ describe("createExecutor", () => {
         }),
       );
 
-      const leaked = yield* executor.secrets
-        .get("conn-owned.access_token")
-        .pipe(Effect.either);
+      const leaked = yield* executor.secrets.get("conn-owned.access_token").pipe(Effect.either);
       expect(leaked._tag).toBe("Left");
       if (leaked._tag === "Left") {
-        expect((leaked.left as { _tag?: string })._tag).toBe(
-          "SecretOwnedByConnectionError",
-        );
+        expect((leaked.left as { _tag?: string })._tag).toBe("SecretOwnedByConnectionError");
       }
 
       const status = yield* executor.secrets.status("conn-owned.access_token");
       expect(status).toBe("missing");
-      const visibleIds = (yield* executor.secrets.list()).map(
-        (s) => s.id as unknown as string,
-      );
+      const visibleIds = (yield* executor.secrets.list()).map((s) => s.id as unknown as string);
       expect(visibleIds).not.toContain("conn-owned.access_token");
 
       const token = yield* executor.connections.accessToken("conn-owned");
@@ -618,9 +571,7 @@ describe("createExecutor", () => {
   it.effect("invoke fails with ToolNotFoundError for unknown tool", () =>
     Effect.gen(function* () {
       const executor = yield* createExecutor(makeTestConfig());
-      const err = yield* executor.tools
-        .invoke("does.not.exist", {})
-        .pipe(Effect.flip);
+      const err = yield* executor.tools.invoke("does.not.exist", {}).pipe(Effect.flip);
       expect((err as { _tag: string })._tag).toBe("ToolNotFoundError");
     }),
   );
@@ -676,9 +627,7 @@ describe("createExecutor", () => {
         close: () => Effect.sync(() => void closed++),
       }));
 
-      const executor = yield* createExecutor(
-        makeTestConfig({ plugins: [closeable()] as const }),
-      );
+      const executor = yield* createExecutor(makeTestConfig({ plugins: [closeable()] as const }));
 
       yield* executor.close();
       expect(closed).toBe(1);
@@ -724,9 +673,7 @@ describe("createExecutor", () => {
         ],
       }));
 
-      const executor = yield* createExecutor(
-        makeTestConfig({ plugins: [loginPlugin()] as const }),
-      );
+      const executor = yield* createExecutor(makeTestConfig({ plugins: [loginPlugin()] as const }));
 
       const result = yield* executor.tools.invoke(
         "login.ctl.signIn",
@@ -782,9 +729,7 @@ describe("createExecutor", () => {
         ],
       }));
 
-      const executor = yield* createExecutor(
-        makeTestConfig({ plugins: [oauthPlugin()] as const }),
-      );
+      const executor = yield* createExecutor(makeTestConfig({ plugins: [oauthPlugin()] as const }));
 
       const result = yield* executor.tools.invoke(
         "oauth.ctl.connect",
@@ -840,9 +785,7 @@ describe("createExecutor", () => {
         ],
       }));
 
-      const executor = yield* createExecutor(
-        makeTestConfig({ plugins: [elicitOnly()] as const }),
-      );
+      const executor = yield* createExecutor(makeTestConfig({ plugins: [elicitOnly()] as const }));
 
       const action = yield* executor.tools.invoke("elicit.ctl.ask", {});
       expect(action).toBe("accept");
@@ -889,10 +832,7 @@ describe("createExecutor", () => {
         }),
       );
 
-      const result = yield* executor.rotate.rotate(
-        "DB_PASSWORD",
-        "correct-horse-battery-staple",
-      );
+      const result = yield* executor.rotate.rotate("DB_PASSWORD", "correct-horse-battery-staple");
       expect(result).toEqual({
         oldValue: "hunter2",
         newValue: "correct-horse-battery-staple",
@@ -1202,8 +1142,7 @@ describe("cross-scope write preservation (SDK)", () => {
     "secrets.set at the inner scope does not wipe an outer-scope row with the same id",
     () =>
       Effect.gen(function* () {
-        const { execOuter, execInner, outerId, innerId } =
-          yield* makeLayeredExecutors();
+        const { execOuter, execInner, outerId, innerId } = yield* makeLayeredExecutors();
 
         // Admin-equivalent writes the org-wide secret at the outer scope.
         yield* execInner.secrets.set(
@@ -1238,9 +1177,7 @@ describe("cross-scope write preservation (SDK)", () => {
         // are the shared, observable source of truth.
         const outerRefs = yield* execOuter.secrets.list();
         expect(outerRefs.map((r) => r.id)).toContain("api-token");
-        expect(outerRefs.find((r) => r.id === "api-token")?.scopeId).toBe(
-          outerId,
-        );
+        expect(outerRefs.find((r) => r.id === "api-token")?.scopeId).toBe(outerId);
 
         // Inner executor's list is de-duplicated by id (innermost wins),
         // so we only expect one ref for `api-token` — pinned at the
@@ -1382,40 +1319,35 @@ const makeMarkerExecutors = () =>
   });
 
 describe("cross-scope read precedence + remove isolation (SDK)", () => {
-  it.effect(
-    "secrets.remove at the inner scope does not wipe outer-scope row with same id",
-    () =>
-      Effect.gen(function* () {
-        const { execOuter, execInner, outerId, innerId } =
-          yield* makeLayeredExecutors();
+  it.effect("secrets.remove at the inner scope does not wipe outer-scope row with same id", () =>
+    Effect.gen(function* () {
+      const { execOuter, execInner, outerId, innerId } = yield* makeLayeredExecutors();
 
-        yield* execInner.secrets.set(
-          new SetSecretInput({
-            id: SecretId.make("api-token"),
-            scope: outerId,
-            name: "Org default",
-            value: "org-default",
-          }),
-        );
-        yield* execInner.secrets.set(
-          new SetSecretInput({
-            id: SecretId.make("api-token"),
-            scope: innerId,
-            name: "Personal override",
-            value: "personal-override",
-          }),
-        );
+      yield* execInner.secrets.set(
+        new SetSecretInput({
+          id: SecretId.make("api-token"),
+          scope: outerId,
+          name: "Org default",
+          value: "org-default",
+        }),
+      );
+      yield* execInner.secrets.set(
+        new SetSecretInput({
+          id: SecretId.make("api-token"),
+          scope: innerId,
+          name: "Personal override",
+          value: "personal-override",
+        }),
+      );
 
-        // Inner caller removes — should only drop the inner override.
-        yield* execInner.secrets.remove("api-token");
+      // Inner caller removes — should only drop the inner override.
+      yield* execInner.secrets.remove("api-token");
 
-        // Outer-only executor must still see its org-scope row.
-        const outerRefs = yield* execOuter.secrets.list();
-        expect(outerRefs.map((r) => r.id)).toContain("api-token");
-        expect(outerRefs.find((r) => r.id === "api-token")?.scopeId).toBe(
-          outerId,
-        );
-      }),
+      // Outer-only executor must still see its org-scope row.
+      const outerRefs = yield* execOuter.secrets.list();
+      expect(outerRefs.map((r) => r.id)).toContain("api-token");
+      expect(outerRefs.find((r) => r.id === "api-token")?.scopeId).toBe(outerId);
+    }),
   );
 
   it.effect(
@@ -1436,33 +1368,30 @@ describe("cross-scope read precedence + remove isolation (SDK)", () => {
       }),
   );
 
-  it.effect(
-    "ctx.core.sources.unregister at the inner scope does not wipe outer-scope row",
-    () =>
-      Effect.gen(function* () {
-        const { execOuter, execInner } = yield* makeLayeredExecutors();
+  it.effect("ctx.core.sources.unregister at the inner scope does not wipe outer-scope row", () =>
+    Effect.gen(function* () {
+      const { execOuter, execInner } = yield* makeLayeredExecutors();
 
-        yield* execOuter.tenant.addSource("shared");
-        yield* execInner.tenant.addSource("shared");
+      yield* execOuter.tenant.addSource("shared");
+      yield* execInner.tenant.addSource("shared");
 
-        // Plugin-owned unregister path (ctx.core.sources.unregister) fires
-        // via a dedicated extension method. We drive it by calling
-        // `sources.remove` — which routes through the same deleteSourceById
-        // helper — but the real regression is the findOne-before-delete
-        // picking the wrong scope's row. The outer row must survive.
-        yield* execInner.sources.remove("shared");
+      // Plugin-owned unregister path (ctx.core.sources.unregister) fires
+      // via a dedicated extension method. We drive it by calling
+      // `sources.remove` — which routes through the same deleteSourceById
+      // helper — but the real regression is the findOne-before-delete
+      // picking the wrong scope's row. The outer row must survive.
+      yield* execInner.sources.remove("shared");
 
-        const outerSources = yield* execOuter.sources.list();
-        expect(outerSources.filter((s) => s.id === "shared")).toHaveLength(1);
-      }),
+      const outerSources = yield* execOuter.sources.list();
+      expect(outerSources.filter((s) => s.id === "shared")).toHaveLength(1);
+    }),
   );
 
   it.effect(
     "tools.invoke picks the innermost tool when the same tool id exists at two scopes",
     () =>
       Effect.gen(function* () {
-        const { execOuter, execInner, outerId, innerId } =
-          yield* makeMarkerExecutors();
+        const { execOuter, execInner, outerId, innerId } = yield* makeMarkerExecutors();
 
         yield* execOuter.marker.register("shared", "outer");
         yield* execInner.marker.register("shared", "inner");
@@ -1475,160 +1404,148 @@ describe("cross-scope read precedence + remove isolation (SDK)", () => {
         expect(result.scope).toBe(innerId);
 
         // Outer-only executor still invokes its own copy.
-        const outerResult = (yield* execOuter.tools.invoke(
-          "shared.t",
-          {},
-        )) as { marker: string; scope: string };
+        const outerResult = (yield* execOuter.tools.invoke("shared.t", {})) as {
+          marker: string;
+          scope: string;
+        };
         expect(outerResult.marker).toBe("outer");
         expect(outerResult.scope).toBe(outerId);
       }),
   );
 
-  it.effect(
-    "tools.schema — innermost shadow returns the inner description",
-    () =>
-      Effect.gen(function* () {
-        const { execOuter, execInner } = yield* makeMarkerExecutors();
+  it.effect("tools.schema — innermost shadow returns the inner description", () =>
+    Effect.gen(function* () {
+      const { execOuter, execInner } = yield* makeMarkerExecutors();
 
-        yield* execOuter.marker.register("shared", "outer-desc");
-        yield* execInner.marker.register("shared", "inner-desc");
+      yield* execOuter.marker.register("shared", "outer-desc");
+      yield* execInner.marker.register("shared", "inner-desc");
 
-        const schema = yield* execInner.tools.schema("shared.t");
-        expect(schema?.description).toBe("inner-desc");
-      }),
+      const schema = yield* execInner.tools.schema("shared.t");
+      expect(schema?.description).toBe("inner-desc");
+    }),
   );
 
-  it.effect(
-    "tools.list dedupes by id, keeping the innermost row",
-    () =>
-      Effect.gen(function* () {
-        const { execOuter, execInner } = yield* makeMarkerExecutors();
+  it.effect("tools.list dedupes by id, keeping the innermost row", () =>
+    Effect.gen(function* () {
+      const { execOuter, execInner } = yield* makeMarkerExecutors();
 
-        yield* execOuter.marker.register("shared", "outer-desc");
-        yield* execInner.marker.register("shared", "inner-desc");
+      yield* execOuter.marker.register("shared", "outer-desc");
+      yield* execInner.marker.register("shared", "inner-desc");
 
-        const tools = yield* execInner.tools.list();
-        const shared = tools.filter((t) => t.id === "shared.t");
-        expect(shared).toHaveLength(1);
-        expect(shared[0]?.description).toBe("inner-desc");
-      }),
+      const tools = yield* execInner.tools.list();
+      const shared = tools.filter((t) => t.id === "shared.t");
+      expect(shared).toHaveLength(1);
+      expect(shared[0]?.description).toBe("inner-desc");
+    }),
   );
 
-  it.effect(
-    "sources.list dedupes by id, keeping the innermost row",
-    () =>
-      Effect.gen(function* () {
-        const { execOuter, execInner } = yield* makeMarkerExecutors();
+  it.effect("sources.list dedupes by id, keeping the innermost row", () =>
+    Effect.gen(function* () {
+      const { execOuter, execInner } = yield* makeMarkerExecutors();
 
-        yield* execOuter.marker.register("shared", "outer-name");
-        yield* execInner.marker.register("shared", "inner-name");
+      yield* execOuter.marker.register("shared", "outer-name");
+      yield* execInner.marker.register("shared", "inner-name");
 
-        const sources = yield* execInner.sources.list();
-        const shared = sources.filter((s) => s.id === "shared");
-        expect(shared).toHaveLength(1);
-        expect(shared[0]?.name).toBe("inner-name");
-      }),
+      const sources = yield* execInner.sources.list();
+      const shared = sources.filter((s) => s.id === "shared");
+      expect(shared).toHaveLength(1);
+      expect(shared[0]?.name).toBe("inner-name");
+    }),
   );
 
-  it.effect(
-    "tools.definitions dedupes by (source_id, name), keeping the innermost row",
-    () =>
-      Effect.gen(function* () {
-        const { execOuter, execInner } = yield* makeLayeredExecutors();
+  it.effect("tools.definitions dedupes by (source_id, name), keeping the innermost row", () =>
+    Effect.gen(function* () {
+      const { execOuter, execInner } = yield* makeLayeredExecutors();
 
-        // Register inner first, outer second. Without precedence-aware
-        // dedup, a naive "iterate rows, last-one-wins" map would end up
-        // keyed to the outer description just because outer was inserted
-        // into the store last.
-        yield* execInner["tenant-defs"].addDefs("S", {
-          Shared: { type: "string", description: "inner" },
-        });
-        yield* execOuter["tenant-defs"].addDefs("S", {
-          Shared: { type: "string", description: "outer" },
-        });
+      // Register inner first, outer second. Without precedence-aware
+      // dedup, a naive "iterate rows, last-one-wins" map would end up
+      // keyed to the outer description just because outer was inserted
+      // into the store last.
+      yield* execInner["tenant-defs"].addDefs("S", {
+        Shared: { type: "string", description: "inner" },
+      });
+      yield* execOuter["tenant-defs"].addDefs("S", {
+        Shared: { type: "string", description: "outer" },
+      });
 
-        const defs = yield* execInner.tools.definitions();
-        const shared = defs.S?.Shared as { description?: string } | undefined;
-        expect(shared?.description).toBe("inner");
-      }),
+      const defs = yield* execInner.tools.definitions();
+      const shared = defs.S?.Shared as { description?: string } | undefined;
+      expect(shared?.description).toBe("inner");
+    }),
   );
 
-  it.effect(
-    "tools.schema attaches innermost $defs when shadowed across scopes",
-    () =>
-      Effect.gen(function* () {
-        // Source id "S" with a tool that references $defs/Shared, plus a
-        // definition "Shared" registered at both scopes. Schema's attached
-        // $defs should come from the inner scope.
-        const plugins = [
-          tenantPlugin(),
-          tenantPluginWithDefs(),
-          definePlugin(() => ({
-            id: "ref" as const,
-            storage: () => ({}),
-            extension: (ctx) => ({
-              register: (sourceId: string) =>
-                ctx.transaction(
-                  ctx.core.sources.register({
-                    id: sourceId,
-                    scope: ctx.scopes[0]!.id,
-                    kind: "ref",
-                    name: sourceId,
-                    canRemove: true,
-                    tools: [
-                      {
-                        name: "use",
-                        description: "uses $defs/Shared",
-                        inputSchema: {
-                          type: "object",
-                          properties: { x: { $ref: "#/$defs/Shared" } },
-                        },
+  it.effect("tools.schema attaches innermost $defs when shadowed across scopes", () =>
+    Effect.gen(function* () {
+      // Source id "S" with a tool that references $defs/Shared, plus a
+      // definition "Shared" registered at both scopes. Schema's attached
+      // $defs should come from the inner scope.
+      const plugins = [
+        tenantPlugin(),
+        tenantPluginWithDefs(),
+        definePlugin(() => ({
+          id: "ref" as const,
+          storage: () => ({}),
+          extension: (ctx) => ({
+            register: (sourceId: string) =>
+              ctx.transaction(
+                ctx.core.sources.register({
+                  id: sourceId,
+                  scope: ctx.scopes[0]!.id,
+                  kind: "ref",
+                  name: sourceId,
+                  canRemove: true,
+                  tools: [
+                    {
+                      name: "use",
+                      description: "uses $defs/Shared",
+                      inputSchema: {
+                        type: "object",
+                        properties: { x: { $ref: "#/$defs/Shared" } },
                       },
-                    ],
-                  }),
-                ),
-            }),
-          }))(),
-        ] as const;
-        const schema = collectSchemas(plugins);
-        const adapter = makeMemoryAdapter({ schema });
-        const blobs = makeInMemoryBlobStore();
+                    },
+                  ],
+                }),
+              ),
+          }),
+        }))(),
+      ] as const;
+      const schema = collectSchemas(plugins);
+      const adapter = makeMemoryAdapter({ schema });
+      const blobs = makeInMemoryBlobStore();
 
-        const outerId = ScopeId.make("org");
-        const innerId = ScopeId.make("user-org:u1:org");
-        const execOuter = yield* createExecutor({
-          scopes: [
-            new Scope({ id: outerId, name: "outer", createdAt: new Date() }),
-          ],
-          adapter,
-          blobs,
-          plugins,
-        });
-        const execInner = yield* createExecutor({
-          scopes: [
-            new Scope({ id: innerId, name: "inner", createdAt: new Date() }),
-            new Scope({ id: outerId, name: "outer", createdAt: new Date() }),
-          ],
-          adapter,
-          blobs,
-          plugins,
-        });
+      const outerId = ScopeId.make("org");
+      const innerId = ScopeId.make("user-org:u1:org");
+      const execOuter = yield* createExecutor({
+        scopes: [new Scope({ id: outerId, name: "outer", createdAt: new Date() })],
+        adapter,
+        blobs,
+        plugins,
+      });
+      const execInner = yield* createExecutor({
+        scopes: [
+          new Scope({ id: innerId, name: "inner", createdAt: new Date() }),
+          new Scope({ id: outerId, name: "outer", createdAt: new Date() }),
+        ],
+        adapter,
+        blobs,
+        plugins,
+      });
 
-        yield* execOuter.ref.register("S");
-        yield* execInner.ref.register("S");
+      yield* execOuter.ref.register("S");
+      yield* execInner.ref.register("S");
 
-        yield* execInner["tenant-defs"].addDefs("S", {
-          Shared: { type: "string", description: "inner" },
-        });
-        yield* execOuter["tenant-defs"].addDefs("S", {
-          Shared: { type: "string", description: "outer" },
-        });
+      yield* execInner["tenant-defs"].addDefs("S", {
+        Shared: { type: "string", description: "inner" },
+      });
+      yield* execOuter["tenant-defs"].addDefs("S", {
+        Shared: { type: "string", description: "outer" },
+      });
 
-        const view = yield* execInner.tools.schema("S.use");
-        const input = view?.inputSchema as
-          | { $defs?: { Shared?: { description?: string } } }
-          | undefined;
-        expect(input?.$defs?.Shared?.description).toBe("inner");
-      }),
+      const view = yield* execInner.tools.schema("S.use");
+      const input = view?.inputSchema as
+        | { $defs?: { Shared?: { description?: string } } }
+        | undefined;
+      expect(input?.$defs?.Shared?.description).toBe("inner");
+    }),
   );
 });

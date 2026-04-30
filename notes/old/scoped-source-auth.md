@@ -20,7 +20,7 @@ The common primitive is not "org auth" or "user auth". It is an ordered
 scope stack:
 
 ```ts
-[user, workspace, org]
+[user, workspace, org];
 ```
 
 Rows still belong to exactly one scope. Resolution walks the stack
@@ -68,12 +68,7 @@ For example:
 
 ```ts
 oauth2: {
-  flow: "clientCredentials",
-  tokenUrl,
-  clientIdSlot,
-  clientSecretSlot,
-  connectionSlot,
-  scopes
+  flow: ("clientCredentials", tokenUrl, clientIdSlot, clientSecretSlot, connectionSlot, scopes);
 }
 ```
 

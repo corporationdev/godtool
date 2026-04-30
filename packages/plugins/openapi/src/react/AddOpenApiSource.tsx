@@ -27,6 +27,7 @@ import {
   SourceIdentityFields,
   useSourceIdentity,
 } from "@executor/react/plugins/source-identity";
+import { SourceAdvancedSettings } from "@executor/react/plugins/source-advanced-settings";
 import { useSecretPickerSecrets } from "@executor/react/plugins/use-secret-picker-secrets";
 import {
   isDesktopManagedAuth,
@@ -147,10 +148,16 @@ const parseStrategy = (value: string): StrategySelection => {
   if (value === "custom") return { kind: "custom" };
   if (value === "managed") return { kind: "managed" };
   if (value.startsWith("header:")) {
-    return { kind: "header", presetIndex: Number(value.slice("header:".length)) };
+    return {
+      kind: "header",
+      presetIndex: Number(value.slice("header:".length)),
+    };
   }
   if (value.startsWith("oauth2:")) {
-    return { kind: "oauth2", presetIndex: Number(value.slice("oauth2:".length)) };
+    return {
+      kind: "oauth2",
+      presetIndex: Number(value.slice("oauth2:".length)),
+    };
   }
   return { kind: "none" };
 };
@@ -196,6 +203,13 @@ const OPENAPI_COMPOSIO_HOSTS: ReadonlyArray<readonly [string, string]> = [
   ["twilio.com", "twilio"],
   ["api.spotify.com", "spotify"],
   ["spotify.com", "spotify"],
+  ["graph.microsoft.com", "outlook"],
+  ["api.pipedrive.com", "pipedrive"],
+  ["pipedrive.com", "pipedrive"],
+  ["api.figma.com", "figma"],
+  ["figma.com", "figma"],
+  ["api.intercom.io", "intercom"],
+  ["intercom.com", "intercom"],
 ];
 
 function hostnameOf(value: string): string | null {
@@ -229,6 +243,12 @@ function managedAuthAppFromOpenApi(input: {
   if (title.includes("asana")) return "asana";
   if (title.includes("twilio")) return "twilio";
   if (title.includes("spotify")) return "spotify";
+  if (title.includes("microsoft graph") || title.includes("outlook")) return "outlook";
+  if (title.includes("pipedrive")) return "pipedrive";
+  if (title.includes("figma")) return "figma";
+  if (title.includes("jira")) return "jira";
+  if (title.includes("confluence")) return "confluence";
+  if (title.includes("intercom")) return "intercom";
   return null;
 }
 
@@ -887,137 +907,6 @@ export default function AddOpenApiSource(props: {
       {/* ── Everything below appears after analysis ── */}
       {preview && (
         <>
-          <SourceIdentityFields identity={identity} />
-
-          {/* Base URL */}
-          <CardStack>
-            <CardStackContent className="border-t-0">
-              <CardStackEntryField label="Base URL">
-                {servers.length >= 1 && (
-                  <RadioGroup
-                    value={String(selectedServerIndex)}
-                    onValueChange={(value) => {
-                      const idx = Number(value);
-                      setSelectedServerIndex(idx);
-                      if (idx >= 0) {
-                        const s = servers[idx];
-                        if (s) setVariableSelections(defaultSelectionsFor(s));
-                      } else {
-                        setVariableSelections({});
-                      }
-                    }}
-                    className="gap-1.5"
-                  >
-                    {servers.map((s, i) => (
-                      <Label
-                        key={i}
-                        className={`flex items-start gap-2.5 rounded-lg border px-3 py-2 cursor-pointer transition-colors ${
-                          selectedServerIndex === i
-                            ? "border-primary/50 bg-primary/[0.03]"
-                            : "border-border hover:bg-accent/50"
-                        }`}
-                      >
-                        <RadioGroupItem value={String(i)} className="mt-0.5" />
-                        <div className="min-w-0 flex-1">
-                          <div className="font-mono text-xs text-foreground truncate">{s.url}</div>
-                          {Option.isSome(s.description) && (
-                            <div className="mt-0.5 text-[10px] text-muted-foreground">
-                              {s.description.value}
-                            </div>
-                          )}
-                        </div>
-                      </Label>
-                    ))}
-                    <Label
-                      className={`flex items-center gap-2.5 rounded-lg border px-3 py-2 cursor-pointer transition-colors ${
-                        selectedServerIndex === -1
-                          ? "border-primary/50 bg-primary/[0.03]"
-                          : "border-border hover:bg-accent/50"
-                      }`}
-                    >
-                      <RadioGroupItem value="-1" />
-                      <span className="text-xs font-medium text-foreground">Custom</span>
-                    </Label>
-                  </RadioGroup>
-                )}
-
-                {/* Per-variable pickers for the selected server */}
-                {selectedServer && serverVariableEntries.length > 0 && (
-                  <div className="mt-2 space-y-2 rounded-lg border border-border/60 bg-muted/20 p-2.5">
-                    {serverVariableEntries.map(([name, variable]) => {
-                      const enumValues: readonly string[] = Option.getOrElse(
-                        variable.enum,
-                        () => [] as readonly string[],
-                      );
-                      const current = variableSelections[name] ?? variable.default;
-                      return (
-                        <div key={name} className="space-y-1">
-                          <div className="flex items-baseline justify-between gap-2">
-                            <Label className="font-mono text-[11px] text-foreground">
-                              {`{${name}}`}
-                            </Label>
-                            {Option.isSome(variable.description) && (
-                              <span className="text-[10px] text-muted-foreground truncate">
-                                {variable.description.value}
-                              </span>
-                            )}
-                          </div>
-                          {enumValues.length > 0 ? (
-                            <NativeSelect
-                              value={current}
-                              onChange={(e) =>
-                                setVariableSelections((prev) => ({
-                                  ...prev,
-                                  [name]: (e.target as HTMLSelectElement).value,
-                                }))
-                              }
-                            >
-                              {enumValues.map((v) => (
-                                <NativeSelectOption key={v} value={v}>
-                                  {v}
-                                </NativeSelectOption>
-                              ))}
-                            </NativeSelect>
-                          ) : (
-                            <Input
-                              value={current}
-                              onChange={(e) =>
-                                setVariableSelections((prev) => ({
-                                  ...prev,
-                                  [name]: (e.target as HTMLInputElement).value,
-                                }))
-                              }
-                              className="font-mono text-xs"
-                            />
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {selectedServerIndex === -1 ? (
-                  <Input
-                    value={customBaseUrl}
-                    onChange={(e) => setCustomBaseUrl((e.target as HTMLInputElement).value)}
-                    placeholder="https://api.example.com"
-                    className="font-mono text-sm"
-                  />
-                ) : (
-                  <div className="rounded-md bg-muted/30 px-2.5 py-1.5 font-mono text-[11px] text-muted-foreground">
-                    {resolvedBaseUrl || "\u00A0"}
-                  </div>
-                )}
-
-                {!resolvedBaseUrl && (
-                  <p className="text-[11px] text-amber-600 dark:text-amber-400">
-                    A base URL is required to make requests.
-                  </p>
-                )}
-              </CardStackEntryField>
-            </CardStackContent>
-          </CardStack>
-
           <section className="space-y-2.5">
             <FieldLabel>Authentication</FieldLabel>
             {(managedAuthApp || preview.headerPresets.length > 0 || oauth2Presets.length > 0) && (
@@ -1154,14 +1043,14 @@ export default function AddOpenApiSource(props: {
             {strategy.kind !== "none" &&
               strategy.kind !== "oauth2" &&
               strategy.kind !== "managed" && (
-              <HeadersList
-                headers={customHeaders}
-                onHeadersChange={handleHeadersChange}
-                existingSecrets={secretList}
-                sourceName={identity.name}
-                writeScope={userScope}
-              />
-            )}
+                <HeadersList
+                  headers={customHeaders}
+                  onHeadersChange={handleHeadersChange}
+                  existingSecrets={secretList}
+                  sourceName={identity.name}
+                  writeScope={userScope}
+                />
+              )}
 
             {/* OAuth2 configuration */}
             {selectedOAuth2Preset && (
@@ -1285,6 +1174,133 @@ export default function AddOpenApiSource(props: {
               </div>
             )}
           </section>
+
+          <SourceAdvancedSettings>
+            <SourceIdentityFields identity={identity} asEntries />
+
+            <CardStackEntryField label="Base URL">
+              {servers.length >= 1 && (
+                <RadioGroup
+                  value={String(selectedServerIndex)}
+                  onValueChange={(value) => {
+                    const idx = Number(value);
+                    setSelectedServerIndex(idx);
+                    if (idx >= 0) {
+                      const s = servers[idx];
+                      if (s) setVariableSelections(defaultSelectionsFor(s));
+                    } else {
+                      setVariableSelections({});
+                    }
+                  }}
+                  className="gap-1.5"
+                >
+                  {servers.map((s, i) => (
+                    <Label
+                      key={i}
+                      className={`flex items-start gap-2.5 rounded-lg border px-3 py-2 cursor-pointer transition-colors ${
+                        selectedServerIndex === i
+                          ? "border-primary/50 bg-primary/[0.03]"
+                          : "border-border hover:bg-accent/50"
+                      }`}
+                    >
+                      <RadioGroupItem value={String(i)} className="mt-0.5" />
+                      <div className="min-w-0 flex-1">
+                        <div className="font-mono text-xs text-foreground truncate">{s.url}</div>
+                        {Option.isSome(s.description) && (
+                          <div className="mt-0.5 text-[10px] text-muted-foreground">
+                            {s.description.value}
+                          </div>
+                        )}
+                      </div>
+                    </Label>
+                  ))}
+                  <Label
+                    className={`flex items-center gap-2.5 rounded-lg border px-3 py-2 cursor-pointer transition-colors ${
+                      selectedServerIndex === -1
+                        ? "border-primary/50 bg-primary/[0.03]"
+                        : "border-border hover:bg-accent/50"
+                    }`}
+                  >
+                    <RadioGroupItem value="-1" />
+                    <span className="text-xs font-medium text-foreground">Custom</span>
+                  </Label>
+                </RadioGroup>
+              )}
+
+              {selectedServer && serverVariableEntries.length > 0 && (
+                <div className="mt-2 space-y-2 rounded-lg border border-border/60 bg-muted/20 p-2.5">
+                  {serverVariableEntries.map(([name, variable]) => {
+                    const enumValues: readonly string[] = Option.getOrElse(
+                      variable.enum,
+                      () => [] as readonly string[],
+                    );
+                    const current = variableSelections[name] ?? variable.default;
+                    return (
+                      <div key={name} className="space-y-1">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <Label className="font-mono text-[11px] text-foreground">
+                            {`{${name}}`}
+                          </Label>
+                          {Option.isSome(variable.description) && (
+                            <span className="text-[10px] text-muted-foreground truncate">
+                              {variable.description.value}
+                            </span>
+                          )}
+                        </div>
+                        {enumValues.length > 0 ? (
+                          <NativeSelect
+                            value={current}
+                            onChange={(e) =>
+                              setVariableSelections((prev) => ({
+                                ...prev,
+                                [name]: (e.target as HTMLSelectElement).value,
+                              }))
+                            }
+                          >
+                            {enumValues.map((v) => (
+                              <NativeSelectOption key={v} value={v}>
+                                {v}
+                              </NativeSelectOption>
+                            ))}
+                          </NativeSelect>
+                        ) : (
+                          <Input
+                            value={current}
+                            onChange={(e) =>
+                              setVariableSelections((prev) => ({
+                                ...prev,
+                                [name]: (e.target as HTMLInputElement).value,
+                              }))
+                            }
+                            className="font-mono text-xs"
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {selectedServerIndex === -1 ? (
+                <Input
+                  value={customBaseUrl}
+                  onChange={(e) => setCustomBaseUrl((e.target as HTMLInputElement).value)}
+                  placeholder="https://api.example.com"
+                  className="font-mono text-sm"
+                />
+              ) : (
+                <div className="rounded-md bg-muted/30 px-2.5 py-1.5 font-mono text-[11px] text-muted-foreground">
+                  {resolvedBaseUrl || "\u00A0"}
+                </div>
+              )}
+
+              {!resolvedBaseUrl && (
+                <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                  A base URL is required to make requests.
+                </p>
+              )}
+            </CardStackEntryField>
+          </SourceAdvancedSettings>
 
           {/* Add error */}
           {addError && (

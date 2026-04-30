@@ -30,9 +30,7 @@ import { Scope } from "./scope";
 // Types
 // ---------------------------------------------------------------------------
 
-export type Promisified<T> = T extends (
-  ...args: infer A
-) => Effect.Effect<infer R, infer _E>
+export type Promisified<T> = T extends (...args: infer A) => Effect.Effect<infer R, infer _E>
   ? (...args: A) => Promise<R>
   : T extends readonly unknown[]
     ? T
@@ -69,10 +67,7 @@ const isPlainObject = (v: unknown): v is Record<string | symbol, unknown> =>
 const promisifyDeep = <T>(value: T): Promisified<T> => {
   if (typeof value === "function") {
     return ((...args: unknown[]) => {
-      const result = (value as (...a: unknown[]) => unknown).apply(
-        undefined,
-        args,
-      );
+      const result = (value as (...a: unknown[]) => unknown).apply(undefined, args);
       if (Effect.isEffect(result)) {
         return Effect.runPromise(result as Effect.Effect<unknown, unknown>);
       }
@@ -87,10 +82,7 @@ const promisifyDeep = <T>(value: T): Promisified<T> => {
       const v = Reflect.get(target, prop, receiver);
       if (typeof v === "function") {
         return (...args: unknown[]) => {
-          const result = (v as (...a: unknown[]) => unknown).apply(
-            target,
-            args,
-          );
+          const result = (v as (...a: unknown[]) => unknown).apply(target, args);
           if (Effect.isEffect(result)) {
             return Effect.runPromise(result as Effect.Effect<unknown, unknown>);
           }
@@ -109,9 +101,7 @@ const promisifyDeep = <T>(value: T): Promisified<T> => {
 // construct an executor with just `{ plugins: [...] }`.
 // ---------------------------------------------------------------------------
 
-export const createExecutor = async <
-  const TPlugins extends readonly AnyPlugin[] = [],
->(
+export const createExecutor = async <const TPlugins extends readonly AnyPlugin[] = []>(
   config?: ExecutorConfig<TPlugins>,
 ): Promise<Executor<TPlugins>> => {
   const plugins = (config?.plugins ?? []) as unknown as TPlugins;
@@ -148,9 +138,7 @@ export const createExecutor = async <
   // get the tagged error as the rejected value. See
   // notes/promise-sdk-typed-errors.md for the planned `runPromiseExit`
   // rewrite that exposes the full error union to consumers.
-  const effectExecutor = await Effect.runPromise(
-    createEffectExecutor(effectConfig),
-  );
+  const effectExecutor = await Effect.runPromise(createEffectExecutor(effectConfig));
 
   return promisifyDeep(effectExecutor) as Executor<TPlugins>;
 };

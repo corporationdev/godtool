@@ -18,20 +18,12 @@
 import type { Effect } from "effect";
 
 import type { DBAdapter, StorageFailure, Where } from "./adapter";
-import type {
-  DBSchema,
-  InferDBFieldsInput,
-  InferDBFieldsOutput,
-} from "./schema";
+import type { DBSchema, InferDBFieldsInput, InferDBFieldsOutput } from "./schema";
 
-type RowInput<S extends DBSchema, M extends keyof S> = InferDBFieldsInput<
-  S[M]["fields"]
-> &
+type RowInput<S extends DBSchema, M extends keyof S> = InferDBFieldsInput<S[M]["fields"]> &
   Record<string, unknown>;
 
-type RowOutput<S extends DBSchema, M extends keyof S> = InferDBFieldsOutput<
-  S[M]["fields"]
-> &
+type RowOutput<S extends DBSchema, M extends keyof S> = InferDBFieldsOutput<S[M]["fields"]> &
   Record<string, unknown>;
 
 /**
@@ -103,9 +95,7 @@ export interface TypedAdapter<S extends DBSchema, E = StorageFailure> {
  * this is a typed re-export of the adapter's methods. Pass the schema as
  * a type parameter; the adapter argument is the normal untyped one.
  */
-export const typedAdapter = <S extends DBSchema>(
-  adapter: DBAdapter,
-): TypedAdapter<S> => ({
+export const typedAdapter = <S extends DBSchema>(adapter: DBAdapter): TypedAdapter<S> => ({
   raw: adapter,
   create: adapter.create as TypedAdapter<S>["create"],
   createMany: adapter.createMany as TypedAdapter<S>["createMany"],

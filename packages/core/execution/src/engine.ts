@@ -24,9 +24,7 @@ import { buildExecuteDescription } from "./description";
 // Types
 // ---------------------------------------------------------------------------
 
-export type ExecutionEngineConfig<
-  E extends Cause.YieldableError = CodeExecutionError,
-> = {
+export type ExecutionEngineConfig<E extends Cause.YieldableError = CodeExecutionError> = {
   readonly executor: Executor;
   readonly codeExecutor: CodeExecutor<E>;
 };
@@ -61,9 +59,11 @@ const DEBUG_LOG_FILE = "/tmp/executor-mcp-debug.log";
 
 const appendDebugLine = (file: string, line: string): void => {
   if (typeof process === "undefined") return;
-  const getBuiltinModule = (process as unknown as {
-    getBuiltinModule?: (name: string) => { appendFileSync?: (...args: unknown[]) => void };
-  }).getBuiltinModule;
+  const getBuiltinModule = (
+    process as unknown as {
+      getBuiltinModule?: (name: string) => { appendFileSync?: (...args: unknown[]) => void };
+    }
+  ).getBuiltinModule;
   const fs = getBuiltinModule?.("node:fs");
   fs?.appendFileSync?.(file, line, "utf8");
 };
@@ -532,9 +532,7 @@ export type ExecutionEngine<E extends Cause.YieldableError = CodeExecutionError>
   readonly getDescription: Effect.Effect<string>;
 };
 
-export const createExecutionEngine = <
-  E extends Cause.YieldableError = CodeExecutionError,
->(
+export const createExecutionEngine = <E extends Cause.YieldableError = CodeExecutionError>(
   config: ExecutionEngineConfig<E>,
 ): ExecutionEngine<E> => {
   const { executor, codeExecutor } = config;
@@ -659,9 +657,7 @@ export const createExecutionEngine = <
       callerId,
       onElicitation: options.onElicitation,
     });
-    return yield* codeExecutor
-      .execute(code, invoker)
-      .pipe(Effect.withSpan("executor.code.exec"));
+    return yield* codeExecutor.execute(code, invoker).pipe(Effect.withSpan("executor.code.exec"));
   });
 
   return {

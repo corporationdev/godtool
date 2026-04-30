@@ -62,9 +62,7 @@ describe("previewSpec OAuth2 extraction", () => {
       const flow = Option.getOrThrow(flows.authorizationCode);
       expect(flow.authorizationUrl).toBe("https://example.com/oauth/authorize");
       expect(flow.tokenUrl).toBe("https://example.com/oauth/token");
-      expect(Option.getOrElse(flow.refreshUrl, () => "")).toBe(
-        "https://example.com/oauth/refresh",
-      );
+      expect(Option.getOrElse(flow.refreshUrl, () => "")).toBe("https://example.com/oauth/refresh");
       expect(flow.scopes).toEqual({ read: "Read access", write: "Write access" });
 
       // A preset should be generated for this flow.

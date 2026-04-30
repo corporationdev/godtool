@@ -94,13 +94,67 @@ jobs:
 
       - name: Prepare Apple notarization key
         run: |
+          test -n "$CSC_LINK"
+          test -n "$CSC_KEY_PASSWORD"
+          test -n "$APPLE_API_KEY_BASE64"
+          test -n "$APPLE_API_KEY_ID"
+          test -n "$APPLE_API_ISSUER"
           printf '%s' "$APPLE_API_KEY_BASE64" | base64 -d > "$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
           chmod 600 "$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
           echo "APPLE_API_KEY=$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8" >> "$GITHUB_ENV"
+          echo "Prepared Apple signing inputs for ${{ matrix.platform }}-${{ matrix.arch }}."
 
       - name: Build desktop distributables
-        run: npx electron-builder --${{ matrix.platform }} --${{ matrix.arch }}
+        timeout-minutes: 60
+        env:
+          DEBUG: "electron-builder,electron-builder:*,electron-notarize*,@electron/notarize*"
+          ELECTRON_BUILDER_DEBUG: "true"
+        run: |
+          set -o pipefail
+
+          log_path="$RUNNER_TEMP/electron-builder-${{ matrix.platform }}-${{ matrix.arch }}.log"
+          started_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          echo "Starting electron-builder for ${{ matrix.platform }}-${{ matrix.arch }} at ${started_at}."
+          echo "Writing detailed log to ${log_path}."
+
+          (
+            while true; do
+              sleep 60
+              echo "::group::electron-builder heartbeat ${{ matrix.platform }}-${{ matrix.arch }} $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+              ps -axo pid,ppid,etime,command \
+                | grep -E 'electron-builder|app-builder|codesign|notarytool|stapler|hdiutil|ditto|productbuild|xcrun|security' \
+                | grep -v grep \
+                || echo "No matching signing/build subprocesses found."
+              echo "::endgroup::"
+            done
+          ) &
+          heartbeat_pid="$!"
+
+          cleanup() {
+            kill "$heartbeat_pid" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          npx electron-builder --${{ matrix.platform }} --${{ matrix.arch }} 2>&1 | tee "$log_path"
         working-directory: apps/desktop
+
+      - name: Inspect desktop release output
+        if: always()
+        run: |
+          if [ -d release ]; then
+            find release -maxdepth 3 -type f -print -exec ls -lh {} \;
+          else
+            echo "No release directory was created."
+          fi
+        working-directory: apps/desktop
+
+      - name: Upload electron-builder diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-builder-diagnostics-${{ matrix.platform }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/electron-builder-${{ matrix.platform }}-${{ matrix.arch }}.log
+          if-no-files-found: warn
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

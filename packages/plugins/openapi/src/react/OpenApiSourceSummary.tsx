@@ -7,10 +7,7 @@ import { useScope, useScopeStack, useUserScope } from "@executor/react/api/scope
 import { ScopeId } from "@executor/sdk";
 
 import { openApiSourceAtom, openApiSourceBindingsAtom } from "./atoms";
-import {
-  effectiveBindingForScope,
-  missingCredentialLabels,
-} from "../sdk/credential-status";
+import { effectiveBindingForScope, missingCredentialLabels } from "../sdk/credential-status";
 
 function ConnectedBadge() {
   return (
@@ -66,18 +63,13 @@ export default function OpenApiSourceSummary(props: {
     Result.isSuccess(summaryResult) && summaryResult.value?.scopeId
       ? summaryResult.value.scopeId
       : displayScope;
-  const sourceResult = useAtomValue(
-    openApiSourceAtom(ScopeId.make(sourceScopeId), props.sourceId),
-  );
+  const sourceResult = useAtomValue(openApiSourceAtom(ScopeId.make(sourceScopeId), props.sourceId));
   const bindingsResult = useAtomValue(
     openApiSourceBindingsAtom(displayScope, props.sourceId, ScopeId.make(sourceScopeId)),
   );
   const connectionsResult = useAtomValue(connectionsAtom(displayScope));
 
-  const source =
-    Result.isSuccess(sourceResult) && sourceResult.value
-      ? sourceResult.value
-      : null;
+  const source = Result.isSuccess(sourceResult) && sourceResult.value ? sourceResult.value : null;
 
   if (!source) return null;
   const oauth2 = source.config.oauth2;
@@ -92,12 +84,7 @@ export default function OpenApiSourceSummary(props: {
     scopeStack.map((scope, index) => [scope.id as string, index] as const),
   );
   const credentialTargetScope = userScope;
-  const missing = missingCredentialLabels(
-    source,
-    bindings,
-    credentialTargetScope,
-    scopeRanks,
-  );
+  const missing = missingCredentialLabels(source, bindings, credentialTargetScope, scopeRanks);
 
   if (props.variant === "panel") {
     if (missing.length === 0) return null;
@@ -138,10 +125,7 @@ export default function OpenApiSourceSummary(props: {
       ? connectionBinding.value.connectionId
       : null;
 
-  if (
-    connectionId &&
-    connections.some((connection) => connection.id === connectionId)
-  ) {
+  if (connectionId && connections.some((connection) => connection.id === connectionId)) {
     return <ConnectedBadge />;
   }
 

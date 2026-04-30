@@ -111,11 +111,8 @@ export const buildAuthorizationUrl = (input: BuildAuthorizationUrlInput): string
 // Token endpoint response parsing
 // ---------------------------------------------------------------------------
 
-const oauth2Error = (
-  message: string,
-  cause?: unknown,
-  error?: string,
-): OAuth2Error => new OAuth2Error({ message, cause, error });
+const oauth2Error = (message: string, cause?: unknown, error?: string): OAuth2Error =>
+  new OAuth2Error({ message, cause, error });
 
 // ---------------------------------------------------------------------------
 // Schemas
@@ -224,11 +221,7 @@ export const decodeTokenResponse = (
       const description =
         envelope.error_description ?? envelope.error ?? `status ${response.status}`;
       return yield* Effect.fail(
-        oauth2Error(
-          `OAuth token exchange failed: ${description}`,
-          undefined,
-          envelope.error,
-        ),
+        oauth2Error(`OAuth token exchange failed: ${description}`, undefined, envelope.error),
       );
     }
 
@@ -414,4 +407,3 @@ export const shouldRefreshToken = (input: {
   const skew = input.skewMs ?? OAUTH2_REFRESH_SKEW_MS;
   return input.expiresAt <= now + skew;
 };
-

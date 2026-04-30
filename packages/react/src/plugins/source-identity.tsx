@@ -1,11 +1,7 @@
 import { useCallback, useState } from "react";
 import { parse } from "tldts";
 
-import {
-  CardStack,
-  CardStackContent,
-  CardStackEntryField,
-} from "../components/card-stack";
+import { CardStack, CardStackContent, CardStackEntryField } from "../components/card-stack";
 import { Input } from "../components/input";
 import { normalizeNamespaceInput, slugifyNamespace } from "./namespace";
 export { normalizeNamespaceInput, slugifyNamespace } from "./namespace";
@@ -92,6 +88,7 @@ export interface SourceIdentityFieldsProps {
   readonly namespacePlaceholder?: string;
   readonly nameLabel?: string;
   readonly namespaceHint?: string;
+  readonly asEntries?: boolean;
   /**
    * When true, the namespace field is rendered disabled — useful on Edit
    * forms, where the namespace is the source's identity and changing it
@@ -106,6 +103,7 @@ export function SourceIdentityFields({
   namespacePlaceholder = "sentry_api",
   nameLabel = "Display Name",
   namespaceHint,
+  asEntries = false,
   namespaceReadOnly = false,
 }: SourceIdentityFieldsProps) {
   const effectiveNamespaceHint =
@@ -114,31 +112,39 @@ export function SourceIdentityFields({
       ? "The namespace is part of the source's identity and cannot be changed."
       : "Prefix for the tool names. Auto-derived from the display name.");
 
+  const fields = (
+    <>
+      <CardStackEntryField label={nameLabel}>
+        <Input
+          value={identity.name}
+          onChange={(e) => identity.setName((e.target as HTMLInputElement).value)}
+          placeholder={namePlaceholder}
+          className="text-sm"
+        />
+      </CardStackEntryField>
+      <CardStackEntryField
+        label="Namespace"
+        description={namespaceReadOnly ? undefined : "(optional)"}
+        hint={effectiveNamespaceHint}
+      >
+        <Input
+          value={identity.namespace}
+          onChange={(e) => identity.setNamespace((e.target as HTMLInputElement).value)}
+          placeholder={namespacePlaceholder}
+          className="font-mono text-sm"
+          disabled={namespaceReadOnly}
+        />
+      </CardStackEntryField>
+    </>
+  );
+
+  if (asEntries) {
+    return fields;
+  }
+
   return (
     <CardStack>
-      <CardStackContent className="border-t-0">
-        <CardStackEntryField label={nameLabel}>
-          <Input
-            value={identity.name}
-            onChange={(e) => identity.setName((e.target as HTMLInputElement).value)}
-            placeholder={namePlaceholder}
-            className="text-sm"
-          />
-        </CardStackEntryField>
-        <CardStackEntryField
-          label="Namespace"
-          description={namespaceReadOnly ? undefined : "(optional)"}
-          hint={effectiveNamespaceHint}
-        >
-          <Input
-            value={identity.namespace}
-            onChange={(e) => identity.setNamespace((e.target as HTMLInputElement).value)}
-            placeholder={namespacePlaceholder}
-            className="font-mono text-sm"
-            disabled={namespaceReadOnly}
-          />
-        </CardStackEntryField>
-      </CardStackContent>
+      <CardStackContent className="border-t-0">{fields}</CardStackContent>
     </CardStack>
   );
 }

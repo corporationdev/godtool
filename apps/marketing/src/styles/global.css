@@ -327,7 +327,9 @@ body {
   text-decoration: underline;
   text-decoration-color: color-mix(in srgb, var(--color-teal) 35%, transparent);
   text-underline-offset: 3px;
-  transition: color 0.15s ease, text-decoration-color 0.15s ease;
+  transition:
+    color 0.15s ease,
+    text-decoration-color 0.15s ease;
 }
 
 .legal-prose a:hover {

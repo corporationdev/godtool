@@ -3,11 +3,7 @@ import { Schema } from "effect";
 import { ScopeId } from "@executor/sdk";
 import { InternalError } from "@executor/api";
 
-import {
-  McpConnectionError,
-  McpOAuthError,
-  McpToolDiscoveryError,
-} from "../sdk/errors";
+import { McpConnectionError, McpOAuthError, McpToolDiscoveryError } from "../sdk/errors";
 import { McpStoredSourceSchema } from "../sdk/stored-source";
 
 // Re-export for handler use
@@ -228,8 +224,11 @@ export class McpGroup extends HttpApiGroup.make("mcp")
       .addSuccess(HtmlResponse),
   )
   .add(
-    HttpApiEndpoint.get("getSource")`/scopes/${scopeIdParam}/mcp/sources/${namespaceParam}`
-      .addSuccess(Schema.NullOr(McpStoredSourceSchema)),
+    HttpApiEndpoint.get(
+      "getSource",
+    )`/scopes/${scopeIdParam}/mcp/sources/${namespaceParam}`.addSuccess(
+      Schema.NullOr(McpStoredSourceSchema),
+    ),
   )
   .add(
     HttpApiEndpoint.patch("updateSource")`/scopes/${scopeIdParam}/mcp/sources/${namespaceParam}`

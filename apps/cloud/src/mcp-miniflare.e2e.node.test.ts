@@ -58,20 +58,14 @@ const ApproveGroup = HttpApiGroup.make("approve").add(
 const UpstreamApi = HttpApi.make("approveApi").add(ApproveGroup);
 
 const ApproveHandlers = HttpApiBuilder.group(UpstreamApi, "approve", (h) =>
-  h.handle("approveThing", () =>
-    Effect.succeed(new ApprovedResponse({ approved: true })),
-  ),
+  h.handle("approveThing", () => Effect.succeed(new ApprovedResponse({ approved: true }))),
 );
 
-const UpstreamApiLive = HttpApiBuilder.api(UpstreamApi).pipe(
-  Layer.provide(ApproveHandlers),
-);
+const UpstreamApiLive = HttpApiBuilder.api(UpstreamApi).pipe(Layer.provide(ApproveHandlers));
 
 const UpstreamServeLayer = HttpApiBuilder.serve().pipe(
   Layer.provide(UpstreamApiLive),
-  Layer.provideMerge(
-    NodeHttpServer.layer(() => createServer(), { port: 0, host: "127.0.0.1" }),
-  ),
+  Layer.provideMerge(NodeHttpServer.layer(() => createServer(), { port: 0, host: "127.0.0.1" })),
 );
 
 // ---------------------------------------------------------------------------
@@ -187,7 +181,9 @@ const TelemetryReceiverLive = Layer.scoped(
           return;
         }
         let body = "";
-        req.on("data", (chunk) => { body += chunk; });
+        req.on("data", (chunk) => {
+          body += chunk;
+        });
         req.on("end", () => {
           try {
             const payload = JSON.parse(body) as OtlpPayload;
@@ -232,10 +228,7 @@ const TelemetryReceiverLive = Layer.scoped(
     Effect.map((t) => ({
       tracesUrl: t.tracesUrl,
       spans: () => [...t.store],
-      waitForSpan: async (
-        predicate: (s: CapturedSpan) => boolean,
-        timeoutMs = 5_000,
-      ) => {
+      waitForSpan: async (predicate: (s: CapturedSpan) => boolean, timeoutMs = 5_000) => {
         const deadline = Date.now() + timeoutMs;
         for (;;) {
           const hit = t.store.find(predicate);
@@ -327,165 +320,182 @@ const connectClient = async (
 // ---------------------------------------------------------------------------
 
 layer(TestEnv, { timeout: 60_000 })("cloud MCP over real HTTP (miniflare)", (it) => {
-  it.effect("returns 401 for malformed bearer tokens through the production auth layer", () =>
-    Effect.gen(function* () {
-      const { baseUrl } = yield* Worker;
-      const response = yield* Effect.promise(() =>
-        fetch(new URL("/__test__/real-auth-mcp", baseUrl), {
-          method: "POST",
-          headers: {
-            accept: "application/json, text/event-stream",
-            authorization: "Bearer bogus",
-            "content-type": "application/json",
-          },
-          body: JSON.stringify({
-            jsonrpc: "2.0",
-            id: 1,
-            method: "initialize",
-            params: {
-              protocolVersion: "2025-06-18",
-              capabilities: {},
-              clientInfo: { name: "mcp-miniflare-invalid-bearer", version: "0" },
+  it.effect(
+    "returns 401 for malformed bearer tokens through the production auth layer",
+    () =>
+      Effect.gen(function* () {
+        const { baseUrl } = yield* Worker;
+        const response = yield* Effect.promise(() =>
+          fetch(new URL("/__test__/real-auth-mcp", baseUrl), {
+            method: "POST",
+            headers: {
+              accept: "application/json, text/event-stream",
+              authorization: "Bearer bogus",
+              "content-type": "application/json",
             },
+            body: JSON.stringify({
+              jsonrpc: "2.0",
+              id: 1,
+              method: "initialize",
+              params: {
+                protocolVersion: "2025-06-18",
+                capabilities: {},
+                clientInfo: { name: "mcp-miniflare-invalid-bearer", version: "0" },
+              },
+            }),
           }),
-        }),
-      );
-      expect(response.status).toBe(401);
-      expect(response.headers.get("www-authenticate") ?? "").toContain(
-        "https://test-resource.example.com/.well-known/oauth-protected-resource",
-      );
-      const body = yield* Effect.promise(() => response.json());
-      expect(body).toEqual({ error: "unauthorized" });
-    }), 30_000,
+        );
+        expect(response.status).toBe(401);
+        expect(response.headers.get("www-authenticate") ?? "").toContain(
+          "https://test-resource.example.com/.well-known/oauth-protected-resource",
+        );
+        const body = yield* Effect.promise(() => response.json());
+        expect(body).toEqual({ error: "unauthorized" });
+      }),
+    30_000,
   );
 
-  it.effect("completes the initialize handshake via SDK", () =>
-    Effect.gen(function* () {
-      const { baseUrl, seedOrg } = yield* Worker;
-      const orgId = nextOrgId();
-      yield* Effect.promise(() => seedOrg(orgId, "Miniflare Org"));
-      const client = yield* Effect.promise(() =>
-        connectClient(baseUrl, makeTestBearer(nextAccountId(), orgId)),
-      );
-      expect(client.getServerVersion()?.name).toBe("executor");
-      yield* Effect.promise(() => client.close());
-    }), 30_000,
+  it.effect(
+    "completes the initialize handshake via SDK",
+    () =>
+      Effect.gen(function* () {
+        const { baseUrl, seedOrg } = yield* Worker;
+        const orgId = nextOrgId();
+        yield* Effect.promise(() => seedOrg(orgId, "Miniflare Org"));
+        const client = yield* Effect.promise(() =>
+          connectClient(baseUrl, makeTestBearer(nextAccountId(), orgId)),
+        );
+        expect(client.getServerVersion()?.name).toBe("executor");
+        yield* Effect.promise(() => client.close());
+      }),
+    30_000,
   );
 
-  it.effect("lists the execute tool after handshake", () =>
-    Effect.gen(function* () {
-      const { baseUrl, seedOrg } = yield* Worker;
-      const orgId = nextOrgId();
-      yield* Effect.promise(() => seedOrg(orgId, "List Tools Org"));
-      const client = yield* Effect.promise(() =>
-        connectClient(baseUrl, makeTestBearer(nextAccountId(), orgId)),
-      );
-      const { tools } = yield* Effect.promise(() => client.listTools());
-      expect(tools.map((t) => t.name)).toContain("execute");
-      yield* Effect.promise(() => client.close());
-    }), 30_000,
+  it.effect(
+    "lists the execute tool after handshake",
+    () =>
+      Effect.gen(function* () {
+        const { baseUrl, seedOrg } = yield* Worker;
+        const orgId = nextOrgId();
+        yield* Effect.promise(() => seedOrg(orgId, "List Tools Org"));
+        const client = yield* Effect.promise(() =>
+          connectClient(baseUrl, makeTestBearer(nextAccountId(), orgId)),
+        );
+        const { tools } = yield* Effect.promise(() => client.listTools());
+        expect(tools.map((t) => t.name)).toContain("execute");
+        yield* Effect.promise(() => client.close());
+      }),
+    30_000,
   );
 
-  it.effect("executes code end-to-end via tools/call", () =>
-    Effect.gen(function* () {
-      const { baseUrl, seedOrg } = yield* Worker;
-      const orgId = nextOrgId();
-      yield* Effect.promise(() => seedOrg(orgId, "Execute Org"));
-      const client = yield* Effect.promise(() =>
-        connectClient(baseUrl, makeTestBearer(nextAccountId(), orgId)),
-      );
-      const result = yield* Effect.promise(() =>
-        client.callTool({ name: "execute", arguments: { code: "return 1 + 2" } }),
-      );
-      expect(result.isError).not.toBe(true);
-      const content = (result.content ?? []) as Array<{ type: string; text?: string }>;
-      expect(content.find((c) => c.type === "text")?.text ?? "").toContain("3");
-      yield* Effect.promise(() => client.close());
-    }), 30_000,
+  it.effect(
+    "executes code end-to-end via tools/call",
+    () =>
+      Effect.gen(function* () {
+        const { baseUrl, seedOrg } = yield* Worker;
+        const orgId = nextOrgId();
+        yield* Effect.promise(() => seedOrg(orgId, "Execute Org"));
+        const client = yield* Effect.promise(() =>
+          connectClient(baseUrl, makeTestBearer(nextAccountId(), orgId)),
+        );
+        const result = yield* Effect.promise(() =>
+          client.callTool({ name: "execute", arguments: { code: "return 1 + 2" } }),
+        );
+        expect(result.isError).not.toBe(true);
+        const content = (result.content ?? []) as Array<{ type: string; text?: string }>;
+        expect(content.find((c) => c.type === "text")?.text ?? "").toContain("3");
+        yield* Effect.promise(() => client.close());
+      }),
+    30_000,
   );
 
-  it.effect("round-trips approval elicitation for a POST openapi operation", () =>
-    Effect.gen(function* () {
-      const { baseUrl, seedOrg } = yield* Worker;
-      const { specJson } = yield* Upstream;
-      const orgId = nextOrgId();
-      yield* Effect.promise(() => seedOrg(orgId, "Elicit Org"));
+  it.effect(
+    "round-trips approval elicitation for a POST openapi operation",
+    () =>
+      Effect.gen(function* () {
+        const { baseUrl, seedOrg } = yield* Worker;
+        const { specJson } = yield* Upstream;
+        const orgId = nextOrgId();
+        yield* Effect.promise(() => seedOrg(orgId, "Elicit Org"));
 
-      const client = yield* Effect.promise(() =>
-        connectClient(baseUrl, makeTestBearer(nextAccountId(), orgId), {
-          withElicitation: true,
-        }),
-      );
+        const client = yield* Effect.promise(() =>
+          connectClient(baseUrl, makeTestBearer(nextAccountId(), orgId), {
+            withElicitation: true,
+          }),
+        );
 
-      let elicitCount = 0;
-      client.setRequestHandler(ElicitRequestSchema, async () => {
-        elicitCount++;
-        return { action: "accept" as const, content: {} };
-      });
+        let elicitCount = 0;
+        client.setRequestHandler(ElicitRequestSchema, async () => {
+          elicitCount++;
+          return { action: "accept" as const, content: {} };
+        });
 
-      // User code inside `execute` (1) registers the upstream as an OpenAPI
-      // source and (2) invokes its POST operation. `annotationsForOperation`
-      // marks the POST as `requiresApproval: true`, which fires
-      // `enforceApproval` in the executor; that goes through the MCP
-      // elicitation handler and lands on `client.setRequestHandler` above.
-      // Tool id is `<namespace>.<group>.<operation>` — Effect's
-      // `HttpApiGroup` name ("approve") becomes part of the sandbox path,
-      // so the invocation reads `tools.approveapi.approve.approveThing`.
-      const code = [
-        `await tools.openapi.addSource({ spec: ${JSON.stringify(specJson)}, namespace: "approveapi" });`,
-        `return await tools.approveapi.approve.approveThing({});`,
-      ].join("\n");
-      const result = yield* Effect.promise(() =>
-        client.callTool({ name: "execute", arguments: { code } }),
-      );
-      expect(result.isError).not.toBe(true);
-      expect(elicitCount).toBeGreaterThan(0);
-      const text = ((result.content ?? []) as Array<{ type: string; text?: string }>)
-        .find((c) => c.type === "text")?.text ?? "";
-      expect(text).toContain("approved");
+        // User code inside `execute` (1) registers the upstream as an OpenAPI
+        // source and (2) invokes its POST operation. `annotationsForOperation`
+        // marks the POST as `requiresApproval: true`, which fires
+        // `enforceApproval` in the executor; that goes through the MCP
+        // elicitation handler and lands on `client.setRequestHandler` above.
+        // Tool id is `<namespace>.<group>.<operation>` — Effect's
+        // `HttpApiGroup` name ("approve") becomes part of the sandbox path,
+        // so the invocation reads `tools.approveapi.approve.approveThing`.
+        const code = [
+          `await tools.openapi.addSource({ spec: ${JSON.stringify(specJson)}, namespace: "approveapi" });`,
+          `return await tools.approveapi.approve.approveThing({});`,
+        ].join("\n");
+        const result = yield* Effect.promise(() =>
+          client.callTool({ name: "execute", arguments: { code } }),
+        );
+        expect(result.isError).not.toBe(true);
+        expect(elicitCount).toBeGreaterThan(0);
+        const text =
+          ((result.content ?? []) as Array<{ type: string; text?: string }>).find(
+            (c) => c.type === "text",
+          )?.text ?? "";
+        expect(text).toContain("approved");
 
-      yield* Effect.promise(() => client.close());
-    }), 30_000,
+        yield* Effect.promise(() => client.close());
+      }),
+    30_000,
   );
 
-  it.effect("reports the McpSessionDO.handleRequest span via the OTLP exporter", () =>
-    Effect.gen(function* () {
-      const { baseUrl, seedOrg } = yield* Worker;
-      const receiver = yield* TelemetryReceiver;
-      const orgId = nextOrgId();
-      yield* Effect.promise(() => seedOrg(orgId, "Telemetry Org"));
-      const client = yield* Effect.promise(() =>
-        connectClient(baseUrl, makeTestBearer(nextAccountId(), orgId)),
-      );
-      // Trigger the DO through a multi-step flow so we can assert that
-      // handleRequest spans are reported for every DO hit, not just init.
-      yield* Effect.promise(() => client.listTools());
-      yield* Effect.promise(() =>
-        client.callTool({ name: "execute", arguments: { code: "return 1 + 2" } }),
-      );
-      yield* Effect.promise(() => client.close());
+  it.effect(
+    "reports the McpSessionDO.handleRequest span via the OTLP exporter",
+    () =>
+      Effect.gen(function* () {
+        const { baseUrl, seedOrg } = yield* Worker;
+        const receiver = yield* TelemetryReceiver;
+        const orgId = nextOrgId();
+        yield* Effect.promise(() => seedOrg(orgId, "Telemetry Org"));
+        const client = yield* Effect.promise(() =>
+          connectClient(baseUrl, makeTestBearer(nextAccountId(), orgId)),
+        );
+        // Trigger the DO through a multi-step flow so we can assert that
+        // handleRequest spans are reported for every DO hit, not just init.
+        yield* Effect.promise(() => client.listTools());
+        yield* Effect.promise(() =>
+          client.callTool({ name: "execute", arguments: { code: "return 1 + 2" } }),
+        );
+        yield* Effect.promise(() => client.close());
 
-      // The initialize POST carries no session-id; subsequent requests do.
-      // Assert on one of the session-id'd handleRequest spans so we verify
-      // attribute propagation beyond the degenerate init case.
-      const handleSpan = yield* Effect.promise(() =>
-        receiver.waitForSpan(
-          (s) =>
-            s.name === "McpSessionDO.handleRequest" &&
-            s.attributes["mcp.request.session_id_present"] === true,
-        ),
-      );
-      expect(handleSpan.attributes["mcp.request.method"]).toBeDefined();
-      // 200 for normal POSTs, 202 for notifications/initialized.
-      expect([200, 202]).toContain(handleSpan.attributes["mcp.response.status_code"]);
-      expect(handleSpan.attributes["mcp.response.content_type"]).toEqual(expect.any(String));
-      expect(handleSpan.attributes["mcp.transport.enable_json_response"]).toBe(true);
+        // The initialize POST carries no session-id; subsequent requests do.
+        // Assert on one of the session-id'd handleRequest spans so we verify
+        // attribute propagation beyond the degenerate init case.
+        const handleSpan = yield* Effect.promise(() =>
+          receiver.waitForSpan(
+            (s) =>
+              s.name === "McpSessionDO.handleRequest" &&
+              s.attributes["mcp.request.session_id_present"] === true,
+          ),
+        );
+        expect(handleSpan.attributes["mcp.request.method"]).toBeDefined();
+        // 200 for normal POSTs, 202 for notifications/initialized.
+        expect([200, 202]).toContain(handleSpan.attributes["mcp.response.status_code"]);
+        expect(handleSpan.attributes["mcp.response.content_type"]).toEqual(expect.any(String));
+        expect(handleSpan.attributes["mcp.transport.enable_json_response"]).toBe(true);
 
-      // init runs once per new session and should appear on the initialize POST.
-      yield* Effect.promise(() =>
-        receiver.waitForSpan((s) => s.name === "McpSessionDO.init"),
-      );
-    }), 30_000,
+        // init runs once per new session and should appear on the initialize POST.
+        yield* Effect.promise(() => receiver.waitForSpan((s) => s.name === "McpSessionDO.init"));
+      }),
+    30_000,
   );
-
 });

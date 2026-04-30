@@ -20,9 +20,7 @@ const makeRecorder = (traceId = "trace-xyz") =>
       ErrorCapture,
       ErrorCapture.of({
         captureException: (cause) =>
-          Ref.update(seen, (prev) => [...prev, cause]).pipe(
-            Effect.as(traceId),
-          ),
+          Ref.update(seen, (prev) => [...prev, cause]).pipe(Effect.as(traceId)),
       }),
     );
     return { layer, seen };
@@ -58,16 +56,18 @@ describe("capture", () => {
     }),
   );
 
-  it.effect("UniqueViolationError dies (becomes a defect — plugins should catchTag before returning)", () =>
-    Effect.gen(function* () {
-      const err = new UniqueViolationError({ model: "thing" });
-      const exit = yield* Effect.exit(capture(Effect.fail(err)));
-      expect(exit._tag).toBe("Failure");
-      if (exit._tag === "Failure") {
-        const defects = Cause.defects(exit.cause);
-        expect(Array.from(defects)[0]).toBeInstanceOf(UniqueViolationError);
-      }
-    }),
+  it.effect(
+    "UniqueViolationError dies (becomes a defect — plugins should catchTag before returning)",
+    () =>
+      Effect.gen(function* () {
+        const err = new UniqueViolationError({ model: "thing" });
+        const exit = yield* Effect.exit(capture(Effect.fail(err)));
+        expect(exit._tag).toBe("Failure");
+        if (exit._tag === "Failure") {
+          const defects = Cause.defects(exit.cause);
+          expect(Array.from(defects)[0]).toBeInstanceOf(UniqueViolationError);
+        }
+      }),
   );
 
   it.effect("non-storage typed failures pass through unchanged", () =>
@@ -75,13 +75,9 @@ describe("capture", () => {
       class DomainError {
         readonly _tag = "DomainError" as const;
       }
-      const eff = Effect.fail(new DomainError()) as Effect.Effect<
-        never,
-        DomainError
-      >;
+      const eff = Effect.fail(new DomainError()) as Effect.Effect<never, DomainError>;
       const result = yield* Effect.flip(capture(eff));
       expect(result._tag).toBe("DomainError");
     }),
   );
 });
-

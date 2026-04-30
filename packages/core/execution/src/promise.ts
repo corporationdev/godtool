@@ -28,13 +28,9 @@ import {
   type ResumeResponse,
 } from "./engine";
 
-export type ElicitationHandler = (
-  ctx: ElicitationContext,
-) => Promise<ElicitationResponse>;
+export type ElicitationHandler = (ctx: ElicitationContext) => Promise<ElicitationResponse>;
 
-export type ExecutionEngineConfig<
-  E extends Cause.YieldableError = CodeExecutionError,
-> = {
+export type ExecutionEngineConfig<E extends Cause.YieldableError = CodeExecutionError> = {
   readonly executor: PromiseExecutor;
   readonly codeExecutor: CodeExecutor<E>;
 };
@@ -111,9 +107,7 @@ export const toPromiseExecutionEngine = <E extends Cause.YieldableError>(
   getDescription: () => Effect.runPromise(engine.getDescription),
 });
 
-export const createExecutionEngine = <
-  E extends Cause.YieldableError = CodeExecutionError,
->(
+export const createExecutionEngine = <E extends Cause.YieldableError = CodeExecutionError>(
   config: ExecutionEngineConfig<E>,
 ): ExecutionEngine =>
   toPromiseExecutionEngine(

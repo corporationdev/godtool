@@ -10,15 +10,15 @@ scopes by construction.
 
 - **SDK** — `createExecutor({ scope: Scope, adapter, blobs, plugins })`.
   One `Scope` per executor instance. `scopeAdapter(rootAdapter, {...},
-  schema)` wraps the adapter before it reaches plugin storage or the
+schema)` wraps the adapter before it reaches plugin storage or the
   core-table writers. Every read on a scoped table gets `where scope_id
-  = scope.id` ANDed in; every write gets `scope_id = scope.id` stamped
+= scope.id` ANDed in; every write gets `scope_id = scope.id` stamped
   into the payload. Tx handles passed into transaction callbacks are
   also wrapped, so nested writes stay inside the same scope.
 
 - **Plugins** — see a plain `DBAdapter`. They do not know or care about
   scope. Every plugin schema that wants isolation declares `scope_id:
-  { type: "string", required: true, index: true }`. Forgetting the
+{ type: "string", required: true, index: true }`. Forgetting the
   column means the adapter passes the plugin's reads/writes through
   unscoped (documented failure mode, not silent) — tests catch the
   concrete cases we care about.
@@ -44,8 +44,8 @@ sources, tools, secrets, and plugin-owned source detail lookups.
 
 ```ts
 interface ScopeContext {
-  readonly read: readonly string[];  // precedence-ordered, innermost first
-  readonly write: string;             // exactly one scope for writes
+  readonly read: readonly string[]; // precedence-ordered, innermost first
+  readonly write: string; // exactly one scope for writes
 }
 ```
 
@@ -91,7 +91,7 @@ Writes land in exactly one scope chosen by the caller.
   there. When a user invokes Gmail, secret resolution walks the scope
   stack (user → workspace → org) and only finds a token if that user
   personally oauthed. Policy on the source row — `auth_scope_mandate:
-  "user"` — forces this: secret lookup refuses to return
+"user"` — forces this: secret lookup refuses to return
   workspace-level tokens even if one existed.
 
 - **Local global + per-folder.** `~/.godtool/global` holds the outer

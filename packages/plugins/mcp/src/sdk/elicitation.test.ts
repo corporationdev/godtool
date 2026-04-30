@@ -203,8 +203,7 @@ describe("MCP elicitation (end-to-end)", () => {
         gatedEcho.id,
         { value: "nope" },
         {
-          onElicitation: () =>
-            Effect.succeed(new ElicitationResponse({ action: "decline" })),
+          onElicitation: () => Effect.succeed(new ElicitationResponse({ action: "decline" })),
         },
       );
 

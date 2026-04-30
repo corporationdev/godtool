@@ -22,9 +22,7 @@ export type OAuthPopupResult<TAuth> =
       readonly error: string;
     };
 
-export const isOAuthPopupResult = <TAuth>(
-  value: unknown,
-): value is OAuthPopupResult<TAuth> =>
+export const isOAuthPopupResult = <TAuth>(value: unknown): value is OAuthPopupResult<TAuth> =>
   typeof value === "object" &&
   value !== null &&
   (value as { type?: unknown }).type === OAUTH_POPUP_MESSAGE_TYPE;

@@ -50,22 +50,17 @@ export default function McpSignInButton(props: { sourceId: string }) {
 
   useEffect(() => () => cleanupRef.current?.(), []);
 
-  const source =
-    Result.isSuccess(sourceResult) && sourceResult.value ? sourceResult.value : null;
+  const source = Result.isSuccess(sourceResult) && sourceResult.value ? sourceResult.value : null;
   const remote = source && source.config.transport === "remote" ? source.config : null;
   const oauth2 = remote && remote.auth.kind === "oauth2" ? remote.auth : null;
-  const connections = Result.isSuccess(connectionsResult)
-    ? connectionsResult.value
-    : null;
+  const connections = Result.isSuccess(connectionsResult) ? connectionsResult.value : null;
   const isConnected =
     oauth2 !== null &&
     connections !== null &&
     connections.some((c) => c.id === oauth2.connectionId);
 
   const redirectUrl =
-    typeof window !== "undefined"
-      ? `${window.location.origin}${CALLBACK_PATH}`
-      : CALLBACK_PATH;
+    typeof window !== "undefined" ? `${window.location.origin}${CALLBACK_PATH}` : CALLBACK_PATH;
 
   const handleSignIn = useCallback(async () => {
     if (!remote || !oauth2 || !source) return;
@@ -107,9 +102,7 @@ export default function McpSignInButton(props: { sourceId: string }) {
             setBusy(false);
           } catch (e) {
             setBusy(false);
-            setError(
-              e instanceof Error ? e.message : "Failed to persist new connection",
-            );
+            setError(e instanceof Error ? e.message : "Failed to persist new connection");
           }
         },
         onClosed: () => {
@@ -134,12 +127,7 @@ export default function McpSignInButton(props: { sourceId: string }) {
   return (
     <div className="flex items-center gap-2">
       {error && <span className="text-xs text-destructive">{error}</span>}
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => void handleSignIn()}
-        disabled={busy}
-      >
+      <Button variant="outline" size="sm" onClick={() => void handleSignIn()} disabled={busy}>
         {busy
           ? isConnected
             ? "Reconnecting…"

@@ -32,12 +32,16 @@ export class ComputerUseGroup extends HttpApiGroup.make("computerUse")
     ),
   )
   .add(
-    HttpApiEndpoint.post("requestAccessibilityPermission")`/scopes/${scopeIdParam}/computer-use/permissions/accessibility/request`.addSuccess(
+    HttpApiEndpoint.post(
+      "requestAccessibilityPermission",
+    )`/scopes/${scopeIdParam}/computer-use/permissions/accessibility/request`.addSuccess(
       PermissionStatus,
     ),
   )
   .add(
-    HttpApiEndpoint.post("requestScreenRecordingPermission")`/scopes/${scopeIdParam}/computer-use/permissions/screen-recording/request`.addSuccess(
+    HttpApiEndpoint.post(
+      "requestScreenRecordingPermission",
+    )`/scopes/${scopeIdParam}/computer-use/permissions/screen-recording/request`.addSuccess(
       PermissionStatus,
     ),
   )

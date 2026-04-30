@@ -2,19 +2,10 @@ import { Effect } from "effect";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { relations, sql } from "drizzle-orm";
-import {
-  sqliteTable,
-  text,
-  real,
-  integer,
-  getTableConfig,
-} from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, real, integer, getTableConfig } from "drizzle-orm/sqlite-core";
 
 import type { DBAdapter } from "@executor/storage-core";
-import {
-  conformanceSchema,
-  runAdapterConformance,
-} from "@executor/storage-core/testing";
+import { conformanceSchema, runAdapterConformance } from "@executor/storage-core/testing";
 
 import { makeSqliteAdapter } from "./index";
 
@@ -90,11 +81,7 @@ const bootstrapTables = (
         if (col.isUnique) parts.push("UNIQUE");
         return parts.join(" ");
       });
-      db.run(
-        sql.raw(
-          `CREATE TABLE IF NOT EXISTS "${config.name}" (${cols.join(", ")})`,
-        ),
-      );
+      db.run(sql.raw(`CREATE TABLE IF NOT EXISTS "${config.name}" (${cols.join(", ")})`));
     } catch {
       // Not a table (e.g. relations) — skip
     }
