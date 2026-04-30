@@ -56,18 +56,8 @@ jobs:
         with:
           project_id: ${{ env.NEON_PROJECT_ID }}
           branch_name: preview/${{ steps.clean-branch-name.outputs.clean_branch_name }}
-          parent_branch: production
           role: neondb_owner
           api_key: ${{ env.NEON_API_KEY }}
-
-      - name: Get migration database URL
-        uses: ./.github/actions/get-neon-connection-string
-        with:
-          branch: ${{ steps.create-database-branch.outputs.branch_id }}
-          project_id: ${{ env.NEON_PROJECT_ID }}
-          role: neondb_owner
-          api_key: ${{ env.NEON_API_KEY }}
-          pooled: "false"
 
       - name: Inject secrets
         uses: ./.github/actions/inject-secrets
@@ -77,6 +67,8 @@ jobs:
 
       - name: Run preview migrations
         run: bun run db:migrate:prod:ci
+        env:
+          DATABASE_URL: ${{ steps.create-database-branch.outputs.db_url }}
 
   deploy:
     name: Deploy Preview
