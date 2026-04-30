@@ -274,12 +274,6 @@ const main = async () => {
     channel,
     assetPaths,
   });
-
-  await runCommand({
-    command: "bun",
-    args: ["run", "src/build.ts", "publish", channel],
-    cwd: cliRoot,
-  });
 };
 
 await main();
