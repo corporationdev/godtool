@@ -133,6 +133,11 @@ export async function startServer(opts: StartServerOptions = {}): Promise<Server
         return handlers.mcp.handleRequest(req);
       }
 
+      if (url.pathname.startsWith("/api/__desktop/")) {
+        url.pathname = url.pathname.slice("/api/__desktop".length) || "/";
+        return handlers.desktopRpc.handler(new Request(url, req));
+      }
+
       if (url.pathname.startsWith("/api/") || url.pathname === "/api") {
         url.pathname = url.pathname.slice("/api".length) || "/";
         return handlers.api.handler(new Request(url, req));
@@ -166,5 +171,5 @@ export async function startServer(opts: StartServerOptions = {}): Promise<Server
 
 if (import.meta.main) {
   const server = await startServer();
-  console.log(`Executor listening on http://localhost:${server.port}`);
+  console.log(`GOD TOOL listening on http://localhost:${server.port}`);
 }

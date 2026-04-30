@@ -87,6 +87,9 @@ export type ServerHandlers = {
     readonly handler: (request: Request) => Promise<Response>;
     readonly dispose: () => Promise<void>;
   };
+  readonly desktopRpc: {
+    readonly handler: (request: Request) => Promise<Response>;
+  };
   readonly mcp: McpRequestHandler;
 };
 
@@ -95,6 +98,69 @@ const closeServerHandlers = async (handlers: ServerHandlers): Promise<void> => {
     handlers.api.dispose().catch(() => undefined),
     handlers.mcp.close().catch(() => undefined),
   ]);
+};
+
+const json = (body: unknown, init?: ResponseInit) =>
+  new Response(JSON.stringify(body), {
+    ...init,
+    headers: {
+      "content-type": "application/json",
+      ...init?.headers,
+    },
+  });
+
+const errorMessage = (error: unknown): string => {
+  if (error instanceof Error) return error.message;
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof error.message === "string"
+  ) {
+    return error.message;
+  }
+  return String(error);
+};
+
+export const makeDesktopRpcHandler = (
+  engine: ReturnType<typeof createExecutionEngine>,
+  desktopSecret: string | undefined,
+) => {
+  return async (request: Request): Promise<Response> => {
+    const url = new URL(request.url);
+    if (url.pathname !== "/execute") return json({ error: "not_found" }, { status: 404 });
+    if (request.method !== "POST") {
+      return json({ error: "method_not_allowed" }, { status: 405 });
+    }
+    if (!desktopSecret || request.headers.get("x-desktop-secret") !== desktopSecret) {
+      return json({ error: "unauthorized" }, { status: 401 });
+    }
+
+    const payload = (await request.json().catch(() => null)) as { readonly code?: unknown } | null;
+    if (!payload || typeof payload.code !== "string") {
+      return json({ error: "invalid_request" }, { status: 400 });
+    }
+
+    try {
+      const outcome = await Effect.runPromise(engine.executeWithPause(payload.code));
+      if (outcome.status === "completed") {
+        return json({
+          status: "completed",
+          result: outcome.result,
+        });
+      }
+
+      return json(
+        {
+          status: "error",
+          error: `Execution paused locally and cannot be resumed over the desktop device RPC yet: ${outcome.execution.elicitationContext.request.message}`,
+        },
+        { status: 409 },
+      );
+    } catch (error) {
+      return json({ status: "error", error: errorMessage(error) }, { status: 500 });
+    }
+  };
 };
 
 export const createServerHandlers = async (): Promise<ServerHandlers> => {
@@ -127,8 +193,12 @@ export const createServerHandlers = async (): Promise<ServerHandlers> => {
   );
 
   const mcp = createMcpRequestHandler({ engine });
+  const executeHandler = makeDesktopRpcHandler(engine, process.env.GODTOOL_DESKTOP_RPC_SECRET);
+  const desktopRpc = {
+    handler: executeHandler,
+  };
 
-  return { api, mcp };
+  return { api, desktopRpc, mcp };
 };
 
 export class ServerHandlersService extends Context.Tag("@executor/local/ServerHandlersService")<

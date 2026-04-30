@@ -1,0 +1,22 @@
+name: Inject Secrets
+description: Resolve 1Password secrets into generated .env files
+
+inputs:
+  stage:
+    description: "Deployment stage (for example: dev-isaac-1234abcd, preview-branch, prod)"
+    required: true
+  op-service-account-token:
+    description: 1Password Service Account Token
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: 1password/install-cli-action@v1
+
+    - name: Inject secrets
+      shell: bash
+      run: |
+        bun run secrets:inject --stage "${{ inputs.stage }}"
+      env:
+        OP_SERVICE_ACCOUNT_TOKEN: ${{ inputs.op-service-account-token }}

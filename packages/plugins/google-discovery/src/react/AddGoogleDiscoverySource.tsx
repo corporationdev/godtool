@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAtomSet, useAtomValue, Result } from "@effect-atom/atom-react";
 
+import { openOAuthPopup, type OAuthPopupResult } from "@executor/plugin-oauth2/react";
 import {
-  openOAuthPopup,
-  type OAuthPopupResult,
-} from "@executor/plugin-oauth2/react";
+  startManagedAuthConnect,
+  isDesktopManagedAuth,
+  useManagedAuthAccess,
+  type ManagedAuthConnectResult,
+} from "@executor/react/plugins/managed-auth";
 
 import { secretsAtom, setSecret } from "@executor/react/api/atoms";
 import { usePendingSources } from "@executor/react/api/optimistic";
@@ -47,7 +50,11 @@ import { RadioGroup, RadioGroupItem } from "@executor/react/components/radio-gro
 import { IOSSpinner, Spinner } from "@executor/react/components/spinner";
 import { addGoogleDiscoverySource, probeGoogleDiscovery, startGoogleDiscoveryOAuth } from "./atoms";
 
-type GoogleAuthKind = "none" | "oauth2";
+type GoogleAuthKind = "none" | "oauth2" | "managed";
+
+const goToBilling = () => {
+  window.location.href = "/settings/billing";
+};
 
 // ---------------------------------------------------------------------------
 // Inline secret creation
@@ -206,6 +213,7 @@ type GoogleDiscoveryTemplate = {
   service: string;
   version: string;
   discoveryUrl: string;
+  composioApp?: string;
 };
 
 const defaultGoogleDiscoveryUrl = (service: string, version: string): string =>
@@ -225,6 +233,7 @@ const GOOGLE_DISCOVERY_TEMPLATES: readonly GoogleDiscoveryTemplate[] = [
     service: "calendar",
     version: "v3",
     discoveryUrl: "https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest",
+    composioApp: "googlecalendar",
   }),
   googleDiscoveryTemplate({
     id: "google-drive",
@@ -233,6 +242,7 @@ const GOOGLE_DISCOVERY_TEMPLATES: readonly GoogleDiscoveryTemplate[] = [
     service: "drive",
     version: "v3",
     discoveryUrl: defaultGoogleDiscoveryUrl("drive", "v3"),
+    composioApp: "googledrive",
   }),
   googleDiscoveryTemplate({
     id: "google-gmail",
@@ -241,6 +251,7 @@ const GOOGLE_DISCOVERY_TEMPLATES: readonly GoogleDiscoveryTemplate[] = [
     service: "gmail",
     version: "v1",
     discoveryUrl: "https://www.googleapis.com/discovery/v1/apis/gmail/v1/rest",
+    composioApp: "gmail",
   }),
   googleDiscoveryTemplate({
     id: "google-docs",
@@ -249,6 +260,7 @@ const GOOGLE_DISCOVERY_TEMPLATES: readonly GoogleDiscoveryTemplate[] = [
     service: "docs",
     version: "v1",
     discoveryUrl: "https://www.googleapis.com/discovery/v1/apis/docs/v1/rest",
+    composioApp: "googledocs",
   }),
   googleDiscoveryTemplate({
     id: "google-sheets",
@@ -257,6 +269,7 @@ const GOOGLE_DISCOVERY_TEMPLATES: readonly GoogleDiscoveryTemplate[] = [
     service: "sheets",
     version: "v4",
     discoveryUrl: "https://www.googleapis.com/discovery/v1/apis/sheets/v4/rest",
+    composioApp: "googlesheets",
   }),
   googleDiscoveryTemplate({
     id: "google-slides",
@@ -265,6 +278,7 @@ const GOOGLE_DISCOVERY_TEMPLATES: readonly GoogleDiscoveryTemplate[] = [
     service: "slides",
     version: "v1",
     discoveryUrl: "https://www.googleapis.com/discovery/v1/apis/slides/v1/rest",
+    composioApp: "googleslides",
   }),
   googleDiscoveryTemplate({
     id: "google-forms",
@@ -289,6 +303,7 @@ const GOOGLE_DISCOVERY_TEMPLATES: readonly GoogleDiscoveryTemplate[] = [
     service: "tasks",
     version: "v1",
     discoveryUrl: "https://www.googleapis.com/discovery/v1/apis/tasks/v1/rest",
+    composioApp: "googletasks",
   }),
   googleDiscoveryTemplate({
     id: "google-chat",
@@ -305,6 +320,7 @@ const GOOGLE_DISCOVERY_TEMPLATES: readonly GoogleDiscoveryTemplate[] = [
     service: "bigquery",
     version: "v2",
     discoveryUrl: "https://www.googleapis.com/discovery/v1/apis/bigquery/v2/rest",
+    composioApp: "googlebigquery",
   }),
   googleDiscoveryTemplate({
     id: "google-youtube",
@@ -313,6 +329,7 @@ const GOOGLE_DISCOVERY_TEMPLATES: readonly GoogleDiscoveryTemplate[] = [
     service: "youtube",
     version: "v3",
     discoveryUrl: "https://www.googleapis.com/discovery/v1/apis/youtube/v3/rest",
+    composioApp: "youtube",
   }),
 ];
 
@@ -380,21 +397,34 @@ const OAUTH_RESULT_CHANNEL = "executor:google-discovery-oauth-result";
 const OAUTH_POPUP_NAME = "google-discovery-oauth";
 
 export default function AddGoogleDiscoverySource(props: {
-  readonly onComplete: () => void;
+  readonly onComplete: (sourceId?: string) => void;
   readonly onCancel: () => void;
   readonly initialUrl?: string;
+  readonly initialPreset?: string;
 }) {
   const defaultTemplate =
     GOOGLE_DISCOVERY_TEMPLATES.find((template) => template.id === "google-sheets") ??
     GOOGLE_DISCOVERY_TEMPLATES[0]!;
+  const initialTemplate =
+    (props.initialPreset
+      ? GOOGLE_DISCOVERY_TEMPLATES.find((template) => template.id === props.initialPreset)
+      : null) ??
+    (props.initialUrl
+      ? GOOGLE_DISCOVERY_TEMPLATES.find((template) => template.discoveryUrl === props.initialUrl)
+      : null);
   const [discoveryUrl, setDiscoveryUrl] = useState(
-    props.initialUrl ?? defaultTemplate.discoveryUrl,
+    props.initialUrl ?? initialTemplate?.discoveryUrl ?? defaultTemplate.discoveryUrl,
   );
   const [selectedTemplateId, setSelectedTemplateId] = useState(
-    props.initialUrl ? "" : defaultTemplate.id,
+    initialTemplate?.id ?? (props.initialUrl ? "" : defaultTemplate.id),
   );
   const selectedTemplate =
     GOOGLE_DISCOVERY_TEMPLATES.find((template) => template.id === selectedTemplateId) ?? null;
+  const matchedTemplate =
+    GOOGLE_DISCOVERY_TEMPLATES.find((template) => template.discoveryUrl === discoveryUrl.trim()) ??
+    null;
+  const activeTemplate = selectedTemplate ?? matchedTemplate;
+  const managedAuthApp = activeTemplate?.composioApp ?? null;
   const [authKind, setAuthKind] = useState<GoogleAuthKind>("oauth2");
   const [clientIdSecretId, setClientIdSecretId] = useState<string | null>(null);
   const [clientSecretSecretId, setClientSecretSecretId] = useState<string | null>(null);
@@ -403,8 +433,10 @@ export default function AddGoogleDiscoverySource(props: {
     fallbackName: probe?.name ?? selectedTemplate?.name ?? "",
   });
   const [oauthAuth, setOauthAuth] = useState<OAuthAuth | null>(null);
+  const [managedAuth, setManagedAuth] = useState<ManagedAuthConnectResult | null>(null);
   const [loadingProbe, setLoadingProbe] = useState(false);
   const [startingOAuth, setStartingOAuth] = useState(false);
+  const [startingManagedAuth, setStartingManagedAuth] = useState(false);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showScopes, setShowScopes] = useState(false);
@@ -415,6 +447,7 @@ export default function AddGoogleDiscoverySource(props: {
   const doStartOAuth = useAtomSet(startGoogleDiscoveryOAuth, { mode: "promise" });
   const secrets = useAtomValue(secretsAtom(scopeId));
   const { beginAdd } = usePendingSources();
+  const managedAuthAccess = useManagedAuthAccess();
 
   const canUseOAuth = useMemo(() => (probe?.scopes.length ?? 0) > 0, [probe]);
   const secretList: readonly SecretPickerSecret[] = Result.match(secrets, {
@@ -436,6 +469,7 @@ export default function AddGoogleDiscoverySource(props: {
       setClientSecretSecretId(null);
       setProbe(null);
       setOauthAuth(null);
+      setManagedAuth(null);
       setError(null);
       setShowScopes(false);
       setAuthKind("oauth2");
@@ -443,10 +477,17 @@ export default function AddGoogleDiscoverySource(props: {
     [identity],
   );
 
+  useEffect(() => {
+    if (authKind === "managed" && !managedAuthApp) {
+      setAuthKind("oauth2");
+    }
+  }, [authKind, managedAuthApp]);
+
   const handleProbe = useCallback(async () => {
     setLoadingProbe(true);
     setError(null);
     setOauthAuth(null);
+    setManagedAuth(null);
     setShowScopes(false);
     try {
       const result = await doProbe({
@@ -538,13 +579,39 @@ export default function AddGoogleDiscoverySource(props: {
       setStartingOAuth(false);
       setError(e instanceof Error ? e.message : "Failed to start OAuth");
     }
-  }, [probe, doStartOAuth, scopeId, identity, discoveryUrl, clientIdSecretId, clientSecretSecretId]);
+  }, [
+    probe,
+    doStartOAuth,
+    scopeId,
+    identity,
+    discoveryUrl,
+    clientIdSecretId,
+    clientSecretSecretId,
+  ]);
 
   const handleCancelOAuth = useCallback(() => {
     oauthCleanup.current?.();
     oauthCleanup.current = null;
     setStartingOAuth(false);
   }, []);
+
+  const handleStartManagedAuth = useCallback(async () => {
+    if (!probe || !managedAuthApp) return;
+    setStartingManagedAuth(true);
+    setError(null);
+    try {
+      const result = await startManagedAuthConnect({
+        app: managedAuthApp,
+        provider: "google-discovery-composio",
+        placement: isDesktopManagedAuth() ? "local" : "cloud",
+      });
+      setManagedAuth(result);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to start managed auth");
+    } finally {
+      setStartingManagedAuth(false);
+    }
+  }, [managedAuthApp, probe]);
 
   const handleAdd = useCallback(async () => {
     if (!probe) return;
@@ -558,36 +625,55 @@ export default function AddGoogleDiscoverySource(props: {
       kind: "google-discovery",
     });
     try {
-      await doAdd({
+      const result = await doAdd({
         path: { scopeId },
         payload: {
           name: displayName,
           discoveryUrl: discoveryUrl.trim(),
           namespace: slugifyNamespace(identity.namespace) || undefined,
           auth:
-            authKind === "oauth2" && oauthAuth
-              ? {
-                  kind: "oauth2" as const,
-                  connectionId: oauthAuth.connectionId,
-                  clientIdSecretId: oauthAuth.clientIdSecretId,
-                  clientSecretSecretId: oauthAuth.clientSecretSecretId,
-                  scopes: oauthAuth.scopes,
-                }
-              : { kind: "none" as const },
+            authKind === "managed" && managedAuth
+              ? managedAuth.managedAuth
+              : authKind === "oauth2" && oauthAuth
+                ? {
+                    kind: "oauth2" as const,
+                    connectionId: oauthAuth.connectionId,
+                    clientIdSecretId: oauthAuth.clientIdSecretId,
+                    clientSecretSecretId: oauthAuth.clientSecretSecretId,
+                    scopes: oauthAuth.scopes,
+                  }
+                : { kind: "none" as const },
+          ...(authKind === "managed" && managedAuth
+            ? { managedConnection: managedAuth.managedConnection }
+            : {}),
         },
         reactivityKeys: [...sourceWriteKeys],
       });
-      props.onComplete();
+      props.onComplete(result.namespace);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to add source");
       setAdding(false);
     } finally {
       placeholder.done();
     }
-  }, [probe, doAdd, identity, discoveryUrl, authKind, oauthAuth, props, scopeId, beginAdd]);
+  }, [
+    probe,
+    doAdd,
+    identity,
+    discoveryUrl,
+    authKind,
+    oauthAuth,
+    managedAuth,
+    props,
+    scopeId,
+    beginAdd,
+  ]);
 
   const addDisabled =
-    !probe || adding || (authKind === "oauth2" && (!canUseOAuth || oauthAuth === null));
+    !probe ||
+    adding ||
+    (authKind === "oauth2" && (!canUseOAuth || oauthAuth === null)) ||
+    (authKind === "managed" && managedAuth === null);
 
   return (
     <div className="flex flex-1 flex-col gap-6">
@@ -654,7 +740,6 @@ export default function AddGoogleDiscoverySource(props: {
               )}
             </div>
           </CardStackEntryField>
-
         </CardStackContent>
       </CardStack>
 
@@ -696,6 +781,7 @@ export default function AddGoogleDiscoverySource(props: {
             tabs={[
               { value: "none", label: "None" },
               { value: "oauth2", label: "OAuth" },
+              ...(managedAuthApp ? [{ value: "managed" as const, label: "Managed" }] : []),
             ]}
             value={authKind}
             onChange={setAuthKind}
@@ -791,6 +877,39 @@ export default function AddGoogleDiscoverySource(props: {
                 Connected. Manage this connection from the Connections page.
               </div>
             )}
+          </div>
+        )}
+        {authKind === "managed" && (
+          <div className="space-y-3 rounded-xl border border-border bg-card px-4 py-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground">
+                  {managedAuth ? "Connected with managed auth" : "Let GOD TOOL manage Google OAuth"}
+                </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {isDesktopManagedAuth()
+                    ? "This local source uses your cloud sign-in without storing OAuth secrets on this Mac."
+                      : "Credentials are stored in Composio for this cloud source."}
+                  </p>
+              </div>
+              <Button
+                variant={managedAuth ? "outline" : "default"}
+                onClick={
+                  managedAuth || managedAuthAccess.allowed ? handleStartManagedAuth : goToBilling
+                }
+                disabled={!probe || managedAuthAccess.loading || startingManagedAuth || adding}
+              >
+                {managedAuthAccess.loading
+                  ? "Checking..."
+                  : startingManagedAuth
+                    ? "Connecting..."
+                    : managedAuth
+                      ? "Reconnect"
+                      : managedAuthAccess.allowed
+                        ? "Connect"
+                        : "Upgrade to Pro"}
+              </Button>
+            </div>
           </div>
         )}
       </section>

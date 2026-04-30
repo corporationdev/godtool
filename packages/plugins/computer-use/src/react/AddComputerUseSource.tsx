@@ -1,9 +1,5 @@
 import { useState } from "react";
-import {
-  MonitorIcon,
-  RefreshCwIcon,
-  ShieldAlertIcon,
-} from "lucide-react";
+import { MonitorIcon, RefreshCwIcon, ShieldAlertIcon } from "lucide-react";
 import { Result, useAtomRefresh, useAtomSet, useAtomValue } from "@effect-atom/atom-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@executor/react/components/alert";
@@ -57,7 +53,7 @@ function PermissionBadge(props: {
 }
 
 export default function AddComputerUseSource(props: {
-  onComplete: () => void;
+  onComplete: (sourceId?: string) => void;
   onCancel: () => void;
 }) {
   const scopeId = useScope();
@@ -95,9 +91,7 @@ export default function AddComputerUseSource(props: {
     setError(null);
     try {
       const request =
-        permission === "accessibility"
-          ? doRequestAccessibility
-          : doRequestScreenRecording;
+        permission === "accessibility" ? doRequestAccessibility : doRequestScreenRecording;
       const nextStatus = await request({
         path: { scopeId },
         reactivityKeys: computerUseWriteKeys,
@@ -132,7 +126,7 @@ export default function AddComputerUseSource(props: {
         path: { scopeId },
         reactivityKeys: computerUseWriteKeys,
       });
-      props.onComplete();
+      props.onComplete("computer_use");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Failed to add Computer Use");
       setAdding(false);
@@ -178,7 +172,10 @@ export default function AddComputerUseSource(props: {
 
       <CardStack>
         <CardStackContent className="border-t-0">
-          <CardStackEntryField label="Accessibility" description="inspect controls and perform actions">
+          <CardStackEntryField
+            label="Accessibility"
+            description="inspect controls and perform actions"
+          >
             <PermissionBadge
               granted={currentStatus ? currentStatus.accessibility : null}
               disabled={requesting !== null || adding}

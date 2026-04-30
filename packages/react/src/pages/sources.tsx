@@ -38,6 +38,41 @@ const isConnectedSource = (source: { id: string; runtime?: boolean }) =>
 
 const supportsUrlSourceDetection = (plugin: SourcePlugin) => plugin.key !== "computer_use";
 
+function googleServiceFromUrl(url?: string): string | null {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    const hostname = parsed.hostname.toLowerCase();
+    if (hostname === "www.googleapis.com") {
+      return parsed.pathname.match(/\/discovery\/v1\/apis\/([^/]+)/)?.[1] ?? null;
+    }
+    if (hostname.endsWith(".googleapis.com")) {
+      return hostname.slice(0, -".googleapis.com".length);
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function normalizeSourceName(name: string) {
+  return name.toLowerCase().replace(/\s+api$/, "").replace(/[^a-z0-9]+/g, "");
+}
+
+function findPresetIcon(source: { name: string; url?: string }, plugin?: SourcePlugin) {
+  if (!plugin?.presets) return undefined;
+  const service = googleServiceFromUrl(source.url);
+  if (service) {
+    const servicePreset = plugin.presets.find(
+      (preset) => googleServiceFromUrl(preset.url) === service,
+    );
+    if (servicePreset?.icon) return servicePreset.icon;
+  }
+
+  const sourceName = normalizeSourceName(source.name);
+  return plugin.presets.find((preset) => normalizeSourceName(preset.name) === sourceName)?.icon;
+}
+
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
@@ -316,12 +351,19 @@ function SourceGrid(props: {
         {props.sources.map((s) => {
           const pluginKey = KIND_TO_PLUGIN_KEY[s.kind] ?? s.kind;
           const plugin = pluginByKind.get(pluginKey);
+          const iconUrl = findPresetIcon(s, plugin);
           const SummaryComponent = plugin?.summary;
           return (
             <CardStackEntry key={s.id} asChild searchText={`${s.name} ${s.id} ${s.kind}`}>
               <Link to="/sources/$namespace" params={{ namespace: s.id }}>
                 <CardStackEntryMedia>
-                  <SourceFavicon url={s.url} size={32} sourceId={s.id} kind={s.kind} />
+                  <SourceFavicon
+                    url={s.url}
+                    iconUrl={iconUrl}
+                    size={32}
+                    sourceId={s.id}
+                    kind={s.kind}
+                  />
                 </CardStackEntryMedia>
                 <CardStackEntryContent>
                   <CardStackEntryTitle>{s.name}</CardStackEntryTitle>

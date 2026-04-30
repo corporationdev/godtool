@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import { ConnectionId, ScopeId, SecretId } from "@executor/sdk";
+import { ManagedAuthConfig, ManagedAuthConnectionMaterial } from "@executor/plugin-managed-auth";
 
 // ---------------------------------------------------------------------------
 // Branded IDs
@@ -61,10 +62,9 @@ export class EncodingObject extends Schema.Class<EncodingObject>("EncodingObject
 export class MediaBinding extends Schema.Class<MediaBinding>("MediaBinding")({
   contentType: Schema.String,
   schema: Schema.optionalWith(Schema.Unknown, { as: "Option" }),
-  encoding: Schema.optionalWith(
-    Schema.Record({ key: Schema.String, value: EncodingObject }),
-    { as: "Option" },
-  ),
+  encoding: Schema.optionalWith(Schema.Record({ key: Schema.String, value: EncodingObject }), {
+    as: "Option",
+  }),
 }) {}
 
 export class OperationRequestBody extends Schema.Class<OperationRequestBody>(
@@ -154,10 +154,7 @@ export class ConfiguredHeaderBinding extends Schema.Class<ConfiguredHeaderBindin
   prefix: Schema.optional(Schema.String),
 }) {}
 
-export const ConfiguredHeaderValue = Schema.Union(
-  Schema.String,
-  ConfiguredHeaderBinding,
-);
+export const ConfiguredHeaderValue = Schema.Union(Schema.String, ConfiguredHeaderBinding);
 export type ConfiguredHeaderValue = typeof ConfiguredHeaderValue.Type;
 
 export const OpenApiSourceBindingValue = Schema.Union(
@@ -280,6 +277,7 @@ export class InvocationConfig extends Schema.Class<InvocationConfig>("Invocation
    * request. Coexists with `headers` but wins for the Authorization header.
    */
   oauth2: Schema.optionalWith(OAuth2Auth, { as: "Option" }),
+  managedAuth: Schema.optionalWith(ManagedAuthConfig, { as: "Option" }),
 }) {}
 
 // ---------------------------------------------------------------------------
@@ -289,9 +287,7 @@ export class InvocationConfig extends Schema.Class<InvocationConfig>("Invocation
 // / secret ids the SDK stamps when the user returns.
 // ---------------------------------------------------------------------------
 
-export class OpenApiOAuthSession extends Schema.Class<OpenApiOAuthSession>(
-  "OpenApiOAuthSession",
-)({
+export class OpenApiOAuthSession extends Schema.Class<OpenApiOAuthSession>("OpenApiOAuthSession")({
   /** Display name used for the resulting Connection's identity label. */
   displayName: Schema.String,
   securitySchemeName: Schema.String,
@@ -319,6 +315,8 @@ export class OpenApiOAuthSession extends Schema.Class<OpenApiOAuthSession>(
   scopes: Schema.Array(Schema.String),
   codeVerifier: Schema.String,
 }) {}
+
+export { ManagedAuthConfig, ManagedAuthConnectionMaterial };
 
 export class InvocationResult extends Schema.Class<InvocationResult>("InvocationResult")({
   status: Schema.Number,

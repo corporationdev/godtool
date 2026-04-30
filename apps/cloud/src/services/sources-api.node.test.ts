@@ -10,11 +10,7 @@ import { resolve } from "node:path";
 
 import { ScopeId, SecretId } from "@executor/sdk";
 
-import {
-  asOrg,
-  asUser,
-  testUserOrgScopeId,
-} from "./__test-harness__/api-harness";
+import { asOrg, asUser, testUserOrgScopeId } from "./__test-harness__/api-harness";
 
 const MINIMAL_OPENAPI_SPEC = JSON.stringify({
   openapi: "3.0.0",
@@ -41,6 +37,13 @@ const CLOUDFLARE_SPEC_PATH = resolve(
   "../../../../packages/plugins/openapi/fixtures/cloudflare.json",
 );
 const CLOUDFLARE_SPEC = readFileSync(CLOUDFLARE_SPEC_PATH, "utf-8");
+const GOOGLE_DISCOVERY_FIXTURE_PATH = resolve(
+  __dirname,
+  "../../../../packages/plugins/google-discovery/fixtures/drive.json",
+);
+const GOOGLE_DISCOVERY_DATA_URL = `data:application/json,${encodeURIComponent(
+  readFileSync(GOOGLE_DISCOVERY_FIXTURE_PATH, "utf-8"),
+)}`;
 
 describe("sources api (HTTP)", () => {
   it.effect("addSpec → sources.list includes the new namespace", () =>
@@ -53,6 +56,61 @@ describe("sources api (HTTP)", () => {
           const result = yield* client.openapi.addSpec({
             path: { scopeId: ScopeId.make(org) },
             payload: { spec: MINIMAL_OPENAPI_SPEC, namespace },
+          });
+          expect(result.namespace).toBe(namespace);
+          expect(result.toolCount).toBeGreaterThan(0);
+        }),
+      );
+
+      const sources = yield* asOrg(org, (client) =>
+        client.sources.list({ path: { scopeId: ScopeId.make(org) } }),
+      );
+      expect(sources.map((s) => s.id)).toContain(namespace);
+    }),
+  );
+
+  it.effect("raw.addSource → sources.list includes the new namespace", () =>
+    Effect.gen(function* () {
+      const org = `org_${crypto.randomUUID()}`;
+      const namespace = `raw_${crypto.randomUUID().replace(/-/g, "_")}`;
+
+      yield* asOrg(org, (client) =>
+        Effect.gen(function* () {
+          const result = yield* client.raw.addSource({
+            path: { scopeId: ScopeId.make(org) },
+            payload: {
+              baseUrl: "https://api.example.com",
+              name: "Raw API",
+              namespace,
+            },
+          });
+          expect(result.sourceId).toBe(namespace);
+          expect(result.toolCount).toBe(1);
+        }),
+      );
+
+      const sources = yield* asOrg(org, (client) =>
+        client.sources.list({ path: { scopeId: ScopeId.make(org) } }),
+      );
+      expect(sources.map((s) => s.id)).toContain(namespace);
+    }),
+  );
+
+  it.effect("googleDiscovery.addSource → sources.list includes parsed tools", () =>
+    Effect.gen(function* () {
+      const org = `org_${crypto.randomUUID()}`;
+      const namespace = `google_${crypto.randomUUID().replace(/-/g, "_")}`;
+
+      yield* asOrg(org, (client) =>
+        Effect.gen(function* () {
+          const result = yield* client.googleDiscovery.addSource({
+            path: { scopeId: ScopeId.make(org) },
+            payload: {
+              name: "Google Drive",
+              discoveryUrl: GOOGLE_DISCOVERY_DATA_URL,
+              namespace,
+              auth: { kind: "none" },
+            },
           });
           expect(result.namespace).toBe(namespace);
           expect(result.toolCount).toBeGreaterThan(0);
@@ -303,9 +361,7 @@ describe("sources api (HTTP)", () => {
       const sources = yield* asOrg(orgId, (client) =>
         client.sources.list({ path: { scopeId: ScopeId.make(orgId) } }),
       );
-      expect(sources.find((source) => source.id === namespace)?.scopeId).toBe(
-        ScopeId.make(orgId),
-      );
+      expect(sources.find((source) => source.id === namespace)?.scopeId).toBe(ScopeId.make(orgId));
     }),
   );
 

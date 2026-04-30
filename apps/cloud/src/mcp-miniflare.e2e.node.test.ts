@@ -352,7 +352,7 @@ layer(TestEnv, { timeout: 60_000 })("cloud MCP over real HTTP (miniflare)", (it)
       );
       expect(response.status).toBe(401);
       expect(response.headers.get("www-authenticate") ?? "").toContain(
-        "https://test-resource.example.com/.well-known/oauth-protected-resource/mcp",
+        "https://test-resource.example.com/.well-known/oauth-protected-resource",
       );
       const body = yield* Effect.promise(() => response.json());
       expect(body).toEqual({ error: "unauthorized" });

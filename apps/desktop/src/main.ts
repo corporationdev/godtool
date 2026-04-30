@@ -11,7 +11,8 @@ import {
   type MenuItemConstructorOptions,
 } from "electron";
 import { spawn, type ChildProcess } from "node:child_process";
-import type { Server } from "node:http";
+import { randomUUID } from "node:crypto";
+import { createServer, type Server } from "node:http";
 import { join, resolve, basename, dirname, relative, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -24,7 +25,7 @@ import {
   appendFileSync,
 } from "node:fs";
 import { copyFile, lstat, mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
+import { homedir, hostname } from "node:os";
 import { BrowserSessionManager } from "./browser/session-manager";
 import { startBrowserHostServer } from "./browser/host-server";
 import type { BrowserBounds } from "./browser/types";
@@ -35,6 +36,13 @@ import type { BrowserBounds } from "./browser/types";
 
 const DEFAULT_PORT = 14788;
 const DEV_SERVER_URL = process.env.GODTOOL_DEV_URL || "http://127.0.0.1:1355";
+const DESKTOP_STAGE =
+  process.env.STAGE ?? (process.env.NODE_ENV === "development" ? "dev" : "production");
+const CLOUD_APP_URL = process.env.GODTOOL_CLOUD_URL || getStageAppUrl(DESKTOP_STAGE);
+const DEEP_LINK_PROTOCOL = "godtool";
+const DESKTOP_AUTH_CALLBACK_PORT = Number(
+  process.env.GODTOOL_DESKTOP_AUTH_CALLBACK_PORT ?? "14791",
+);
 const BROWSER_HOST_PORT = Number(process.env.GODTOOL_BROWSER_HOST_PORT ?? "14789");
 const BROWSER_DEBUGGING_PORT = Number(process.env.GODTOOL_BROWSER_DEBUGGING_PORT ?? "9333");
 const BROWSER_MAX_SESSIONS = Number(process.env.GODTOOL_BROWSER_MAX_SESSIONS ?? "5");
@@ -44,6 +52,8 @@ const SETTINGS_DIR = join(homedir(), ".godtool");
 const SETTINGS_PATH = join(SETTINGS_DIR, "desktop-settings.json");
 const BROWSER_SESSIONS_PATH = join(SETTINGS_DIR, "browser-sessions.json");
 const DEFAULT_WORKSPACE_DIR = join(SETTINGS_DIR, "workspace");
+const DEVICE_CONNECTION_RECONNECT_MS = 5_000;
+const DESKTOP_RPC_SECRET = randomUUID();
 
 const CLI_BIN_DIR = join(SETTINGS_DIR, "bin");
 const CLI_BIN_PATH = join(CLI_BIN_DIR, process.platform === "win32" ? "godtool.exe" : "godtool");
@@ -63,6 +73,15 @@ protocol.registerSchemesAsPrivileged([
     },
   },
 ]);
+
+function getStageAppUrl(stage: string): string {
+  if (stage === "dev" || stage.startsWith("dev-")) return "http://localhost:3001";
+  if (stage === "preview" || stage.startsWith("preview-") || stage.startsWith("pr-")) {
+    const previewLabel = stage.replace(/^(preview-|pr-)/, "");
+    return `https://preview-pr-${previewLabel}.godtool.dev`;
+  }
+  return "https://app.godtool.dev";
+}
 
 // ---------------------------------------------------------------------------
 // CLI install — copy sidecar to ~/.godtool/bin and patch shell PATH
@@ -184,13 +203,13 @@ const installCli = (): void => {
     if (!existsSync(profile)) continue;
     const content = readFileSync(profile, "utf-8");
     if (content.includes(CLI_BIN_DIR)) continue;
-    appendFileSync(profile, `\n# Added by Executor desktop app\n${pathLine}\n`);
+    appendFileSync(profile, `\n# Added by GOD TOOL desktop app\n${pathLine}\n`);
   }
 
   if (existsSync(fishConfig)) {
     const content = readFileSync(fishConfig, "utf-8");
     if (!content.includes(CLI_BIN_DIR)) {
-      appendFileSync(fishConfig, `\n# Added by Executor desktop app\n${fishLine}\n`);
+      appendFileSync(fishConfig, `\n# Added by GOD TOOL desktop app\n${fishLine}\n`);
     }
   }
 };
@@ -201,7 +220,47 @@ const installCli = (): void => {
 
 interface Settings {
   windowBounds?: { x: number; y: number; width: number; height: number };
+  deviceId?: string;
+  deviceName?: string;
+  authBridgeToken?: string;
+  cloudAppUrl?: string;
 }
+
+type CloudAuthUser = {
+  readonly id: string;
+  readonly email: string;
+  readonly name: string | null;
+  readonly avatarUrl: string | null;
+};
+
+type CloudAuthOrganization = {
+  readonly id: string;
+  readonly name: string;
+};
+
+type CloudAuthState =
+  | { readonly status: "unauthenticated" }
+  | {
+      readonly status: "authenticated";
+      readonly user: CloudAuthUser;
+      readonly organization: CloudAuthOrganization | null;
+    };
+
+type ManagedAuthConnectResult = {
+  readonly ok: true;
+  readonly managedAuth: {
+    readonly kind: "composio";
+    readonly app: string;
+    readonly authConfigId: string | null;
+    readonly connectionId: string;
+  };
+  readonly managedConnection: {
+    readonly connectionId: string;
+    readonly provider: string;
+    readonly identityLabel: string | null;
+    readonly connectedAccountId: string;
+  };
+};
 
 type WorkspaceFileNode = {
   readonly type: "file" | "directory";
@@ -281,9 +340,10 @@ const isCommandAvailable = (command: string): boolean => {
 
 const isMacAppAvailable = (appName: string): boolean => {
   if (process.platform !== "darwin") return false;
-  return [join("/Applications", `${appName}.app`), join(homedir(), "Applications", `${appName}.app`)].some(
-    (appPath) => existsSync(appPath),
-  );
+  return [
+    join("/Applications", `${appName}.app`),
+    join(homedir(), "Applications", `${appName}.app`),
+  ].some((appPath) => existsSync(appPath));
 };
 
 const availableWorkspaceOpenTargets = async (): Promise<
@@ -520,7 +580,22 @@ const loadSettings = (): Settings => {
 
 const saveSettings = (settings: Settings): void => {
   mkdirSync(SETTINGS_DIR, { recursive: true });
-  writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2));
+  writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2), { mode: 0o600 });
+  try {
+    chmodSync(SETTINGS_PATH, 0o600);
+  } catch {}
+};
+
+const ensureAuthBridgeSettings = (): string => {
+  const authBridgeToken = settings.authBridgeToken ?? randomUUID();
+  if (settings.authBridgeToken !== authBridgeToken) {
+    settings = { ...settings, authBridgeToken };
+  }
+  if (settings.cloudAppUrl !== CLOUD_APP_URL) {
+    settings = { ...settings, cloudAppUrl: CLOUD_APP_URL };
+  }
+  saveSettings(settings);
+  return authBridgeToken;
 };
 
 // ---------------------------------------------------------------------------
@@ -646,6 +721,10 @@ const startServer = async (scopePath: string, port: number): Promise<void> => {
       GODTOOL_BROWSER_HOST_URL: `http://127.0.0.1:${BROWSER_HOST_PORT}`,
       GODTOOL_AGENT_BROWSER_PATH: resolveAgentBrowserPath(),
       GODTOOL_COMPUTER_USE_HOST_URL: `http://127.0.0.1:${COMPUTER_USE_HOST_PORT}`,
+      GODTOOL_CLOUD_URL: CLOUD_APP_URL,
+      GODTOOL_DESKTOP_AUTH_BRIDGE_URL: `http://127.0.0.1:${DESKTOP_AUTH_CALLBACK_PORT}`,
+      GODTOOL_DESKTOP_AUTH_BRIDGE_TOKEN: ensureAuthBridgeSettings(),
+      GODTOOL_DESKTOP_RPC_SECRET: DESKTOP_RPC_SECRET,
     },
   });
 
@@ -692,7 +771,7 @@ const createWindow = (): BrowserWindow => {
     ...bounds,
     minWidth: 800,
     minHeight: 600,
-    title: "Executor",
+    title: "GOD TOOL",
     titleBarStyle: "hidden",
     trafficLightPosition: { x: 12, y: 12 },
     webPreferences: {
@@ -741,13 +820,35 @@ const createWindow = (): BrowserWindow => {
         -webkit-app-region: no-drag;
       }
 
-      /* Push sidebar content below traffic lights */
-      aside > :first-child {
-        margin-top: 38px !important;
+      /* Reserve only the titlebar row; the desktop toggle is pinned below. */
+      [data-slot="sidebar-inner"] > [data-slot="sidebar-header"].desktop-sidebar-header {
+        height: 44px !important;
+        min-height: 44px !important;
+        padding: 0 !important;
       }
 
-      /* Push main content mobile bar below traffic lights */
-      main > :first-child {
+      /* Settings has a real header, so place it fully below the macOS traffic lights. */
+      [data-slot="sidebar-inner"] > [data-slot="sidebar-header"].desktop-settings-sidebar-header {
+        height: 104px !important;
+        min-height: 104px !important;
+        padding: 56px 8px 8px !important;
+      }
+
+      /* Any cloud/settings shell rendered inside Electron must clear the macOS traffic lights. */
+      [data-slot="sidebar-inner"] > [data-slot="sidebar-header"].desktop-titlebar-safe {
+        padding-top: 46px !important;
+      }
+
+      /* Pin the desktop sidebar toggle next to the macOS traffic lights. */
+      [data-slot="sidebar-trigger"].desktop-sidebar-trigger {
+        position: fixed !important;
+        top: 5px !important;
+        left: 72px !important;
+        z-index: 10000 !important;
+      }
+
+      /* Keep any mobile top bar clear of the titlebar drag region */
+      main > :first-child[data-mobile-titlebar] {
         margin-top: 38px !important;
       }
     `);
@@ -852,7 +953,7 @@ const stopComputerUseHost = (): void => {
 const loadScope = async (scopePath: string): Promise<void> => {
   if (!mainWindow) return;
 
-  mainWindow.setTitle(`Godtool — ${basename(scopePath)}`);
+  mainWindow.setTitle(`GOD TOOL — ${basename(scopePath)}`);
 
   if (isDev) {
     // In dev mode, the Vite dev server handles both UI and API.
@@ -923,11 +1024,650 @@ const buildMenu = (): void => {
 };
 
 // ---------------------------------------------------------------------------
+// Cloud auth
+// ---------------------------------------------------------------------------
+
+const cloudUrl = (path: string): string => new URL(path, CLOUD_APP_URL).toString();
+
+const cloudWebSocketUrl = (path: string): string => {
+  const url = new URL(path, CLOUD_APP_URL);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  return url.toString();
+};
+
+const getCloudCookieHeader = async (): Promise<string> => {
+  const cookies = await session.defaultSession.cookies.get({ url: CLOUD_APP_URL });
+  return cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; ");
+};
+
+const getCloudSessionCookieValue = async (): Promise<string | null> => {
+  const cookies = await session.defaultSession.cookies.get({
+    url: CLOUD_APP_URL,
+    name: "wos-session",
+  });
+  return cookies[0]?.value ?? null;
+};
+
+const fetchCloudAuthState = async (): Promise<CloudAuthState> => {
+  const cookie = await getCloudCookieHeader();
+  if (!cookie) return { status: "unauthenticated" };
+
+  const response = await fetch(cloudUrl("/api/auth/me"), {
+    headers: {
+      accept: "application/json",
+      cookie,
+    },
+  });
+
+  if (response.status === 401 || response.status === 403) {
+    return { status: "unauthenticated" };
+  }
+  if (!response.ok) {
+    throw new Error(`Cloud auth request failed: ${response.status}`);
+  }
+
+  const data = (await response.json()) as {
+    readonly user: CloudAuthUser;
+    readonly organization: CloudAuthOrganization | null;
+  };
+
+  return {
+    status: "authenticated",
+    user: data.user,
+    organization: data.organization,
+  };
+};
+
+const pendingManagedAuth = new Map<
+  string,
+  {
+    readonly resolve: (result: ManagedAuthConnectResult) => void;
+    readonly reject: (error: unknown) => void;
+    readonly timeout: ReturnType<typeof setTimeout>;
+  }
+>();
+
+const startManagedAuthConnect = async (input: unknown): Promise<ManagedAuthConnectResult> => {
+  const cookie = await getCloudCookieHeader();
+  if (!cookie) throw new Error("Sign in to use managed auth");
+  await startDesktopAuthCallbackServer();
+
+  const channel = `godtool:desktop-composio:${randomUUID()}`;
+  const desktopCallbackUrl = `http://127.0.0.1:${DESKTOP_AUTH_CALLBACK_PORT}/managed-auth/callback?channel=${encodeURIComponent(channel)}`;
+
+  const response = await fetch(cloudUrl("/api/managed-auth/composio/start"), {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      cookie,
+    },
+    body: JSON.stringify({ ...(input && typeof input === "object" ? input : {}), channel, desktopCallbackUrl }),
+  });
+  const data = (await response.json().catch(() => null)) as {
+    readonly redirectUrl?: string;
+    readonly error?: string;
+  } | null;
+  if (!response.ok || !data?.redirectUrl) {
+    if (response.status === 401 || response.status === 403) {
+      throw new Error("Sign in to use managed auth");
+    }
+    if (response.status === 402) {
+      throw new Error("Upgrade to Pro to use managed auth");
+    }
+    throw new Error(data?.error ?? `Managed auth request failed: ${response.status}`);
+  }
+
+  const redirectUrl = data.redirectUrl;
+  return await new Promise<ManagedAuthConnectResult>((resolve, reject) => {
+    const timeout = setTimeout(
+      () => {
+        pendingManagedAuth.delete(channel);
+        reject(new Error("Managed auth timed out"));
+      },
+      5 * 60 * 1000,
+    );
+
+    pendingManagedAuth.set(channel, { resolve, reject, timeout });
+    shell.openExternal(redirectUrl).catch((error) => {
+      pendingManagedAuth.delete(channel);
+      clearTimeout(timeout);
+      reject(error);
+    });
+  });
+};
+
+const fetchCloudBillingRoute = async (route: string, body: unknown): Promise<unknown> => {
+  const cookie = await getCloudCookieHeader();
+  if (!cookie) throw new Error("Sign in to manage billing");
+
+  const response = await fetch(cloudUrl(`/api/autumn/${route}`), {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      cookie,
+    },
+    body: JSON.stringify(body ?? {}),
+  });
+
+  if (response.status === 204) return null;
+
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    const message =
+      data && typeof data === "object" && "message" in data && typeof data.message === "string"
+        ? data.message
+        : `Cloud billing request failed: ${response.status}`;
+    throw new Error(message);
+  }
+
+  return data;
+};
+
+const pendingDesktopAuth = new Map<
+  string,
+  {
+    readonly resolve: (state: CloudAuthState) => void;
+    readonly reject: (error: unknown) => void;
+    readonly timeout: ReturnType<typeof setTimeout>;
+  }
+>();
+let desktopAuthCallbackServer: Server | null = null;
+
+const setCloudSessionCookie = async (sealedSession: string): Promise<void> => {
+  await session.defaultSession.cookies.set({
+    url: CLOUD_APP_URL,
+    name: "wos-session",
+    value: sealedSession,
+    path: "/",
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    expirationDate: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7,
+  });
+};
+
+const resolveDesktopAuth = async (state: string, sealedSession: string): Promise<void> => {
+  const pending = pendingDesktopAuth.get(state);
+  if (!pending) return;
+  pendingDesktopAuth.delete(state);
+  clearTimeout(pending.timeout);
+
+  try {
+    await setCloudSessionCookie(sealedSession);
+    const authState = await fetchCloudAuthState();
+    pending.resolve(authState);
+  } catch (error) {
+    pending.reject(error);
+  }
+};
+
+const handleDeepLink = (rawUrl: string): void => {
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return;
+  }
+
+  if (url.protocol !== `${DEEP_LINK_PROTOCOL}:`) return;
+  if (url.hostname !== "auth" || url.pathname !== "/callback") return;
+
+  const sealedSession = url.searchParams.get("session");
+  const state = url.searchParams.get("state");
+  if (!sealedSession || !state) return;
+
+  void resolveDesktopAuth(state, sealedSession);
+};
+
+const desktopAuthCallbackHTML = (message: string): string => `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GOD TOOL</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      background: #0a0a0a;
+      color: #f5f5f5;
+    }
+    main { max-width: 360px; padding: 32px; text-align: center; }
+    h1 { margin: 0 0 8px; font-size: 18px; font-weight: 600; }
+    p { margin: 0; color: #a1a1aa; font-size: 14px; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>${message}</h1>
+    <p>You can return to GOD TOOL.</p>
+  </main>
+  <script>
+    try { history.replaceState(null, "", "/auth/complete"); } catch {}
+    setTimeout(() => window.close(), 1200);
+  </script>
+</body>
+</html>`;
+
+const startDesktopAuthCallbackServer = async (): Promise<void> => {
+  if (desktopAuthCallbackServer) return;
+
+  desktopAuthCallbackServer = createServer((request, response) => {
+    const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "127.0.0.1"}`);
+
+    if (url.pathname === "/cloud-auth/session" && request.method === "GET") {
+      const expected = ensureAuthBridgeSettings();
+      const header = request.headers.authorization ?? "";
+      const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length).trim() : "";
+      if (!token || token !== expected) {
+        response.writeHead(401, { "content-type": "application/json", "cache-control": "no-store" });
+        response.end(JSON.stringify({ error: "unauthorized" }));
+        return;
+      }
+
+      void getCloudCookieHeader()
+        .then((cookie) => {
+          if (!cookie) {
+            response.writeHead(401, {
+              "content-type": "application/json",
+              "cache-control": "no-store",
+            });
+            response.end(JSON.stringify({ error: "not_signed_in" }));
+            return;
+          }
+          response.writeHead(200, {
+            "content-type": "application/json",
+            "cache-control": "no-store",
+          });
+          response.end(JSON.stringify({ cookie, cloudAppUrl: CLOUD_APP_URL }));
+        })
+        .catch((error) => {
+          response.writeHead(500, {
+            "content-type": "application/json",
+            "cache-control": "no-store",
+          });
+          response.end(
+            JSON.stringify({
+              error: error instanceof Error ? error.message : "failed_to_read_session",
+            }),
+          );
+        });
+      return;
+    }
+
+    if (url.pathname === "/managed-auth/callback" && request.method === "POST") {
+      let body = "";
+      request.on("data", (chunk: Buffer) => {
+        body += chunk.toString("utf-8");
+        if (body.length > 1024 * 1024) request.destroy();
+      });
+      request.on("end", () => {
+        const channel = url.searchParams.get("channel");
+        const pending = channel ? pendingManagedAuth.get(channel) : null;
+        if (!channel || !pending) {
+          response.writeHead(400, { "content-type": "text/html", "cache-control": "no-store" });
+          response.end(desktopAuthCallbackHTML("Managed auth failed"));
+          return;
+        }
+
+        pendingManagedAuth.delete(channel);
+        clearTimeout(pending.timeout);
+        try {
+          const form = new URLSearchParams(body);
+          const payload = JSON.parse(form.get("payload") ?? "null") as ManagedAuthConnectResult;
+          if (!payload || payload.ok !== true) throw new Error("Managed auth failed");
+          pending.resolve(payload);
+          response.writeHead(200, { "content-type": "text/html", "cache-control": "no-store" });
+          response.end(desktopAuthCallbackHTML("Managed auth connected"));
+        } catch (error) {
+          pending.reject(error);
+          response.writeHead(400, { "content-type": "text/html", "cache-control": "no-store" });
+          response.end(desktopAuthCallbackHTML("Managed auth failed"));
+        }
+      });
+      return;
+    }
+
+    if (url.pathname !== "/auth/callback") {
+      response.writeHead(404, { "content-type": "text/plain" });
+      response.end("Not found");
+      return;
+    }
+
+    const sealedSession = url.searchParams.get("session");
+    const state = url.searchParams.get("state");
+    if (!sealedSession || !state) {
+      response.writeHead(400, { "content-type": "text/html", "cache-control": "no-store" });
+      response.end(desktopAuthCallbackHTML("Sign-in failed"));
+      return;
+    }
+
+    void resolveDesktopAuth(state, sealedSession);
+    response.writeHead(200, { "content-type": "text/html", "cache-control": "no-store" });
+    response.end(desktopAuthCallbackHTML("Signed in"));
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    desktopAuthCallbackServer?.once("error", reject);
+    desktopAuthCallbackServer?.listen(DESKTOP_AUTH_CALLBACK_PORT, "127.0.0.1", () => {
+      desktopAuthCallbackServer?.off("error", reject);
+      resolve();
+    });
+  });
+};
+
+const stopDesktopAuthCallbackServer = (): void => {
+  if (!desktopAuthCallbackServer) return;
+  desktopAuthCallbackServer.close();
+  desktopAuthCallbackServer = null;
+};
+
+const openCloudSignIn = async (): Promise<CloudAuthState> => {
+  const existing = await fetchCloudAuthState();
+  if (existing.status === "authenticated") return existing;
+
+  await startDesktopAuthCallbackServer();
+
+  const state = randomUUID();
+  const loginUrl = new URL(cloudUrl("/api/auth/login"));
+  loginUrl.searchParams.set("desktop", "1");
+  loginUrl.searchParams.set("desktop_state", state);
+
+  return await new Promise<CloudAuthState>((resolve, reject) => {
+    const timeout = setTimeout(
+      () => {
+        pendingDesktopAuth.delete(state);
+        resolve({ status: "unauthenticated" });
+      },
+      5 * 60 * 1000,
+    );
+
+    pendingDesktopAuth.set(state, { resolve, reject, timeout });
+    shell.openExternal(loginUrl.toString()).catch((error) => {
+      pendingDesktopAuth.delete(state);
+      clearTimeout(timeout);
+      reject(error);
+    });
+  });
+};
+
+const signOutCloud = async (): Promise<CloudAuthState> => {
+  stopDeviceConnection();
+  await session.defaultSession.cookies.remove(CLOUD_APP_URL, "wos-session").catch(() => undefined);
+  return { status: "unauthenticated" };
+};
+
+const registerDeepLinkProtocol = (): void => {
+  if (isDev) {
+    app.setAsDefaultProtocolClient(DEEP_LINK_PROTOCOL, process.execPath, [
+      resolve(__dirname, ".."),
+    ]);
+    return;
+  }
+  app.setAsDefaultProtocolClient(DEEP_LINK_PROTOCOL);
+};
+
+// ---------------------------------------------------------------------------
+// Cloud device connection
+// ---------------------------------------------------------------------------
+
+let deviceSocket: WebSocket | null = null;
+let deviceReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let deviceAuthState: Extract<CloudAuthState, { status: "authenticated" }> | null = null;
+let deviceConnecting = false;
+
+type LocalDesktopRpcResponse =
+  | {
+      readonly status: "completed";
+      readonly result: unknown;
+    }
+  | {
+      readonly status: "error";
+      readonly error: string;
+    };
+
+type DeviceSocketMessage = {
+  readonly type?: string;
+  readonly requestId?: unknown;
+  readonly code?: unknown;
+};
+
+const encodeBase64Url = (value: string): string =>
+  Buffer.from(value, "utf-8").toString("base64url");
+
+const ensureDeviceIdentity = (): { deviceId: string; deviceName: string } => {
+  let changed = false;
+  if (!settings.deviceId) {
+    settings.deviceId = randomUUID();
+    changed = true;
+  }
+  if (!settings.deviceName) {
+    settings.deviceName = hostname() || "Desktop";
+    changed = true;
+  }
+  if (changed) saveSettings(settings);
+  return { deviceId: settings.deviceId, deviceName: settings.deviceName };
+};
+
+const localAppBaseUrl = (): string => (isDev ? DEV_SERVER_URL : `http://127.0.0.1:${currentPort}`);
+
+const localAppUrl = (path: string): string => new URL(path, localAppBaseUrl()).toString();
+
+const readJsonResponse = async <T>(response: Response): Promise<T> => {
+  const text = await response.text();
+  const data = text.length > 0 ? JSON.parse(text) : {};
+  if (!response.ok) {
+    const message =
+      data && typeof data === "object" && "error" in data && typeof data.error === "string"
+        ? data.error
+        : `Local request failed with status ${response.status}`;
+    throw new Error(message);
+  }
+  return data as T;
+};
+
+const executeLocalDesktopRpc = async (code: string): Promise<LocalDesktopRpcResponse> => {
+  const response = await fetch(localAppUrl("/api/__desktop/execute"), {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-desktop-secret": DESKTOP_RPC_SECRET },
+    body: JSON.stringify({ code }),
+  });
+  return readJsonResponse<LocalDesktopRpcResponse>(response);
+};
+
+const clearDeviceReconnectTimer = (): void => {
+  if (!deviceReconnectTimer) return;
+  clearTimeout(deviceReconnectTimer);
+  deviceReconnectTimer = null;
+};
+
+const scheduleDeviceReconnect = (delayMs = DEVICE_CONNECTION_RECONNECT_MS): void => {
+  if (!deviceAuthState?.organization) return;
+  if (deviceReconnectTimer) return;
+  deviceReconnectTimer = setTimeout(() => {
+    deviceReconnectTimer = null;
+    void connectDeviceWebSocket();
+  }, delayMs);
+};
+
+const stopDeviceConnection = (): void => {
+  deviceAuthState = null;
+  clearDeviceReconnectTimer();
+  const socket = deviceSocket;
+  deviceSocket = null;
+  if (socket && socket.readyState !== WebSocket.CLOSED) {
+    socket.close(1000, "signed out");
+  }
+};
+
+const sendDeviceExecutionResponse = (
+  socket: WebSocket,
+  requestId: string,
+  response: LocalDesktopRpcResponse,
+): void => {
+  if (socket.readyState !== WebSocket.OPEN) return;
+  if (response.status === "completed") {
+    socket.send(
+      JSON.stringify({
+        type: "execute.response",
+        requestId,
+        status: "completed",
+        result: response.result,
+      }),
+    );
+    return;
+  }
+
+  socket.send(
+    JSON.stringify({
+      type: "execute.response",
+      requestId,
+      status: "error",
+      error: response.error,
+    }),
+  );
+};
+
+const handleDeviceSocketMessage = async (socket: WebSocket, data: unknown): Promise<void> => {
+  if (typeof data !== "string") return;
+
+  let message: DeviceSocketMessage;
+  try {
+    message = JSON.parse(data) as DeviceSocketMessage;
+  } catch {
+    return;
+  }
+
+  if (typeof message.requestId !== "string") return;
+
+  if (message.type === "execute.request") {
+    if (typeof message.code !== "string") return;
+    try {
+      const response = await executeLocalDesktopRpc(message.code);
+      sendDeviceExecutionResponse(socket, message.requestId, response);
+    } catch (error) {
+      sendDeviceExecutionResponse(socket, message.requestId, {
+        status: "error",
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    return;
+  }
+};
+
+const connectDeviceWebSocket = async (): Promise<void> => {
+  if (!deviceAuthState?.organization || deviceConnecting) return;
+  if (
+    deviceSocket &&
+    (deviceSocket.readyState === WebSocket.OPEN || deviceSocket.readyState === WebSocket.CONNECTING)
+  ) {
+    return;
+  }
+
+  deviceConnecting = true;
+  try {
+    const sealedSession = await getCloudSessionCookieValue();
+    if (!sealedSession) {
+      scheduleDeviceReconnect();
+      return;
+    }
+
+    const { deviceId, deviceName } = ensureDeviceIdentity();
+    const url = new URL(cloudWebSocketUrl("/api/devices/connect"));
+    url.searchParams.set("deviceId", deviceId);
+    url.searchParams.set("name", deviceName);
+    url.searchParams.set("platform", process.platform);
+    url.searchParams.set("appVersion", app.getVersion());
+
+    const socket = new WebSocket(url.toString(), [
+      "godtool-device",
+      `godtool-auth.${encodeBase64Url(sealedSession)}`,
+    ]);
+    deviceSocket = socket;
+
+    socket.addEventListener("open", () => {
+      console.log(`[devices] connected ${deviceId}`);
+    });
+
+    socket.addEventListener("message", (event) => {
+      void handleDeviceSocketMessage(socket, event.data);
+    });
+
+    socket.addEventListener("close", () => {
+      if (deviceSocket === socket) deviceSocket = null;
+      scheduleDeviceReconnect();
+    });
+
+    socket.addEventListener("error", () => {
+      if (deviceSocket === socket) deviceSocket = null;
+      scheduleDeviceReconnect();
+    });
+  } catch (error) {
+    console.warn("[devices] connection failed", error);
+    scheduleDeviceReconnect();
+  } finally {
+    deviceConnecting = false;
+  }
+};
+
+const syncDeviceConnection = (authState: CloudAuthState): void => {
+  if (authState.status !== "authenticated" || !authState.organization) {
+    stopDeviceConnection();
+    return;
+  }
+  deviceAuthState = authState;
+  scheduleDeviceReconnect(0);
+};
+
+// ---------------------------------------------------------------------------
 // IPC handlers
 // ---------------------------------------------------------------------------
 
 const setupIPC = (): void => {
   ipcMain.handle("get-current-scope", () => currentScope);
+  ipcMain.handle("system:open-external", async (_event, url: unknown) => {
+    if (typeof url !== "string") throw new Error("Invalid URL");
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+      throw new Error("Unsupported URL protocol");
+    }
+    await shell.openExternal(parsed.toString());
+  });
+  ipcMain.handle("cloud-auth:me", async () => {
+    const authState = await fetchCloudAuthState();
+    syncDeviceConnection(authState);
+    return authState;
+  });
+  ipcMain.handle("cloud-auth:sign-in", async () => {
+    const authState = await openCloudSignIn();
+    syncDeviceConnection(authState);
+    return authState;
+  });
+  ipcMain.handle("cloud-auth:sign-out", () => signOutCloud());
+  ipcMain.handle("cloud-auth:get-cloud-url", () => CLOUD_APP_URL);
+  ipcMain.handle("cloud-auth:get-device-id", () => ensureDeviceIdentity().deviceId);
+  ipcMain.handle("cloud-auth:start-managed-auth-connect", (_event, input: unknown) =>
+    startManagedAuthConnect(input),
+  );
+  ipcMain.handle("cloud-billing:get-customer", () =>
+    fetchCloudBillingRoute("getOrCreateCustomer", {}),
+  );
+  ipcMain.handle("cloud-billing:list-plans", async () => {
+    const response = (await fetchCloudBillingRoute("listPlans", {})) as { readonly list?: unknown };
+    return Array.isArray(response?.list) ? response.list : [];
+  });
+  ipcMain.handle("cloud-billing:attach", (_event, input: unknown) =>
+    fetchCloudBillingRoute("attach", input),
+  );
+  ipcMain.handle("cloud-billing:open-customer-portal", (_event, input: unknown) =>
+    fetchCloudBillingRoute("openCustomerPortal", input),
+  );
 
   ipcMain.handle("workspace-files:list", async () => {
     mkdirSync(DEFAULT_WORKSPACE_DIR, { recursive: true });
@@ -1012,11 +1752,7 @@ const setupIPC = (): void => {
 
   ipcMain.handle(
     "workspace-files:open",
-    async (
-      _event,
-      workspaceRelativePath: string,
-      target: WorkspaceOpenTarget,
-    ) => {
+    async (_event, workspaceRelativePath: string, target: WorkspaceOpenTarget) => {
       await openWorkspacePath(workspaceRelativePath, target);
       return true;
     },
@@ -1127,12 +1863,12 @@ const loadingHTML = (scopePath: string): string => {
 <head>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Instrument+Serif&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500&display=swap" rel="stylesheet" />
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
   body {
-    font-family: "Inter", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    font-family: "Geist", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
     display: flex; align-items: center; justify-content: center;
     height: 100vh;
     background: ${bg};
@@ -1153,7 +1889,7 @@ const loadingHTML = (scopePath: string): string => {
 
   /* Wordmark */
   .wordmark {
-    font-family: "Instrument Serif", Georgia, serif;
+    font-family: "Geist", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
     font-size: 28px;
     font-weight: 400;
     letter-spacing: -0.01em;
@@ -1261,7 +1997,28 @@ const errorHTML = (message: string): string => `<!DOCTYPE html>
 // App lifecycle
 // ---------------------------------------------------------------------------
 
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+}
+
+app.on("second-instance", (_event, argv) => {
+  const deepLink = argv.find((arg) => arg.startsWith(`${DEEP_LINK_PROTOCOL}://`));
+  if (deepLink) handleDeepLink(deepLink);
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  }
+});
+
+app.on("open-url", (event, url) => {
+  event.preventDefault();
+  handleDeepLink(url);
+});
+
 app.whenReady().then(async () => {
+  registerDeepLinkProtocol();
+
   // Clear cached web content so we always load the latest UI
   await session.defaultSession.clearCache();
 
@@ -1269,21 +2026,28 @@ app.whenReady().then(async () => {
   installCli();
 
   settings = loadSettings();
+  ensureAuthBridgeSettings();
   setupWorkspaceFileProtocol();
   setupIPC();
   buildMenu();
 
   mainWindow = createWindow();
+  await startDesktopAuthCallbackServer();
   await startBrowserHost();
   await startComputerUseHost();
 
   mkdirSync(DEFAULT_WORKSPACE_DIR, { recursive: true });
   await loadScope(DEFAULT_WORKSPACE_DIR);
+  fetchCloudAuthState()
+    .then(syncDeviceConnection)
+    .catch((error) => console.warn("[devices] initial auth check failed", error));
 });
 
 app.on("window-all-closed", () => {
   stopBrowserHost();
   stopComputerUseHost();
+  stopDeviceConnection();
+  stopDesktopAuthCallbackServer();
   // Synchronously kill the server process before quitting
   if (serverProcess) {
     serverProcess.kill("SIGTERM");
@@ -1295,6 +2059,8 @@ app.on("window-all-closed", () => {
 app.on("before-quit", () => {
   stopBrowserHost();
   stopComputerUseHost();
+  stopDeviceConnection();
+  stopDesktopAuthCallbackServer();
   if (serverProcess) {
     serverProcess.kill("SIGTERM");
     serverProcess = null;
@@ -1304,6 +2070,8 @@ app.on("before-quit", () => {
 // Last resort: kill server on exit
 process.on("exit", () => {
   stopComputerUseHost();
+  stopDeviceConnection();
+  stopDesktopAuthCallbackServer();
   if (serverProcess) {
     serverProcess.kill("SIGKILL");
     serverProcess = null;

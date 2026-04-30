@@ -6,6 +6,9 @@ export interface RawPreset {
   readonly defaultHeaders?: Record<string, string>;
   readonly icon?: string;
   readonly featured?: boolean;
+  readonly composio?: {
+    readonly app: string;
+  };
 }
 
 const slackIcon = "https://www.google.com/s2/favicons?domain=slack.com&sz=64";
@@ -20,6 +23,7 @@ export const rawPresets: readonly RawPreset[] = [
     baseUrl: "https://slack.com/api",
     icon: slackIcon,
     featured: true,
+    composio: { app: "slack" },
   },
   {
     id: "notion",
@@ -32,5 +36,6 @@ export const rawPresets: readonly RawPreset[] = [
     },
     icon: notionIcon,
     featured: true,
+    composio: { app: "notion" },
   },
 ];

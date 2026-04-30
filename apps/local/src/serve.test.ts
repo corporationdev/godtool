@@ -9,6 +9,9 @@ vi.mock("./server/main", () => ({
       handler: async () => new Response("ok"),
       dispose: async () => {},
     },
+    desktopRpc: {
+      handler: async () => new Response("ok"),
+    },
     mcp: {
       handleRequest: async () => new Response("ok"),
       close: async () => {},

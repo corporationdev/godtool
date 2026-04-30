@@ -20,7 +20,6 @@ import * as Sentry from "@sentry/cloudflare";
 import { Context, Effect, Layer, Option, Schema } from "effect";
 import { createRemoteJWKSet } from "jose";
 
-import { TelemetryLive } from "./services/telemetry";
 import {
   McpJwtVerificationError,
   verifyWorkOSMcpAccessToken,
@@ -28,15 +27,17 @@ import {
 } from "./mcp-auth";
 import { authorizeOrganization } from "./auth/authorize-organization";
 import { UserStoreService } from "./auth/context";
+import { WorkOSAuth, type WorkOSAuthService } from "./auth/workos";
 import { CoreSharedServices } from "./api/core-shared-services";
+import { AutumnService } from "./services/autumn";
 import { DbService } from "./services/db";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const AUTHKIT_DOMAIN = env.MCP_AUTHKIT_DOMAIN ?? "https://signin.executor.sh";
-const RESOURCE_ORIGIN = env.MCP_RESOURCE_ORIGIN ?? "https://executor.sh";
+const AUTHKIT_DOMAIN = env.MCP_AUTHKIT_DOMAIN ?? "https://reverent-value-48.authkit.app";
+const RESOURCE_ORIGIN = env.MCP_RESOURCE_ORIGIN ?? "https://app.godtool.dev";
 const WORKOS_CLIENT_ID = env.WORKOS_CLIENT_ID;
 
 const jwks = createRemoteJWKSet(new URL(`${AUTHKIT_DOMAIN}/oauth2/jwks`));
@@ -57,7 +58,8 @@ const CORS_PREFLIGHT_HEADERS = {
 
 const MCP_PATH = "/mcp";
 const PROTECTED_RESOURCE_METADATA_PATH = "/.well-known/oauth-protected-resource/mcp";
-const PROTECTED_RESOURCE_METADATA_URL = `${RESOURCE_ORIGIN}${PROTECTED_RESOURCE_METADATA_PATH}`;
+const LEGACY_PROTECTED_RESOURCE_METADATA_PATH = "/.well-known/oauth-protected-resource";
+const PROTECTED_RESOURCE_METADATA_URL = `${RESOURCE_ORIGIN}${LEGACY_PROTECTED_RESOURCE_METADATA_PATH}`;
 const RESOURCE_URL = `${RESOURCE_ORIGIN}${MCP_PATH}`;
 
 const WWW_AUTHENTICATE = [
@@ -115,16 +117,13 @@ export class McpOrganizationAuth extends Context.Tag("@executor/cloud/McpOrganiz
 const verifyJwt = (token: string) =>
   verifyWorkOSMcpAccessToken(token, jwks, {
     issuer: AUTHKIT_DOMAIN,
-    audience: WORKOS_CLIENT_ID,
+    audience: [WORKOS_CLIENT_ID, RESOURCE_URL],
   });
 
 const DbLive = DbService.Live;
 const UserStoreLive = UserStoreService.Live.pipe(Layer.provide(DbLive));
-const McpOrganizationAuthServices = Layer.mergeAll(
-  DbLive,
-  UserStoreLive,
-  CoreSharedServices,
-);
+const McpAuthServices = CoreSharedServices;
+const McpOrganizationAuthServices = Layer.mergeAll(DbLive, UserStoreLive, CoreSharedServices);
 
 export const McpOrganizationAuthLive = Layer.succeed(McpOrganizationAuth, {
   authorize: (accountId, organizationId) =>
@@ -134,37 +133,74 @@ export const McpOrganizationAuthLive = Layer.succeed(McpOrganizationAuth, {
     ),
 });
 
-export const McpAuthLive = Layer.succeed(McpAuth, {
-  verifyBearer: Effect.fn("mcp.auth.verify_bearer")(function* (request) {
-    const authHeader = request.headers.get("authorization");
-    if (!authHeader?.startsWith(BEARER_PREFIX)) {
-      yield* Effect.annotateCurrentSpan({ "mcp.auth.outcome": "missing_bearer" });
-      return null;
-    }
-    const verified = yield* verifyJwt(authHeader.slice(BEARER_PREFIX.length)).pipe(
-      Effect.catchTag("McpJwtVerificationError", (error) => {
-        if (error.reason === "system") return Effect.fail(error);
-        return Effect.gen(function* () {
+const withDefaultOrganization = (workos: WorkOSAuthService, token: VerifiedToken) =>
+  Effect.gen(function* () {
+    if (token.organizationId) return token;
+
+    const memberships = yield* workos.listUserMemberships(token.accountId).pipe(
+      Effect.catchAll((error) =>
+        Effect.gen(function* () {
           yield* Effect.annotateCurrentSpan({
-            "mcp.auth.outcome": "invalid",
-            "mcp.auth.invalid_reason": error.reason,
+            "mcp.auth.membership_hydration_error": String(error),
           });
-          return null;
-        });
-      }),
+          return { data: [] };
+        }),
+      ),
+      Effect.withSpan("mcp.auth.hydrate_default_organization"),
     );
-    if (!verified) return null;
-    if (!verified.accountId) {
-      yield* Effect.annotateCurrentSpan({ "mcp.auth.outcome": "missing_subject" });
-      return null;
-    }
+    const membership = memberships.data.find((candidate) => candidate.status === "active");
+
     yield* Effect.annotateCurrentSpan({
-      "mcp.auth.outcome": "verified",
-      "mcp.auth.has_organization": !!verified.organizationId,
+      "mcp.auth.organization_source": membership ? "membership" : "none",
     });
-    return verified;
+
+    return {
+      ...token,
+      organizationId: membership?.organizationId ?? null,
+      organizationSource: membership ? "membership" : "none",
+    } satisfies VerifiedToken;
+  });
+
+export const McpAuthLive = Layer.effect(
+  McpAuth,
+  Effect.gen(function* () {
+    const workos = yield* WorkOSAuth;
+    return {
+      verifyBearer: Effect.fn("mcp.auth.verify_bearer")(function* (request) {
+        const authHeader = request.headers.get("authorization");
+        if (!authHeader?.startsWith(BEARER_PREFIX)) {
+          yield* Effect.annotateCurrentSpan({ "mcp.auth.outcome": "missing_bearer" });
+          return null;
+        }
+        const verified = yield* verifyJwt(authHeader.slice(BEARER_PREFIX.length)).pipe(
+          Effect.catchTag("McpJwtVerificationError", (error) => {
+            if (error.reason === "system") return Effect.fail(error);
+            return Effect.gen(function* () {
+              yield* Effect.annotateCurrentSpan({
+                "mcp.auth.outcome": "invalid",
+                "mcp.auth.invalid_reason": error.reason,
+              });
+              return null;
+            });
+          }),
+        );
+        if (!verified) return null;
+        if (!verified.accountId) {
+          yield* Effect.annotateCurrentSpan({ "mcp.auth.outcome": "missing_subject" });
+          return null;
+        }
+
+        const token = yield* withDefaultOrganization(workos, verified);
+        yield* Effect.annotateCurrentSpan({
+          "mcp.auth.outcome": "verified",
+          "mcp.auth.has_organization": !!token.organizationId,
+          "mcp.auth.organization_source": token.organizationSource ?? "unknown",
+        });
+        return token;
+      }),
+    };
   }),
-});
+).pipe(Layer.provide(McpAuthServices));
 
 // ---------------------------------------------------------------------------
 // Client fingerprint capture
@@ -695,7 +731,12 @@ const authorizeMcpOrganization = (
         attributes: { "mcp.auth.organization_id": organizationId },
       }),
     );
-    if (allowed) return null;
+    if (allowed) {
+      const autumn = yield* AutumnService;
+      const hasRemoteMcp = yield* autumn.isFeatureAllowed(organizationId, "remote-mcp");
+      if (hasRemoteMcp) return null;
+      return jsonRpcError(402, -32003, "Remote MCP requires the Pro plan");
+    }
 
     if (sessionId) {
       yield* clearExistingSession(request, sessionId);
@@ -777,7 +818,12 @@ type McpRoute = "mcp" | "oauth-protected-resource" | "oauth-authorization-server
  */
 export const classifyMcpPath = (pathname: string): McpRoute => {
   if (pathname === MCP_PATH) return "mcp";
-  if (pathname === PROTECTED_RESOURCE_METADATA_PATH) return "oauth-protected-resource";
+  if (
+    pathname === PROTECTED_RESOURCE_METADATA_PATH ||
+    pathname === LEGACY_PROTECTED_RESOURCE_METADATA_PATH
+  ) {
+    return "oauth-protected-resource";
+  }
   if (pathname === "/.well-known/oauth-authorization-server") return "oauth-authorization-server";
   return null;
 };
@@ -790,7 +836,7 @@ export const classifyMcpPath = (pathname: string): McpRoute => {
 export const mcpApp: Effect.Effect<
   HttpServerResponse.HttpServerResponse,
   never,
-  HttpServerRequest.HttpServerRequest | McpAuth | McpOrganizationAuth
+  HttpServerRequest.HttpServerRequest | McpAuth | McpOrganizationAuth | AutumnService
 > = Effect.gen(function* () {
   const httpRequest = yield* HttpServerRequest.HttpServerRequest;
   const request = httpRequest.source as Request;
@@ -831,7 +877,9 @@ export const mcpApp: Effect.Effect<
 );
 
 const rawMcpFetch = HttpApp.toWebHandler(
-  mcpApp.pipe(Effect.provide(Layer.mergeAll(McpAuthLive, McpOrganizationAuthLive, TelemetryLive))),
+  mcpApp.pipe(
+    Effect.provide(Layer.mergeAll(McpAuthLive, McpOrganizationAuthLive, CoreSharedServices)),
+  ),
 );
 
 /**

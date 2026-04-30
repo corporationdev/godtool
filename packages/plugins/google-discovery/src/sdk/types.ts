@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { ManagedAuthConfig, ManagedAuthConnectionMaterial } from "@executor/plugin-managed-auth";
 
 export const GoogleDiscoveryHttpMethod = Schema.Literal(
   "get",
@@ -87,6 +88,7 @@ export const GoogleDiscoveryAuth = Schema.Union(
     /** Scopes requested on sign-in. */
     scopes: Schema.Array(Schema.String),
   }),
+  ManagedAuthConfig,
 );
 export type GoogleDiscoveryAuth = typeof GoogleDiscoveryAuth.Type;
 
@@ -133,3 +135,5 @@ export const GoogleDiscoveryOAuthSession = Schema.Struct({
   connectionId: Schema.String,
 });
 export type GoogleDiscoveryOAuthSession = typeof GoogleDiscoveryOAuthSession.Type;
+
+export { ManagedAuthConfig, ManagedAuthConnectionMaterial };

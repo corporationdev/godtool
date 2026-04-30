@@ -1,6 +1,7 @@
 import { HttpApi, HttpApiBuilder, HttpServerResponse } from "@effect/platform";
 import { Duration, Effect } from "effect";
 import { setCookie, deleteCookie } from "@tanstack/react-start/server";
+import { resolveRuntimeContext } from "@executor/config/runtime";
 
 import { AUTH_PATHS, CloudAuthApi, CloudAuthPublicApi } from "./api";
 import { SessionContext } from "./middleware";
@@ -18,47 +19,18 @@ const COOKIE_OPTIONS = {
   secure: true,
 };
 
-const STATE_COOKIE = "wos-login-state";
-const STATE_COOKIE_OPTIONS = {
-  path: "/",
-  httpOnly: true,
-  sameSite: "lax" as const,
-  maxAge: 10 * 60,
-  secure: true,
-};
-
 const RESPONSE_COOKIE_OPTIONS = {
   ...COOKIE_OPTIONS,
   maxAge: Duration.days(7),
 };
 
-const RESPONSE_STATE_COOKIE_OPTIONS = {
-  ...STATE_COOKIE_OPTIONS,
-  maxAge: Duration.minutes(10),
-};
-
-const DELETE_COOKIE_OPTIONS = {
-  path: "/",
-  httpOnly: true,
-  sameSite: "lax" as const,
-  maxAge: 0,
-  expires: new Date(0),
-  secure: true,
-};
-
-const randomState = (): string => {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
-};
-
-const timingSafeEqual = (a: string, b: string): boolean => {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) {
-    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+const getRuntimeAppOrigin = (): string => {
+  const stage = env.STAGE;
+  if (!stage) {
+    return env.VITE_PUBLIC_SITE_URL ?? "";
   }
-  return diff === 0;
+
+  return resolveRuntimeContext(stage).appUrl;
 };
 
 const setResponseCookie = (
@@ -68,10 +40,15 @@ const setResponseCookie = (
   options: typeof RESPONSE_COOKIE_OPTIONS,
 ) => HttpServerResponse.unsafeSetCookie(response, name, value, options);
 
-const deleteResponseCookie = (
-  response: HttpServerResponse.HttpServerResponse,
-  name: string,
-) => HttpServerResponse.unsafeSetCookie(response, name, "", DELETE_COOKIE_OPTIONS);
+const DESKTOP_STATE_PREFIX = "desktop:";
+
+const encodeDesktopState = (state: string): string => `${DESKTOP_STATE_PREFIX}${state}`;
+
+const decodeDesktopState = (state: string | undefined): string | null => {
+  if (!state?.startsWith(DESKTOP_STATE_PREFIX)) return null;
+  const value = state.slice(DESKTOP_STATE_PREFIX.length);
+  return value.length > 0 ? value : null;
+};
 
 // ---------------------------------------------------------------------------
 // Single non-protected API surface — public (login/callback) + session
@@ -89,34 +66,22 @@ export const CloudAuthPublicHandlers = HttpApiBuilder.group(
   "cloudAuthPublic",
   (handlers) =>
     handlers
-      .handleRaw("login", () =>
+      .handleRaw("login", ({ urlParams }) =>
         Effect.gen(function* () {
           const workos = yield* WorkOSAuth;
-          // Use the explicit public site URL — in dev, the request's Host
-          // header points at the internal proxy target, not the public URL
-          // WorkOS needs to redirect back to.
-          const origin = env.VITE_PUBLIC_SITE_URL ?? "";
-          const state = randomState();
+          const origin = getRuntimeAppOrigin();
+          const state =
+            urlParams.desktop === "1" && urlParams.desktop_state
+              ? encodeDesktopState(urlParams.desktop_state)
+              : undefined;
           const url = workos.getAuthorizationUrl(`${origin}${AUTH_PATHS.callback}`, state);
-          return setResponseCookie(
-            HttpServerResponse.redirect(url, { status: 302 }),
-            STATE_COOKIE,
-            state,
-            RESPONSE_STATE_COOKIE_OPTIONS,
-          );
+          return HttpServerResponse.redirect(url, { status: 302 });
         }),
       )
-      .handleRaw("callback", ({ request, urlParams }) =>
+      .handleRaw("callback", ({ urlParams }) =>
         Effect.gen(function* () {
           const workos = yield* WorkOSAuth;
           const users = yield* UserStoreService;
-          const cookieState = request.cookies[STATE_COOKIE] ?? null;
-          if (!cookieState || !timingSafeEqual(cookieState, urlParams.state)) {
-            return deleteResponseCookie(
-              HttpServerResponse.text("Invalid login state", { status: 400 }),
-              STATE_COOKIE,
-            );
-          }
 
           const result = yield* workos.authenticateWithCode(urlParams.code);
 
@@ -146,14 +111,24 @@ export const CloudAuthPublicHandlers = HttpApiBuilder.group(
             return HttpServerResponse.text("Failed to create session", { status: 500 });
           }
 
-          return deleteResponseCookie(
-            setResponseCookie(
-              HttpServerResponse.redirect("/", { status: 302 }),
+          const desktopState = decodeDesktopState(urlParams.state);
+          if (desktopState) {
+            const callback = new URL("http://127.0.0.1:14791/auth/callback");
+            callback.searchParams.set("session", sealedSession);
+            callback.searchParams.set("state", desktopState);
+            return setResponseCookie(
+              HttpServerResponse.redirect(callback.toString(), { status: 302 }),
               "wos-session",
               sealedSession,
               RESPONSE_COOKIE_OPTIONS,
-            ),
-            STATE_COOKIE,
+            );
+          }
+
+          return setResponseCookie(
+            HttpServerResponse.redirect("/", { status: 302 }),
+            "wos-session",
+            sealedSession,
+            RESPONSE_COOKIE_OPTIONS,
           );
         }),
       ),
@@ -207,7 +182,9 @@ export const CloudSessionAuthHandlers = HttpApiBuilder.group(
           );
 
           return {
-            organizations: organizations.filter((org): org is NonNullable<typeof org> => org !== null),
+            organizations: organizations.filter(
+              (org): org is NonNullable<typeof org> => org !== null,
+            ),
             activeOrganizationId: session.organizationId,
           };
         }),
@@ -245,9 +222,7 @@ export const CloudSessionAuthHandlers = HttpApiBuilder.group(
           // cookie and fail loudly; the frontend will bounce to login and
           // the callback's rehydrate path will pick up the new membership.
           const refreshed = yield* workos.refreshSession(session.sealedSession, org.id);
-          const verified = refreshed
-            ? yield* workos.authenticateSealedSession(refreshed)
-            : null;
+          const verified = refreshed ? yield* workos.authenticateSealedSession(refreshed) : null;
 
           if (!refreshed || !verified || verified.organizationId !== org.id) {
             yield* Effect.logWarning(

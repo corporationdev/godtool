@@ -17,17 +17,21 @@ function domainOf(url: string): string | null {
 
 export function SourceFavicon({
   url,
+  iconUrl,
   size = 16,
   sourceId,
   kind,
 }: {
   url?: string;
+  iconUrl?: string;
   size?: number;
   sourceId?: string;
   kind?: string;
 }) {
   const [failed, setFailed] = useState(false);
   const domain = url ? domainOf(url) : null;
+  const src =
+    iconUrl ?? (domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=${size * 2}` : null);
 
   const RuntimeIcon =
     kind === "computer_use" || sourceId === "computer_use"
@@ -46,7 +50,7 @@ export function SourceFavicon({
     );
   }
 
-  if (!domain || failed) {
+  if (!src || failed) {
     return (
       <BoxIcon
         aria-hidden
@@ -58,7 +62,7 @@ export function SourceFavicon({
 
   return (
     <img
-      src={`https://www.google.com/s2/favicons?domain=${domain}&sz=${size * 2}`}
+      src={src}
       alt=""
       width={size}
       height={size}

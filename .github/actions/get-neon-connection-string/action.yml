@@ -1,0 +1,46 @@
+name: Get Neon Connection String
+description: Resolve a Neon connection string for a project branch
+
+inputs:
+  api_key:
+    description: The Neon API key
+    required: true
+  branch:
+    description: The Neon branch id or name
+    required: true
+  project_id:
+    description: The Neon project id
+    required: true
+  role:
+    description: The Neon role name
+    required: true
+  database_name:
+    description: The Neon database name
+    required: false
+    default: neondb
+  pooled:
+    description: Whether to request a pooled connection string
+    required: false
+    default: "true"
+
+outputs:
+  connection_string:
+    description: The Neon connection string
+    value: ${{ steps.connection_string.outputs.connection_string }}
+
+runs:
+  using: composite
+  steps:
+    - id: connection_string
+      shell: bash
+      run: |
+        connection_string=$(bunx neonctl connection-string "$BRANCH" --project-id "$PROJECT_ID" --role-name "$ROLE" --database-name "$DATABASE_NAME" --pooled "$POOLED")
+        echo "connection_string=${connection_string}" >> "$GITHUB_OUTPUT"
+        echo "DATABASE_URL=${connection_string}" >> "$GITHUB_ENV"
+      env:
+        NEON_API_KEY: ${{ inputs.api_key }}
+        BRANCH: ${{ inputs.branch }}
+        PROJECT_ID: ${{ inputs.project_id }}
+        ROLE: ${{ inputs.role }}
+        DATABASE_NAME: ${{ inputs.database_name }}
+        POOLED: ${{ inputs.pooled }}

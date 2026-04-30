@@ -1,12 +1,30 @@
-import { Link, Outlet, useLocation } from "@tanstack/react-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Link, Outlet, useLocation, useMatches } from "@tanstack/react-router";
+import { useCallback, useEffect, useState } from "react";
+import type { ComponentType } from "react";
+import { ArrowLeft, CreditCard, DatabaseZap, Folder, Globe, KeyRound, Settings } from "lucide-react";
 import { useAtomRefresh } from "@effect-atom/atom-react";
 import { sourcesAtom, toolsAtom } from "@executor/react/api/atoms";
 import { useScope } from "@executor/react/api/scope-context";
 import { Button } from "@executor/react/components/button";
 import { CommandPalette } from "@executor/react/components/command-palette";
+import { AccountMenu } from "@executor/react/components/account-menu";
+import {
+  Sidebar,
+  SidebarContent as ShadSidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarRail,
+  SidebarTrigger,
+} from "@executor/react/components/sidebar";
 import { openApiSourcePlugin } from "@executor/plugin-openapi/react";
 import { createMcpSourcePlugin } from "@executor/plugin-mcp/react";
+import { useLocalAuth } from "./auth";
 
 const mcpSourcePlugin = createMcpSourcePlugin({ allowStdio: true });
 import { googleDiscoverySourcePlugin } from "@executor/plugin-google-discovery/react";
@@ -23,6 +41,14 @@ const sourcePlugins = [
   graphqlSourcePlugin,
 ];
 
+const settingsNavItems = [{ to: "/settings/billing", label: "Billing", icon: CreditCard }] as const;
+
+declare module "@tanstack/react-router" {
+  interface StaticDataRouteOption {
+    shellSidebar?: "app" | "settings";
+  }
+}
+
 // ── Env ─────────────────────────────────────────────────────────────────
 
 type AppMetaEnv = {
@@ -30,7 +56,7 @@ type AppMetaEnv = {
   readonly VITE_GITHUB_URL: string;
 };
 
-const { VITE_APP_VERSION, VITE_GITHUB_URL } = (
+const { VITE_APP_VERSION } = (
   import.meta as ImportMeta & {
     readonly env: AppMetaEnv;
   }
@@ -142,7 +168,7 @@ function UpdateCard(props: { latestVersion: string; channel: UpdateChannel }) {
   }, [command]);
 
   return (
-    <div className="mx-2 mb-2 rounded-xl border border-primary/25 bg-primary/[0.06] p-3">
+    <div className="mx-2 mb-2 rounded-xl border border-primary/25 bg-primary/[0.06] p-3 group-data-[collapsible=icon]:hidden">
       <div className="flex items-center gap-2">
         <div className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/15">
           <svg viewBox="0 0 16 16" fill="none" className="size-3 text-primary">
@@ -206,32 +232,33 @@ function UpdateCard(props: { latestVersion: string; channel: UpdateChannel }) {
 
 // ── NavItem ──────────────────────────────────────────────────────────────
 
-function NavItem(props: { to: string; label: string; active: boolean; onNavigate?: () => void }) {
+function NavItem(props: {
+  to: string;
+  label: string;
+  active: boolean;
+  icon: ComponentType<{ className?: string }>;
+}) {
+  const Icon = props.icon;
   return (
-    <Link
-      to={props.to}
-      onClick={props.onNavigate}
-      className={[
-        "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors",
-        props.active
-          ? "bg-sidebar-active text-foreground font-medium"
-          : "text-sidebar-foreground hover:bg-sidebar-active/60 hover:text-foreground",
-      ].join(" ")}
-    >
-      {props.label}
-    </Link>
+    <SidebarMenuItem>
+      <SidebarMenuButton asChild isActive={props.active} tooltip={props.label}>
+        <Link to={props.to}>
+          <Icon />
+          <span>{props.label}</span>
+        </Link>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
   );
 }
 
 // ── SidebarContent ───────────────────────────────────────────────────────
 
-function SidebarContent(props: {
+function AppSidebar(props: {
   pathname: string;
-  onNavigate?: () => void;
-  showBrand?: boolean;
   updateAvailable: boolean;
   latestVersion: string | null;
   channel: UpdateChannel;
+  auth: ReturnType<typeof useLocalAuth>;
 }) {
   const isHome = props.pathname === "/";
   const isSecrets = props.pathname === "/secrets";
@@ -239,56 +266,90 @@ function SidebarContent(props: {
   const isFiles = props.pathname === "/files";
 
   return (
-    <>
-      {props.showBrand !== false && (
-        <div className="flex h-12 shrink-0 items-center border-b border-sidebar-border px-4">
-          <Link to="/" className="flex items-center gap-1.5">
-            <span className="font-display text-base tracking-tight text-foreground">executor</span>
-          </Link>
-        </div>
-      )}
+    <Sidebar collapsible="icon">
+      <SidebarHeader className="desktop-sidebar-header">
+        <SidebarTrigger className="desktop-sidebar-trigger shrink-0" />
+      </SidebarHeader>
 
-      <nav className="flex flex-1 flex-col overflow-y-auto p-2">
-        <NavItem to="/" label="Sources" active={isHome} onNavigate={props.onNavigate} />
-        <NavItem
-          to="/browsers"
-          label="Browsers"
-          active={isBrowsers}
-          onNavigate={props.onNavigate}
-        />
-        <NavItem to="/files" label="Files" active={isFiles} onNavigate={props.onNavigate} />
-        <NavItem to="/secrets" label="Secrets" active={isSecrets} onNavigate={props.onNavigate} />
-      </nav>
+      <ShadSidebarContent>
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <NavItem to="/" label="Sources" icon={DatabaseZap} active={isHome} />
+              <NavItem to="/browsers" label="Browsers" icon={Globe} active={isBrowsers} />
+              <NavItem to="/files" label="Files" icon={Folder} active={isFiles} />
+              <NavItem to="/secrets" label="Secrets" icon={KeyRound} active={isSecrets} />
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </ShadSidebarContent>
 
       {props.updateAvailable && props.latestVersion && (
         <UpdateCard latestVersion={props.latestVersion} channel={props.channel} />
       )}
 
-      {/* Footer */}
-      <div className="shrink-0 border-t border-sidebar-border px-4 py-2.5">
-        <div className="flex flex-col gap-1.5 text-xs leading-none">
-          <a
-            href={`${VITE_GITHUB_URL}/issues`}
-            target="_blank"
-            rel="noreferrer"
-            className="text-muted-foreground transition-colors hover:text-foreground"
+      <SidebarFooter className="group-data-[collapsible=icon]:items-center">
+        <AccountMenu
+          auth={props.auth.auth}
+          onSignIn={props.auth.available ? () => void props.auth.signIn() : undefined}
+          onSignOut={props.auth.available ? () => void props.auth.signOut() : undefined}
+          settingsLink={
+            <Link to="/settings/billing">
+              <Settings />
+              Settings
+            </Link>
+          }
+        />
+      </SidebarFooter>
+      <SidebarRail />
+    </Sidebar>
+  );
+}
+
+function SettingsSidebar(props: { pathname: string; auth: ReturnType<typeof useLocalAuth> }) {
+  const isActive = (to: string) => props.pathname === to || props.pathname.startsWith(to + "/");
+
+  return (
+    <Sidebar collapsible="none" className="h-svh border-r border-sidebar-border">
+      <SidebarHeader className="desktop-settings-sidebar-header min-h-[104px] px-2 pb-2 pt-14">
+        <div className="flex h-10 items-center gap-2 px-2">
+          <Link
+            to="/"
+            className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            aria-label="Back to app"
           >
-            Feedback / bug?
-          </a>
-          <a
-            href={VITE_GITHUB_URL}
-            target="_blank"
-            rel="noreferrer"
-            className="text-muted-foreground transition-colors hover:text-foreground"
-          >
-            Star on GitHub
-          </a>
-          <span className="mt-0.5 text-xs text-muted-foreground tabular-nums">
-            v{VITE_APP_VERSION}
-          </span>
+            <ArrowLeft className="size-4" />
+          </Link>
+          <span className="font-display text-base tracking-tight text-foreground">Settings</span>
         </div>
-      </div>
-    </>
+      </SidebarHeader>
+
+      <ShadSidebarContent>
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {settingsNavItems.map(({ to, label, icon: Icon }) => (
+                <NavItem key={to} to={to} label={label} icon={Icon} active={isActive(to)} />
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </ShadSidebarContent>
+
+      <SidebarFooter className="group-data-[collapsible=icon]:items-center">
+        <AccountMenu
+          auth={props.auth.auth}
+          onSignIn={props.auth.available ? () => void props.auth.signIn() : undefined}
+          onSignOut={props.auth.available ? () => void props.auth.signOut() : undefined}
+          settingsLink={
+            <Link to="/settings/billing">
+              <Settings />
+              Settings
+            </Link>
+          }
+        />
+      </SidebarFooter>
+    </Sidebar>
   );
 }
 
@@ -296,27 +357,16 @@ function SidebarContent(props: {
 
 export function Shell() {
   const location = useLocation();
+  const matches = useMatches();
   const pathname = location.pathname;
   const scopeId = useScope();
   const refreshSources = useAtomRefresh(sourcesAtom(scopeId));
   const refreshTools = useAtomRefresh(toolsAtom(scopeId));
+  const auth = useLocalAuth();
   const { latestVersion, updateAvailable, channel } = useLatestVersion(VITE_APP_VERSION);
-  const lastPathname = useRef(pathname);
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  if (lastPathname.current !== pathname) {
-    lastPathname.current = pathname;
-    if (mobileSidebarOpen) setMobileSidebarOpen(false);
-  }
-
-  // Lock scroll when mobile sidebar open
-  useEffect(() => {
-    if (!mobileSidebarOpen) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, [mobileSidebarOpen]);
+  const shellSidebar = matches.some((match) => match.staticData.shellSidebar === "settings")
+    ? "settings"
+    : "app";
 
   useEffect(() => {
     if (!import.meta.hot) {
@@ -336,92 +386,22 @@ export function Shell() {
   }, [refreshSources, refreshTools]);
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <SidebarProvider>
       <CommandPalette sourcePlugins={sourcePlugins} />
-      {/* Desktop sidebar */}
-      <aside className="hidden w-52 shrink-0 border-r border-sidebar-border bg-sidebar md:flex md:flex-col lg:w-56">
-        <SidebarContent
+      {shellSidebar === "settings" ? (
+        <SettingsSidebar pathname={pathname} auth={auth} />
+      ) : (
+        <AppSidebar
           pathname={pathname}
           updateAvailable={updateAvailable}
           latestVersion={latestVersion}
           channel={channel}
+          auth={auth}
         />
-      </aside>
-
-      {/* Mobile sidebar overlay */}
-      {mobileSidebarOpen && (
-        <div className="fixed inset-0 z-50 flex md:hidden">
-          {/* oxlint-disable-next-line react/forbid-elements */}
-          <button
-            type="button"
-            aria-label="Close navigation"
-            className="absolute inset-0 bg-black/45 backdrop-blur-[1px]"
-            onClick={() => setMobileSidebarOpen(false)}
-          />
-          <div className="relative flex h-full w-[84vw] max-w-xs flex-col border-r border-sidebar-border bg-sidebar shadow-2xl">
-            <div className="flex h-12 shrink-0 items-center justify-between border-b border-sidebar-border px-4">
-              <Link to="/" className="flex items-center gap-1.5">
-                <span className="font-display text-base tracking-tight text-foreground">
-                  executor
-                </span>
-              </Link>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Close navigation"
-                onClick={() => setMobileSidebarOpen(false)}
-                className="text-sidebar-foreground hover:bg-sidebar-active hover:text-foreground"
-              >
-                <svg viewBox="0 0 16 16" className="size-3.5">
-                  <path
-                    d="M3 3l10 10M13 3L3 13"
-                    stroke="currentColor"
-                    strokeWidth="1.4"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </Button>
-            </div>
-            <SidebarContent
-              pathname={pathname}
-              onNavigate={() => setMobileSidebarOpen(false)}
-              showBrand={false}
-              updateAvailable={updateAvailable}
-              latestVersion={latestVersion}
-              channel={channel}
-            />
-          </div>
-        </div>
       )}
-
-      {/* Main content */}
       <main className="flex min-h-0 flex-1 flex-col min-w-0 overflow-hidden">
-        {/* Mobile top bar */}
-        <div className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-background px-4 md:hidden">
-          <Button
-            variant="outline"
-            size="icon-sm"
-            aria-label="Open navigation"
-            onClick={() => setMobileSidebarOpen(true)}
-            className="bg-card hover:bg-accent/50"
-          >
-            <svg viewBox="0 0 16 16" className="size-4">
-              <path
-                d="M2 4h12M2 8h12M2 12h12"
-                stroke="currentColor"
-                strokeWidth="1.2"
-                strokeLinecap="round"
-              />
-            </svg>
-          </Button>
-          <Link to="/" className="flex items-center gap-1.5">
-            <span className="font-display text-base tracking-tight text-foreground">executor</span>
-          </Link>
-          <div className="w-8 shrink-0" />
-        </div>
-
         <Outlet />
       </main>
-    </div>
+    </SidebarProvider>
   );
 }

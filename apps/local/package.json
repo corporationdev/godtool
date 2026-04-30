@@ -34,6 +34,7 @@
     "@executor/plugin-mcp": "workspace:*",
     "@executor/plugin-onepassword": "workspace:*",
     "@executor/plugin-openapi": "workspace:*",
+    "@executor/plugin-managed-auth": "workspace:*",
     "@executor/plugin-raw": "workspace:*",
     "@executor/plugin-workspace": "workspace:*",
     "@executor/react": "workspace:*",
@@ -45,6 +46,7 @@
     "drizzle-orm": "catalog:",
     "effect": "catalog:",
     "jsonc-parser": "^3.3.1",
+    "lucide-react": "^1.7.0",
     "react": "catalog:",
     "react-dom": "catalog:"
   },

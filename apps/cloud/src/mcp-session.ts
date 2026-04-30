@@ -3,9 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import { DurableObject, env } from "cloudflare:workers";
-import { createTraceState } from "@opentelemetry/api";
 import { Data, Effect, Layer } from "effect";
-import * as OtelTracer from "@effect/opentelemetry/Tracer";
 import type * as Tracer from "effect/Tracer";
 import * as Sentry from "@sentry/cloudflare";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -28,7 +26,6 @@ import { resolveOrganization } from "./auth/resolve-organization";
 import { DbService, combinedSchema, resolveConnectionString } from "./services/db";
 import { makeExecutionStack } from "./services/execution-stack";
 import { makeMcpWorkerTransport, type McpWorkerTransport } from "./services/mcp-worker-transport";
-import { DoTelemetryLive } from "./services/telemetry";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -76,42 +73,12 @@ const jsonRpcError = (status: number, code: number, message: string) =>
 const sessionOwnerMismatch = () =>
   jsonRpcError(403, -32003, "MCP session does not belong to the current bearer");
 
-// W3C propagation across the worker→DO boundary. mcp.ts injects the worker's
-// `traceparent` and forwards incoming `tracestate` / `baggage` headers on
-// forwarded requests (and as a second arg to `init()`). We parse the context
-// here and use `OtelTracer.withSpanContext` to stitch the DO's root span
-// under the worker span so the entire logical request lives in one trace.
-const TRACEPARENT_PATTERN = /^([0-9a-f]{2})-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$/;
-
-type IncomingSpanContext = {
-  readonly traceId: string;
-  readonly spanId: string;
-  readonly traceFlags: number;
-  readonly traceState?: ReturnType<typeof createTraceState>;
-};
-
-const parseTraceparent = (
-  traceparent: string | null | undefined,
-  tracestate: string | null | undefined,
-): IncomingSpanContext | null => {
-  const value = traceparent;
-  if (!value) return null;
-  const match = TRACEPARENT_PATTERN.exec(value);
-  if (!match) return null;
-  return {
-    traceId: match[2]!,
-    spanId: match[3]!,
-    traceFlags: parseInt(match[4]!, 16),
-    ...(tracestate ? { traceState: createTraceState(tracestate) } : {}),
-  };
-};
-
 const withIncomingParent = <A, E, R>(
   incoming: IncomingTraceHeaders | null | undefined,
   effect: Effect.Effect<A, E, R>,
 ): Effect.Effect<A, E, R> => {
-  const parsed = parseTraceparent(incoming?.traceparent, incoming?.tracestate);
-  return parsed ? OtelTracer.withSpanContext(effect, parsed) : effect;
+  void incoming;
+  return effect;
 };
 
 type DbHandle = DbServiceShape & { end: () => Promise<void> };
@@ -424,7 +391,6 @@ export class McpSessionDO extends DurableObject {
           attributes: { "mcp.auth.organization_id": token.organizationId },
         }),
         (eff) => withIncomingParent(incoming, eff),
-        Effect.provide(DoTelemetryLive),
       ),
     );
   }
@@ -521,7 +487,6 @@ export class McpSessionDO extends DurableObject {
         },
       }),
       (eff) => withIncomingParent(incoming, eff),
-      Effect.provide(DoTelemetryLive),
     );
     return Effect.runPromise(program);
   }
@@ -589,7 +554,6 @@ export class McpSessionDO extends DurableObject {
   async alarm(): Promise<void> {
     const program = Effect.promise(() => this.runAlarm()).pipe(
       Effect.withSpan("McpSessionDO.alarm"),
-      Effect.provide(DoTelemetryLive),
     );
     return Effect.runPromise(program);
   }
@@ -599,7 +563,6 @@ export class McpSessionDO extends DurableObject {
       Effect.promise(() => this.cleanup()).pipe(
         Effect.withSpan("McpSessionDO.clearSession"),
         (eff) => withIncomingParent(incoming, eff),
-        Effect.provide(DoTelemetryLive),
       ),
     );
   }

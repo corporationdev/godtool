@@ -10,19 +10,13 @@
 
 import { Effect } from "effect";
 
-import {
-  Scope,
-  ScopeId,
-  collectSchemas,
-  createExecutor,
-} from "@executor/sdk";
-import {
-  makePostgresAdapter,
-  makePostgresBlobStore,
-} from "@executor/storage-postgres";
+import { Scope, ScopeId, collectSchemas, createExecutor } from "@executor/sdk";
+import { makePostgresAdapter, makePostgresBlobStore } from "@executor/storage-postgres";
 import { openApiPlugin } from "@executor/plugin-openapi";
 import { mcpPlugin } from "@executor/plugin-mcp";
+import { googleDiscoveryPlugin } from "@executor/plugin-google-discovery";
 import { graphqlPlugin } from "@executor/plugin-graphql";
+import { rawPlugin } from "@executor/plugin-raw";
 import { workosVaultPlugin } from "@executor/plugin-workos-vault";
 
 import { env } from "cloudflare:workers";
@@ -31,7 +25,8 @@ import { DbService } from "./db";
 // ---------------------------------------------------------------------------
 // Plugin list — one place, used for both the runtime and the CLI config
 // (executor.config.ts). No stdio MCP in cloud; no keychain/file-secrets/
-// 1password/google-discovery.
+// 1password. Raw uses DB-backed source storage in cloud; local config-file
+// sync is intentionally omitted.
 //
 // NOTE: the CLI config (executor.config.ts) imports these same plugins with
 // stub credentials because it only reads `plugin.schema`. Here we pass
@@ -40,9 +35,11 @@ import { DbService } from "./db";
 
 const createOrgPlugins = () =>
   [
-    openApiPlugin(),
+    openApiPlugin({ composioApiKey: env.COMPOSIO_API_KEY || undefined }),
     mcpPlugin({ dangerouslyAllowStdioMCP: false }),
-    graphqlPlugin(),
+    googleDiscoveryPlugin({ composioApiKey: env.COMPOSIO_API_KEY || undefined }),
+    graphqlPlugin({ composioApiKey: env.COMPOSIO_API_KEY || undefined }),
+    rawPlugin({ composioApiKey: env.COMPOSIO_API_KEY || undefined }),
     workosVaultPlugin({
       credentials: {
         apiKey: env.WORKOS_API_KEY,

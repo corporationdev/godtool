@@ -334,7 +334,7 @@ func snapshot(app query: String) throws -> [String: Any] {
   let windowTitle = axString(window, kAXTitleAttribute) ?? ""
   let windowFrame = axFrame(window)
   var lines: [String] = [
-    "Computer Use state (Godtool Computer Use Version: 2)",
+    "Computer Use state (GOD TOOL Computer Use Version: 2)",
     "<app_state>",
     "App=\(app.bundleIdentifier ?? String(app.processIdentifier)) (pid \(app.processIdentifier))",
     "Window: \"\(windowTitle)\", App: \(app.localizedName ?? app.bundleIdentifier ?? "Unknown").",

@@ -13,6 +13,12 @@ import {
   useSourceIdentity,
 } from "@executor/react/plugins/source-identity";
 import { useSecretPickerSecrets } from "@executor/react/plugins/use-secret-picker-secrets";
+import {
+  startManagedAuthConnect,
+  isDesktopManagedAuth,
+  useManagedAuthAccess,
+  type ManagedAuthConnectResult,
+} from "@executor/react/plugins/managed-auth";
 import { Button } from "@executor/react/components/button";
 import {
   CardStack,
@@ -26,6 +32,10 @@ import { Spinner } from "@executor/react/components/spinner";
 import { addGraphqlSource } from "./atoms";
 import type { HeaderValue } from "../sdk/types";
 
+const goToBilling = () => {
+  window.location.href = "/settings/billing";
+};
+
 const initialHeader = (): HeaderState => ({
   name: "Authorization",
   prefix: "Bearer ",
@@ -34,7 +44,7 @@ const initialHeader = (): HeaderState => ({
 });
 
 export default function AddGraphqlSource(props: {
-  onComplete: () => void;
+  onComplete: (sourceId?: string) => void;
   onCancel: () => void;
   initialUrl?: string;
 }) {
@@ -43,6 +53,8 @@ export default function AddGraphqlSource(props: {
     fallbackName: displayNameFromUrl(endpoint) ?? "",
   });
   const [headers, setHeaders] = useState<HeaderState[]>([initialHeader()]);
+  const [managedAuth, setManagedAuth] = useState<ManagedAuthConnectResult | null>(null);
+  const [connectingManagedAuth, setConnectingManagedAuth] = useState(false);
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
 
@@ -50,9 +62,34 @@ export default function AddGraphqlSource(props: {
   const doAdd = useAtomSet(addGraphqlSource, { mode: "promise" });
   const { beginAdd } = usePendingSources();
   const secretList = useSecretPickerSecrets();
+  const managedAuthAccess = useManagedAuthAccess();
 
   const headersValid = headers.every((header) => header.name.trim() && header.secretId);
-  const canAdd = endpoint.trim().length > 0 && (headers.length === 0 || headersValid);
+  const managedAuthApp = endpoint.includes("github.com")
+    ? "github"
+    : endpoint.includes("linear.app")
+      ? "linear"
+      : null;
+  const canAdd =
+    endpoint.trim().length > 0 && (managedAuth !== null || headers.length === 0 || headersValid);
+
+  const handleManagedAuth = async () => {
+    if (!managedAuthApp) return;
+    setConnectingManagedAuth(true);
+    setAddError(null);
+    try {
+      const result = await startManagedAuthConnect({
+        app: managedAuthApp,
+        provider: "graphql-composio",
+        placement: isDesktopManagedAuth() ? "local" : "cloud",
+      });
+      setManagedAuth(result);
+    } catch (error) {
+      setAddError(error instanceof Error ? error.message : "Failed to connect managed auth");
+    } finally {
+      setConnectingManagedAuth(false);
+    }
+  };
 
   const handleAdd = async () => {
     setAdding(true);
@@ -73,8 +110,7 @@ export default function AddGraphqlSource(props: {
       slugifyNamespace(identity.namespace) ||
       slugifyNamespace(displayNameFromUrl(trimmedEndpoint) ?? "") ||
       "graphql";
-    const displayName =
-      identity.name.trim() || displayNameFromUrl(trimmedEndpoint) || namespace;
+    const displayName = identity.name.trim() || displayNameFromUrl(trimmedEndpoint) || namespace;
     const placeholder = beginAdd({
       id: namespace,
       name: displayName,
@@ -82,17 +118,23 @@ export default function AddGraphqlSource(props: {
       url: trimmedEndpoint || undefined,
     });
     try {
-      await doAdd({
+      const result = await doAdd({
         path: { scopeId },
         payload: {
           endpoint: trimmedEndpoint,
           name: identity.name.trim() || undefined,
           namespace: slugifyNamespace(identity.namespace) || undefined,
           ...(Object.keys(headerMap).length > 0 ? { headers: headerMap } : {}),
+          ...(managedAuth
+            ? {
+                managedAuth: managedAuth.managedAuth,
+                managedConnection: managedAuth.managedConnection,
+              }
+            : {}),
         },
         reactivityKeys: sourceWriteKeys,
       });
-      props.onComplete();
+      props.onComplete(result.namespace);
     } catch (e) {
       setAddError(e instanceof Error ? e.message : "Failed to add source");
       setAdding(false);
@@ -121,10 +163,45 @@ export default function AddGraphqlSource(props: {
         </CardStackContent>
       </CardStack>
 
-      <SourceIdentityFields
-        identity={identity}
-        namePlaceholder="e.g. Shopify API"
-      />
+      <SourceIdentityFields identity={identity} namePlaceholder="e.g. Shopify API" />
+
+      {managedAuthApp && (
+        <section className="space-y-2.5">
+          <FieldLabel>Managed OAuth</FieldLabel>
+          <CardStack>
+            <CardStackContent className="border-t-0">
+              <div className="flex items-center justify-between gap-4 p-4">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground">
+                    {managedAuth ? "Connected with managed auth" : "Let GOD TOOL manage OAuth"}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {isDesktopManagedAuth()
+                      ? "This local source uses your cloud sign-in without storing OAuth secrets on this Mac."
+                      : "Credentials are stored in Composio for this cloud source."}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant={managedAuth ? "outline" : "default"}
+                  onClick={managedAuth || managedAuthAccess.allowed ? handleManagedAuth : goToBilling}
+                  disabled={managedAuthAccess.loading || connectingManagedAuth || adding}
+                >
+                  {managedAuthAccess.loading
+                    ? "Checking..."
+                    : connectingManagedAuth
+                      ? "Connecting..."
+                      : managedAuth
+                        ? "Reconnect"
+                        : managedAuthAccess.allowed
+                          ? "Connect"
+                          : "Upgrade to Pro"}
+                </Button>
+              </div>
+            </CardStackContent>
+          </CardStack>
+        </section>
+      )}
 
       <section className="space-y-2.5">
         <FieldLabel>Headers</FieldLabel>

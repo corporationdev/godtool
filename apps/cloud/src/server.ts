@@ -1,7 +1,7 @@
 import * as Sentry from "@sentry/cloudflare";
 import handler from "@tanstack/react-start/server-entry";
-import { instrument, type TraceConfig } from "@microlabs/otel-cf-workers";
 
+import { DeviceSessionDO as DeviceSessionDOBase } from "./device-session";
 import { McpSessionDO as McpSessionDOBase } from "./mcp-session";
 
 // ---------------------------------------------------------------------------
@@ -13,30 +13,6 @@ import { McpSessionDO as McpSessionDOBase } from "./mcp-session";
 // `WorkerTransport`'s stream primitives and crashes every MCP request with
 // DOMException "Illegal invocation".
 // ---------------------------------------------------------------------------
-
-const parseSampleRatio = (value: string | undefined): number => {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return 1;
-  return Math.min(1, Math.max(0, n));
-};
-
-const otelConfig = (env: Env): TraceConfig => ({
-  service: { name: "executor-cloud", version: "1.0.0" },
-  exporter: {
-    url: env.AXIOM_TRACES_URL ?? "https://api.axiom.co/v1/traces",
-    headers: {
-      Authorization: `Bearer ${env.AXIOM_TOKEN ?? ""}`,
-      "X-Axiom-Dataset": env.AXIOM_DATASET ?? "executor-cloud",
-    },
-  },
-  sampling: {
-    headSampler: {
-      // Keep remote parent decisions and make local sampling policy explicit.
-      acceptRemote: true,
-      ratio: parseSampleRatio(env.AXIOM_TRACES_SAMPLE_RATIO),
-    },
-  },
-});
 
 // otel-cf-workers owns the global TracerProvider. Sentry's OTEL compat shim
 // registers a ProxyTracerProvider of its own, which prevents otel-cf-workers
@@ -67,6 +43,11 @@ export const McpSessionDO = Sentry.instrumentDurableObjectWithSentry(
   McpSessionDOBase,
 );
 
+export const DeviceSessionDO = Sentry.instrumentDurableObjectWithSentry(
+  sentryOptions,
+  DeviceSessionDOBase,
+);
+
 // ---------------------------------------------------------------------------
 // Worker fetch handler
 // ---------------------------------------------------------------------------
@@ -78,16 +59,14 @@ export const McpSessionDO = Sentry.instrumentDurableObjectWithSentry(
 // ECONNRESET. It also registers otel-cf-workers' `WorkerTracer` as the
 // global tracer; spans started outside its config ALS then die with
 // "Config is undefined". Matches the gate in `DoTelemetryLive`.
-// `instrument()` mutates the handler it's given (replaces `.fetch` with the
-// proxied version), so capture the raw fetch first and then build the
-// instrumented handler from a separate object.
+// Keep the fetch path raw for now. MCP availability is more important than
+// worker-level tracing, and the Effect spans already give enough local
+// structure while debugging.
 const rawFetch = handler.fetch;
-const instrumentedHandler = instrument({ fetch: rawFetch }, otelConfig);
 
 const dispatchHandler = {
   fetch: (request: Request, env: Env, ctx: unknown) => {
-    const fn = env.AXIOM_TOKEN ? instrumentedHandler.fetch! : rawFetch;
-    return (fn as (req: Request, env: Env, ctx: unknown) => Response | Promise<Response>)(
+    return (rawFetch as (req: Request, env: Env, ctx: unknown) => Response | Promise<Response>)(
       request,
       env,
       ctx,

@@ -48,6 +48,15 @@ interface WorkspaceOpenTargetOption {
 interface Window {
   readonly electronAPI?: {
     readonly getCurrentScope: () => Promise<string | null>;
+    readonly system?: {
+      readonly openExternal: (url: string) => Promise<void>;
+    };
+    readonly cloudBilling?: {
+      readonly getCustomer: () => Promise<unknown>;
+      readonly listPlans: () => Promise<unknown>;
+      readonly attach: (input: unknown) => Promise<unknown>;
+      readonly openCustomerPortal: (input: unknown) => Promise<unknown>;
+    };
     readonly files?: {
       readonly list: () => Promise<{
         readonly rootPath: string;

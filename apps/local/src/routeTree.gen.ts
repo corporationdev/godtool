@@ -10,17 +10,25 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ToolsRouteImport } from './routes/tools'
+import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SecretsRouteImport } from './routes/secrets'
 import { Route as FilesRouteImport } from './routes/files'
 import { Route as ConnectionsRouteImport } from './routes/connections'
 import { Route as BrowsersRouteImport } from './routes/browsers'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SourcesNamespaceRouteImport } from './routes/sources.$namespace'
+import { Route as SettingsBillingRouteImport } from './routes/settings.billing'
 import { Route as SourcesAddPluginKeyRouteImport } from './routes/sources.add.$pluginKey'
+import { Route as SettingsBillingPlansRouteImport } from './routes/settings.billing_.plans'
 
 const ToolsRoute = ToolsRouteImport.update({
   id: '/tools',
   path: '/tools',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SecretsRoute = SecretsRouteImport.update({
@@ -53,10 +61,20 @@ const SourcesNamespaceRoute = SourcesNamespaceRouteImport.update({
   path: '/sources/$namespace',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SettingsBillingRoute = SettingsBillingRouteImport.update({
+  id: '/billing',
+  path: '/billing',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SourcesAddPluginKeyRoute = SourcesAddPluginKeyRouteImport.update({
   id: '/sources/add/$pluginKey',
   path: '/sources/add/$pluginKey',
   getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsBillingPlansRoute = SettingsBillingPlansRouteImport.update({
+  id: '/billing_/plans',
+  path: '/billing/plans',
+  getParentRoute: () => SettingsRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
@@ -65,8 +83,11 @@ export interface FileRoutesByFullPath {
   '/connections': typeof ConnectionsRoute
   '/files': typeof FilesRoute
   '/secrets': typeof SecretsRoute
+  '/settings': typeof SettingsRouteWithChildren
   '/tools': typeof ToolsRoute
+  '/settings/billing': typeof SettingsBillingRoute
   '/sources/$namespace': typeof SourcesNamespaceRoute
+  '/settings/billing/plans': typeof SettingsBillingPlansRoute
   '/sources/add/$pluginKey': typeof SourcesAddPluginKeyRoute
 }
 export interface FileRoutesByTo {
@@ -75,8 +96,11 @@ export interface FileRoutesByTo {
   '/connections': typeof ConnectionsRoute
   '/files': typeof FilesRoute
   '/secrets': typeof SecretsRoute
+  '/settings': typeof SettingsRouteWithChildren
   '/tools': typeof ToolsRoute
+  '/settings/billing': typeof SettingsBillingRoute
   '/sources/$namespace': typeof SourcesNamespaceRoute
+  '/settings/billing/plans': typeof SettingsBillingPlansRoute
   '/sources/add/$pluginKey': typeof SourcesAddPluginKeyRoute
 }
 export interface FileRoutesById {
@@ -86,8 +110,11 @@ export interface FileRoutesById {
   '/connections': typeof ConnectionsRoute
   '/files': typeof FilesRoute
   '/secrets': typeof SecretsRoute
+  '/settings': typeof SettingsRouteWithChildren
   '/tools': typeof ToolsRoute
+  '/settings/billing': typeof SettingsBillingRoute
   '/sources/$namespace': typeof SourcesNamespaceRoute
+  '/settings/billing_/plans': typeof SettingsBillingPlansRoute
   '/sources/add/$pluginKey': typeof SourcesAddPluginKeyRoute
 }
 export interface FileRouteTypes {
@@ -98,8 +125,11 @@ export interface FileRouteTypes {
     | '/connections'
     | '/files'
     | '/secrets'
+    | '/settings'
     | '/tools'
+    | '/settings/billing'
     | '/sources/$namespace'
+    | '/settings/billing/plans'
     | '/sources/add/$pluginKey'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -108,8 +138,11 @@ export interface FileRouteTypes {
     | '/connections'
     | '/files'
     | '/secrets'
+    | '/settings'
     | '/tools'
+    | '/settings/billing'
     | '/sources/$namespace'
+    | '/settings/billing/plans'
     | '/sources/add/$pluginKey'
   id:
     | '__root__'
@@ -118,8 +151,11 @@ export interface FileRouteTypes {
     | '/connections'
     | '/files'
     | '/secrets'
+    | '/settings'
     | '/tools'
+    | '/settings/billing'
     | '/sources/$namespace'
+    | '/settings/billing_/plans'
     | '/sources/add/$pluginKey'
   fileRoutesById: FileRoutesById
 }
@@ -129,6 +165,7 @@ export interface RootRouteChildren {
   ConnectionsRoute: typeof ConnectionsRoute
   FilesRoute: typeof FilesRoute
   SecretsRoute: typeof SecretsRoute
+  SettingsRoute: typeof SettingsRouteWithChildren
   ToolsRoute: typeof ToolsRoute
   SourcesNamespaceRoute: typeof SourcesNamespaceRoute
   SourcesAddPluginKeyRoute: typeof SourcesAddPluginKeyRoute
@@ -141,6 +178,13 @@ declare module '@tanstack/react-router' {
       path: '/tools'
       fullPath: '/tools'
       preLoaderRoute: typeof ToolsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/secrets': {
@@ -185,6 +229,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SourcesNamespaceRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings/billing': {
+      id: '/settings/billing'
+      path: '/billing'
+      fullPath: '/settings/billing'
+      preLoaderRoute: typeof SettingsBillingRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/sources/add/$pluginKey': {
       id: '/sources/add/$pluginKey'
       path: '/sources/add/$pluginKey'
@@ -192,8 +243,29 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SourcesAddPluginKeyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings/billing_/plans': {
+      id: '/settings/billing_/plans'
+      path: '/billing/plans'
+      fullPath: '/settings/billing/plans'
+      preLoaderRoute: typeof SettingsBillingPlansRouteImport
+      parentRoute: typeof SettingsRoute
+    }
   }
 }
+
+interface SettingsRouteChildren {
+  SettingsBillingRoute: typeof SettingsBillingRoute
+  SettingsBillingPlansRoute: typeof SettingsBillingPlansRoute
+}
+
+const SettingsRouteChildren: SettingsRouteChildren = {
+  SettingsBillingRoute: SettingsBillingRoute,
+  SettingsBillingPlansRoute: SettingsBillingPlansRoute,
+}
+
+const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
+  SettingsRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
@@ -201,6 +273,7 @@ const rootRouteChildren: RootRouteChildren = {
   ConnectionsRoute: ConnectionsRoute,
   FilesRoute: FilesRoute,
   SecretsRoute: SecretsRoute,
+  SettingsRoute: SettingsRouteWithChildren,
   ToolsRoute: ToolsRoute,
   SourcesNamespaceRoute: SourcesNamespaceRoute,
   SourcesAddPluginKeyRoute: SourcesAddPluginKeyRoute,

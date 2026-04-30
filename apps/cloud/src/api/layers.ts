@@ -5,7 +5,12 @@ import { CoreExecutorApi, InternalError, observabilityMiddleware } from "@execut
 import { CoreHandlers } from "@executor/api/server";
 import { OpenApiGroup, OpenApiHandlers } from "@executor/plugin-openapi/api";
 import { McpGroup, McpHandlers } from "@executor/plugin-mcp/api";
+import {
+  GoogleDiscoveryGroup,
+  GoogleDiscoveryHandlers,
+} from "@executor/plugin-google-discovery/api";
 import { GraphqlGroup, GraphqlHandlers } from "@executor/plugin-graphql/api";
+import { RawGroup, RawHandlers } from "@executor/plugin-raw/api";
 
 import { OrgAuth } from "../auth/middleware";
 import { OrgAuthLive, SessionAuthLive } from "../auth/middleware-live";
@@ -27,7 +32,9 @@ export { CoreSharedServices };
 
 const ProtectedCloudApi = CoreExecutorApi.add(OpenApiGroup)
   .add(McpGroup)
+  .add(GoogleDiscoveryGroup)
   .add(GraphqlGroup)
+  .add(RawGroup)
   .addError(InternalError)
   .middleware(OrgAuth);
 
@@ -52,7 +59,9 @@ export const ProtectedCloudApiLive = HttpApiBuilder.api(ProtectedCloudApi).pipe(
       CoreHandlers,
       OpenApiHandlers,
       McpHandlers,
+      GoogleDiscoveryHandlers,
       GraphqlHandlers,
+      RawHandlers,
       OrgAuthLive,
       ObservabilityLive,
     ),

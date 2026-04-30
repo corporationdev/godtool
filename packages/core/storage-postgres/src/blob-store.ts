@@ -11,7 +11,6 @@
 
 import { Effect } from "effect";
 import { and, eq, inArray } from "drizzle-orm";
-import type { PgDatabase } from "drizzle-orm/pg-core";
 import { pgTable, primaryKey, text } from "drizzle-orm/pg-core";
 
 import type { BlobStore } from "@executor/sdk";
@@ -27,11 +26,12 @@ export const blobTable = pgTable(
   (t) => ({ pk: primaryKey({ columns: [t.namespace, t.key] }) }),
 );
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type DrizzlePgDB = PgDatabase<any, any, any>;
-
 export interface MakePostgresBlobStoreOptions {
-  readonly db: DrizzlePgDB;
+  // Keep this intentionally structural. Bun can install separate virtual
+  // drizzle peer instances, and PgDatabase carries protected members that make
+  // otherwise-identical instances nominally incompatible at package boundaries.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readonly db: any;
 }
 
 const wrapErr =

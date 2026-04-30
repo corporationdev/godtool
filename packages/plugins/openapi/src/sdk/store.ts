@@ -7,6 +7,7 @@ import {
   type StorageDeps,
   type StorageFailure,
 } from "@executor/sdk";
+import type { ManagedAuthConfig } from "@executor/plugin-managed-auth";
 
 import {
   ConfiguredHeaderValue,
@@ -14,6 +15,7 @@ import {
   HeaderValue,
   OAuth2Auth,
   OAuth2SourceConfig,
+  ManagedAuthConfig as ManagedAuthConfigSchema,
   OpenApiOAuthSession,
   OpenApiSourceBindingInput,
   OpenApiSourceBindingRef,
@@ -43,6 +45,7 @@ export const openapiSchema = defineSchema({
       base_url: { type: "string", required: false },
       headers: { type: "json", required: false },
       oauth2: { type: "json", required: false },
+      managed_auth: { type: "json", required: false },
       invocation_config: { type: "json", required: true },
     },
   },
@@ -96,6 +99,7 @@ export interface SourceConfig {
   readonly namespace?: string;
   readonly headers?: Record<string, ConfiguredHeaderValue>;
   readonly oauth2?: OAuth2SourceConfig;
+  readonly managedAuth?: ManagedAuthConfig;
 }
 
 export interface StoredSource {
@@ -117,9 +121,7 @@ export interface StoredSource {
 // an encodable/decodable shape for HTTP responses.
 // ---------------------------------------------------------------------------
 
-export class StoredSourceSchema extends Schema.Class<StoredSourceSchema>(
-  "OpenApiStoredSource",
-)({
+export class StoredSourceSchema extends Schema.Class<StoredSourceSchema>("OpenApiStoredSource")({
   namespace: Schema.String,
   name: Schema.String,
   config: Schema.Struct({
@@ -127,12 +129,11 @@ export class StoredSourceSchema extends Schema.Class<StoredSourceSchema>(
     sourceUrl: Schema.optional(Schema.String),
     baseUrl: Schema.optional(Schema.String),
     namespace: Schema.optional(Schema.String),
-    headers: Schema.optional(
-      Schema.Record({ key: Schema.String, value: ConfiguredHeaderValue }),
-    ),
+    headers: Schema.optional(Schema.Record({ key: Schema.String, value: ConfiguredHeaderValue })),
     // Canonical source-owned OAuth config. Concrete client credentials
     // and connection ids live in OpenAPI-owned scoped binding rows.
     oauth2: Schema.optional(OAuth2SourceConfig),
+    managedAuth: Schema.optional(ManagedAuthConfigSchema),
   }),
 }) {}
 
@@ -291,6 +292,7 @@ export interface OpenapiStore {
       readonly baseUrl?: string;
       readonly headers?: Record<string, ConfiguredHeaderValue>;
       readonly oauth2?: OAuth2SourceConfig;
+      readonly managedAuth?: ManagedAuthConfig | null;
     },
   ) => Effect.Effect<void, StorageFailure>;
 
@@ -311,10 +313,7 @@ export interface OpenapiStore {
     scope: string,
   ) => Effect.Effect<readonly StoredOperation[], StorageFailure>;
 
-  readonly removeSource: (
-    namespace: string,
-    scope: string,
-  ) => Effect.Effect<void, StorageFailure>;
+  readonly removeSource: (namespace: string, scope: string) => Effect.Effect<void, StorageFailure>;
 
   readonly putOAuthSession: (
     sessionId: string,
@@ -361,11 +360,9 @@ export const makeDefaultOpenapiStore = ({
   const scopeIds = scopes.map((scope) => scope.id as string);
   const scopePrecedence = new Map<string, number>();
   scopeIds.forEach((scope, index) => scopePrecedence.set(scope, index));
-  const scopeRank = (scopeId: string): number =>
-    scopePrecedence.get(scopeId) ?? Infinity;
+  const scopeRank = (scopeId: string): number => scopePrecedence.get(scopeId) ?? Infinity;
 
-  const encodeSyntheticRowIdPart = (value: string): string =>
-    encodeURIComponent(value);
+  const encodeSyntheticRowIdPart = (value: string): string => encodeURIComponent(value);
 
   const sourceBindingRowId = (
     sourceId: string,
@@ -381,9 +378,7 @@ export const makeDefaultOpenapiStore = ({
       encodeSyntheticRowIdPart(scopeId),
     ].join("::");
 
-  const rowToSourceBinding = (
-    row: Record<string, unknown>,
-  ): OpenApiSourceBindingRef =>
+  const rowToSourceBinding = (row: Record<string, unknown>): OpenApiSourceBindingRef =>
     new OpenApiSourceBindingRef({
       sourceId: row.source_id as string,
       sourceScopeId: ScopeId.make(row.source_scope_id as string),
@@ -391,13 +386,9 @@ export const makeDefaultOpenapiStore = ({
       slot: row.slot as string,
       value: decodeSourceBindingValue(asJsonObject(row.value)),
       createdAt:
-        row.created_at instanceof Date
-          ? row.created_at
-          : new Date(row.created_at as string),
+        row.created_at instanceof Date ? row.created_at : new Date(row.created_at as string),
       updatedAt:
-        row.updated_at instanceof Date
-          ? row.updated_at
-          : new Date(row.updated_at as string),
+        row.updated_at instanceof Date ? row.updated_at : new Date(row.updated_at as string),
     });
 
   const validateBindingTarget = (params: {
@@ -458,6 +449,12 @@ export const makeDefaultOpenapiStore = ({
   const rowToSource = (row: Record<string, unknown>): StoredSource => {
     const normalizedHeaders = normalizeStoredHeaders(row.headers);
     const normalizedOAuth2 = normalizeStoredOAuth2(row.oauth2);
+    const managedAuth =
+      row.managed_auth == null
+        ? undefined
+        : Schema.decodeUnknownSync(ManagedAuthConfigSchema)(
+            typeof row.managed_auth === "string" ? JSON.parse(row.managed_auth) : row.managed_auth,
+          );
     return {
       namespace: row.id as string,
       scope: row.scope_id as string,
@@ -468,6 +465,7 @@ export const makeDefaultOpenapiStore = ({
         baseUrl: (row.base_url as string | null | undefined) ?? undefined,
         headers: normalizedHeaders.headers,
         oauth2: normalizedOAuth2.oauth2,
+        managedAuth,
       },
       legacy:
         Object.keys(normalizedHeaders.legacy).length > 0 || normalizedOAuth2.legacy
@@ -484,9 +482,7 @@ export const makeDefaultOpenapiStore = ({
   const rowToOperation = (row: Record<string, unknown>): StoredOperation => ({
     toolId: row.id as string,
     sourceId: row.source_id as string,
-    binding: decodeBinding(
-      typeof row.binding === "string" ? JSON.parse(row.binding) : row.binding,
-    ),
+    binding: decodeBinding(typeof row.binding === "string" ? JSON.parse(row.binding) : row.binding),
   });
 
   const deleteSource = (namespace: string, scope: string) =>
@@ -532,18 +528,24 @@ export const makeDefaultOpenapiStore = ({
                 name,
                 typeof value === "string"
                   ? value
-                  : (value.kind === "binding"
+                  : value.kind === "binding"
                     ? {
                         kind: value.kind,
                         slot: value.slot,
                         ...(value.prefix ? { prefix: value.prefix } : {}),
                       }
-                    : value),
+                    : value,
               ]),
             ) as Record<string, unknown>,
             oauth2: input.config.oauth2
-              ? (encodeOAuth2SourceConfig(input.config.oauth2) as unknown as Record<string, unknown>)
+              ? (encodeOAuth2SourceConfig(input.config.oauth2) as unknown as Record<
+                  string,
+                  unknown
+                >)
               : undefined,
+            managed_auth: input.config.managedAuth as unknown as
+              | Record<string, unknown>
+              | undefined,
             invocation_config: {},
           },
           forceAllowId: true,
@@ -575,12 +577,14 @@ export const makeDefaultOpenapiStore = ({
         const existing = rowToSource(existingRow);
 
         const nextName = patch.name?.trim() || existing.name;
-        const nextBaseUrl =
-          patch.baseUrl !== undefined ? patch.baseUrl : existing.config.baseUrl;
+        const nextBaseUrl = patch.baseUrl !== undefined ? patch.baseUrl : existing.config.baseUrl;
         const nextHeaders =
-          patch.headers !== undefined ? patch.headers : existing.config.headers ?? {};
-        const nextOAuth2 =
-          patch.oauth2 !== undefined ? patch.oauth2 : existing.config.oauth2;
+          patch.headers !== undefined ? patch.headers : (existing.config.headers ?? {});
+        const nextOAuth2 = patch.oauth2 !== undefined ? patch.oauth2 : existing.config.oauth2;
+        const nextManagedAuth =
+          patch.managedAuth !== undefined
+            ? (patch.managedAuth ?? undefined)
+            : existing.config.managedAuth;
 
         yield* adapter.update({
           model: "openapi_source",
@@ -606,6 +610,7 @@ export const makeDefaultOpenapiStore = ({
             oauth2: nextOAuth2
               ? (encodeOAuth2SourceConfig(nextOAuth2) as unknown as Record<string, unknown>)
               : undefined,
+            managed_auth: nextManagedAuth as unknown as Record<string, unknown> | undefined,
             invocation_config: asJsonObject(existingRow.invocation_config),
           },
         });
@@ -690,9 +695,7 @@ export const makeDefaultOpenapiStore = ({
           Effect.map((row) => {
             if (!row) return null;
             const raw = row.session;
-            return decodeOAuthSession(
-              typeof raw === "string" ? JSON.parse(raw) : raw,
-            );
+            return decodeOAuthSession(typeof raw === "string" ? JSON.parse(raw) : raw);
           }),
         ),
 
@@ -723,8 +726,7 @@ export const makeDefaultOpenapiStore = ({
           .filter((row) => scopeRank(row.target_scope_id as string) <= sourceScopeRank)
           .sort(
             (a, b) =>
-              scopeRank(a.target_scope_id as string) -
-              scopeRank(b.target_scope_id as string),
+              scopeRank(a.target_scope_id as string) - scopeRank(b.target_scope_id as string),
           )
           .map(rowToSourceBinding);
       }),
@@ -746,14 +748,10 @@ export const makeDefaultOpenapiStore = ({
         });
         const sourceScopeRank = scopeRank(sourceScope);
         const row = rows
-          .filter(
-            (candidate) =>
-              scopeRank(candidate.target_scope_id as string) <= sourceScopeRank,
-          )
+          .filter((candidate) => scopeRank(candidate.target_scope_id as string) <= sourceScopeRank)
           .sort(
             (a, b) =>
-              scopeRank(a.target_scope_id as string) -
-              scopeRank(b.target_scope_id as string),
+              scopeRank(a.target_scope_id as string) - scopeRank(b.target_scope_id as string),
           )[0];
         return row ? rowToSourceBinding(row) : null;
       }),

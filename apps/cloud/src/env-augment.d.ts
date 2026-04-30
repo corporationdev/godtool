@@ -21,11 +21,16 @@ declare global {
       // Billing
       AUTUMN_SECRET_KEY?: string;
 
+      // Managed integrations
+      COMPOSIO_API_KEY?: string;
+
       // MCP
+      DEVICE_SESSION?: DurableObjectNamespace<import("./device-session").DeviceSessionDO>;
       EXECUTOR_MCP_DEBUG?: string;
       MCP_AUTHKIT_DOMAIN?: string;
       MCP_RESOURCE_ORIGIN?: string;
       NODE_ENV?: string;
+      STAGE?: string;
 
       // Shared with frontend
       VITE_PUBLIC_SITE_URL?: string;
