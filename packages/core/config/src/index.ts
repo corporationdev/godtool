@@ -28,3 +28,21 @@ export {
   headerToConfigValue,
   headersToConfigValues,
 } from "./sink";
+
+export {
+  resolveRuntimeContext,
+  getStageAppHostname,
+  getStageAppUrl,
+  getStageServerHostname,
+  getStageServerUrl,
+  getStageAuthkitDomain,
+  getStageCloudWorkerName,
+} from "./runtime";
+export {
+  resolveStage,
+  deriveEnvTier,
+  getStageKind,
+  type EnvTier,
+  type StageKind,
+  type StageMode,
+} from "./stage";

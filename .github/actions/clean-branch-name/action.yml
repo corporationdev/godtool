@@ -1,0 +1,29 @@
+name: Clean Branch Name
+description: Normalize a branch name for preview stages and Neon branch names
+
+inputs:
+  branch:
+    description: The branch to clean
+    required: true
+
+outputs:
+  clean_branch_name:
+    description: The normalized branch name
+    value: ${{ steps.clean_branch_name.outputs.clean_branch_name }}
+
+runs:
+  using: composite
+  steps:
+    - id: clean_branch_name
+      shell: bash
+      run: |
+        branch_name="${{ inputs.branch }}"
+
+        clean_branch_name=$(echo "$branch_name" | tr '[:upper:]' '[:lower:]')
+        clean_branch_name="${clean_branch_name//[^a-z0-9-]/-}"
+        clean_branch_name=$(echo "$clean_branch_name" | sed 's/-\{2,\}/-/g; s/^-//; s/-$//')
+        clean_branch_name="${clean_branch_name:0:16}"
+        clean_branch_name=$(echo "$clean_branch_name" | sed 's/-$//')
+
+        echo "clean_branch_name=${clean_branch_name}" >> "$GITHUB_OUTPUT"
+        echo "CLEAN_BRANCH_NAME=${clean_branch_name}" >> "$GITHUB_ENV"
