@@ -32,6 +32,7 @@ import {
   GraphqlHandlers,
   GraphqlExtensionService,
 } from "@executor/plugin-graphql/api";
+import { RawGroup, RawHandlers, RawExtensionService } from "@executor/plugin-raw/api";
 import {
   ComputerUseGroup,
   ComputerUseHandlers,
@@ -50,6 +51,7 @@ const LocalApi = addGroup(OpenApiGroup)
   .add(GoogleDiscoveryGroup)
   .add(OnePasswordGroup)
   .add(GraphqlGroup)
+  .add(RawGroup)
   .add(ComputerUseGroup);
 
 // `ErrorCaptureLive` logs causes to the console and returns a short
@@ -68,6 +70,7 @@ const LocalApiBase = HttpApiBuilder.api(LocalApi).pipe(
       GoogleDiscoveryHandlers,
       OnePasswordHandlers,
       GraphqlHandlers,
+      RawHandlers,
       ComputerUseHandlers,
     ),
   ),
@@ -106,6 +109,7 @@ export const createServerHandlers = async (): Promise<ServerHandlers> => {
     Layer.succeed(GoogleDiscoveryExtensionService, executor.googleDiscovery),
     Layer.succeed(OnePasswordExtensionService, executor.onepassword),
     Layer.succeed(GraphqlExtensionService, executor.graphql),
+    Layer.succeed(RawExtensionService, executor.raw),
     Layer.succeed(ComputerUseExtensionService, executor.computer_use),
   );
 

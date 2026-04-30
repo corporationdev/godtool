@@ -27,6 +27,7 @@ import { openApiPlugin } from "@executor/plugin-openapi";
 import { mcpPlugin } from "@executor/plugin-mcp";
 import { googleDiscoveryPlugin } from "@executor/plugin-google-discovery";
 import { graphqlPlugin } from "@executor/plugin-graphql";
+import { rawPlugin } from "@executor/plugin-raw";
 import { browserPlugin } from "@executor/plugin-browser";
 import { computerUsePlugin } from "@executor/plugin-computer-use";
 import { keychainPlugin } from "@executor/plugin-keychain";
@@ -94,6 +95,7 @@ const createLocalPlugins = (configFile: ConfigFileSink) =>
     mcpPlugin({ dangerouslyAllowStdioMCP: true, configFile }),
     googleDiscoveryPlugin(),
     graphqlPlugin({ configFile }),
+    rawPlugin({ configFile }),
     browserPlugin(),
     computerUsePlugin(),
     workspacePlugin(),

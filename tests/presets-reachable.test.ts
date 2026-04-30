@@ -15,6 +15,7 @@ import { openApiPresets } from "../packages/plugins/openapi/src/sdk/presets";
 import { mcpPresets } from "../packages/plugins/mcp/src/sdk/presets";
 import { graphqlPresets } from "../packages/plugins/graphql/src/sdk/presets";
 import { googleDiscoveryPresets } from "../packages/plugins/google-discovery/src/sdk/presets";
+import { rawPresets } from "../packages/plugins/raw/src/sdk/presets";
 
 // ---------------------------------------------------------------------------
 // All presets with plugin metadata
@@ -219,4 +220,20 @@ describe("preset icons are reachable", () => {
       { timeout: 15_000 },
     );
   }
+});
+
+describe("raw presets include Slack and Notion HTTP connectors", () => {
+  it("defines only Slack and Notion with base URLs", () => {
+    expect(rawPresets.map((preset) => preset.id)).toEqual(["slack", "notion"]);
+    expect(rawPresets.find((preset) => preset.id === "slack")).toMatchObject({
+      name: "Slack",
+      baseUrl: "https://slack.com/api",
+      featured: true,
+    });
+    expect(rawPresets.find((preset) => preset.id === "notion")).toMatchObject({
+      name: "Notion",
+      baseUrl: "https://api.notion.com",
+      featured: true,
+    });
+  });
 });
