@@ -16,7 +16,7 @@ type DeviceRecord = {
 type DeviceSessionEnv = Env;
 
 const DEVICE_KEY_PREFIX = "device:";
-const ACTIVE_DEVICE_KEY = "active-device-id";
+const ACTIVE_DEVICE_KEY_PREFIX = "active-device-id:";
 const DEVICE_RPC_TIMEOUT_MS = 5 * 60_000;
 const INTERNAL_USER_ID_HEADER = "x-godtool-device-user-id";
 const INTERNAL_ORGANIZATION_ID_HEADER = "x-godtool-device-organization-id";
@@ -123,7 +123,7 @@ export class DeviceSessionDO extends DurableObject<DeviceSessionEnv> {
       lastSeenAt: now,
       online: true,
     });
-    await this.ctx.storage.put(ACTIVE_DEVICE_KEY, deviceId);
+    await this.ctx.storage.put(this.activeDeviceKey(userId), deviceId);
 
     server.send(
       JSON.stringify({
@@ -181,7 +181,7 @@ export class DeviceSessionDO extends DurableObject<DeviceSessionEnv> {
       return json({ error: "invalid_request" }, { status: 400 });
     }
 
-    const activeDeviceId = await this.resolveActiveSocketDeviceId();
+    const activeDeviceId = await this.resolveActiveSocketDeviceId(userId);
     if (!activeDeviceId) {
       return json({ error: "no_connected_device" }, { status: 409 });
     }
@@ -223,7 +223,7 @@ export class DeviceSessionDO extends DurableObject<DeviceSessionEnv> {
       return json({ error: "unauthorized" }, { status: 401 });
     }
 
-    const activeDeviceId = await this.resolveActiveSocketDeviceId();
+    const activeDeviceId = await this.resolveActiveSocketDeviceId(userId);
     const liveDeviceIds = new Set(
       this.ctx
         .getWebSockets()
@@ -232,7 +232,7 @@ export class DeviceSessionDO extends DurableObject<DeviceSessionEnv> {
     );
     const records = await this.ctx.storage.list<DeviceRecord>({ prefix: DEVICE_KEY_PREFIX });
     const devices = [...records.values()]
-      .filter((device) => device.organizationId === organizationId)
+      .filter((device) => device.organizationId === organizationId && device.userId === userId)
       .map((device) => ({
         ...device,
         online: liveDeviceIds.has(device.deviceId),
@@ -242,13 +242,18 @@ export class DeviceSessionDO extends DurableObject<DeviceSessionEnv> {
     return json({ activeDeviceId, devices });
   }
 
-  private async resolveActiveSocketDeviceId(): Promise<string | null> {
-    const activeDeviceId = await this.ctx.storage.get<string>(ACTIVE_DEVICE_KEY);
-    if (activeDeviceId && this.activeSocketForDevice(activeDeviceId)) return activeDeviceId;
+  private async resolveActiveSocketDeviceId(userId: string): Promise<string | null> {
+    const activeDeviceId = await this.ctx.storage.get<string>(this.activeDeviceKey(userId));
+    if (activeDeviceId && this.activeSocketForDevice(activeDeviceId)) {
+      const activeDevice = await this.ctx.storage.get<DeviceRecord>(this.deviceKey(activeDeviceId));
+      if (activeDevice?.userId === userId) return activeDeviceId;
+    }
 
     for (const socket of this.ctx.getWebSockets()) {
       const deviceId = this.deviceIdForSocket(socket);
-      if (deviceId) return deviceId;
+      if (!deviceId) continue;
+      const device = await this.ctx.storage.get<DeviceRecord>(this.deviceKey(deviceId));
+      if (device?.userId === userId) return deviceId;
     }
     return null;
   }
@@ -372,12 +377,16 @@ export class DeviceSessionDO extends DurableObject<DeviceSessionEnv> {
   private async markOffline(deviceId: string, socket: WebSocket): Promise<void> {
     const activeSocket = this.activeSocketForDevice(deviceId);
     if (activeSocket && activeSocket !== socket) return;
-    await this.ctx.storage.delete(ACTIVE_DEVICE_KEY);
-
-    this.rejectPendingForDevice(deviceId, new Error("device_disconnected"));
 
     const device = await this.ctx.storage.get<DeviceRecord>(this.deviceKey(deviceId));
     if (!device) return;
+    const activeDeviceKey = this.activeDeviceKey(device.userId);
+    const activeDeviceId = await this.ctx.storage.get<string>(activeDeviceKey);
+    if (activeDeviceId === deviceId) {
+      await this.ctx.storage.delete(activeDeviceKey);
+    }
+
+    this.rejectPendingForDevice(deviceId, new Error("device_disconnected"));
     await this.saveDevice({ ...device, online: false, lastSeenAt: Date.now() });
   }
 
@@ -392,6 +401,10 @@ export class DeviceSessionDO extends DurableObject<DeviceSessionEnv> {
 
   private saveDevice(device: DeviceRecord): Promise<void> {
     return this.ctx.storage.put(this.deviceKey(device.deviceId), device);
+  }
+
+  private activeDeviceKey(userId: string): string {
+    return `${ACTIVE_DEVICE_KEY_PREFIX}${userId}`;
   }
 
   private deviceKey(deviceId: string): string {

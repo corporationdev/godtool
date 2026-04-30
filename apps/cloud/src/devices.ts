@@ -27,12 +27,6 @@ const json = (body: unknown, init?: ResponseInit) =>
     },
   });
 
-type DeviceAuth = {
-  readonly userId: string;
-  readonly organizationId: string;
-  readonly organizationName: string;
-};
-
 const decodeBase64Url = (value: string): string | null => {
   try {
     const normalized = value.replace(/-/g, "+").replace(/_/g, "/");

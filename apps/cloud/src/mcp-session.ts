@@ -3,7 +3,6 @@
 // ---------------------------------------------------------------------------
 
 import { DurableObject, env } from "cloudflare:workers";
-import { createTraceState } from "@opentelemetry/api";
 import { Data, Effect, Layer } from "effect";
 import type * as Tracer from "effect/Tracer";
 import * as Sentry from "@sentry/cloudflare";
@@ -73,36 +72,6 @@ const jsonRpcError = (status: number, code: number, message: string) =>
 
 const sessionOwnerMismatch = () =>
   jsonRpcError(403, -32003, "MCP session does not belong to the current bearer");
-
-// W3C propagation across the worker→DO boundary. mcp.ts injects the worker's
-// `traceparent` and forwards incoming `tracestate` / `baggage` headers on
-// forwarded requests (and as a second arg to `init()`). We parse the context
-// here and use `OtelTracer.withSpanContext` to stitch the DO's root span
-// under the worker span so the entire logical request lives in one trace.
-const TRACEPARENT_PATTERN = /^([0-9a-f]{2})-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$/;
-
-type IncomingSpanContext = {
-  readonly traceId: string;
-  readonly spanId: string;
-  readonly traceFlags: number;
-  readonly traceState?: ReturnType<typeof createTraceState>;
-};
-
-const parseTraceparent = (
-  traceparent: string | null | undefined,
-  tracestate: string | null | undefined,
-): IncomingSpanContext | null => {
-  const value = traceparent;
-  if (!value) return null;
-  const match = TRACEPARENT_PATTERN.exec(value);
-  if (!match) return null;
-  return {
-    traceId: match[2]!,
-    spanId: match[3]!,
-    traceFlags: parseInt(match[4]!, 16),
-    ...(tracestate ? { traceState: createTraceState(tracestate) } : {}),
-  };
-};
 
 const withIncomingParent = <A, E, R>(
   incoming: IncomingTraceHeaders | null | undefined,

@@ -56,7 +56,7 @@ type AppMetaEnv = {
   readonly VITE_GITHUB_URL: string;
 };
 
-const { VITE_APP_VERSION, VITE_GITHUB_URL } = (
+const { VITE_APP_VERSION } = (
   import.meta as ImportMeta & {
     readonly env: AppMetaEnv;
   }

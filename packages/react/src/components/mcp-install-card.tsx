@@ -9,6 +9,7 @@ import { CodeBlock } from "./code-block";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./tabs";
 import { CardStack, CardStackHeader, CardStackContent } from "./card-stack";
 import { cn } from "../lib/utils";
+import { useScopeInfo } from "../api/scope-context";
 import { useManagedAuthAccess } from "../plugins/managed-auth";
 
 type TransportMode = "local-http" | "remote-http" | "stdio";
@@ -27,6 +28,7 @@ const SUPPORTED_AGENTS = [
   { key: "opencode", label: "OpenCode", Icon: OpenCodeIcon },
 ] as const;
 
+const isDev = import.meta.env.DEV;
 const isLocal =
   typeof window !== "undefined" &&
   (window.location.hostname === "localhost" ||
@@ -38,6 +40,7 @@ export function McpInstallCard(props: { className?: string }) {
   const [mode, setMode] = useState<TransportMode>(showLocalHttp ? "local-http" : "remote-http");
   const [origin, setOrigin] = useState<string | null>(null);
   const [cloudOrigin, setCloudOrigin] = useState<string | null>(null);
+  const scopeInfo = useScopeInfo();
   const proAccess = useManagedAuthAccess();
 
   useEffect(() => {
@@ -130,6 +133,7 @@ export function McpInstallCard(props: { className?: string }) {
               {!proAccess.loading && !proAccess.allowed && <LockIcon className="size-3" />}
               Remote HTTP
             </TabsTrigger>
+            <TabsTrigger value="stdio">Standard I/O</TabsTrigger>
           </TabsList>
         ) : undefined
       }
@@ -173,6 +177,7 @@ export function McpInstallCard(props: { className?: string }) {
           {header}
           <TabsContent value="local-http">{body}</TabsContent>
           <TabsContent value="remote-http">{body}</TabsContent>
+          <TabsContent value="stdio">{body}</TabsContent>
         </Tabs>
       ) : (
         <>

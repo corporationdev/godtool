@@ -23,7 +23,7 @@ if (runtime.stageKind !== "dev") {
 const apiToken = requireEnv("CLOUDFLARE_API_TOKEN");
 const accountId = requireEnv("CLOUDFLARE_ACCOUNT_ID");
 const serverHostname = runtime.serverHostname;
-const zoneId = await resolveZoneId(serverHostname);
+const zoneId = await resolveZoneId();
 const tunnelName = getTunnelName(stage);
 
 const tunnel = await ensureTunnel(tunnelName);
@@ -160,7 +160,7 @@ async function ensureDnsRecord(zoneId: string, hostname: string, tunnelTarget: s
   });
 }
 
-async function resolveZoneId(hostname: string): Promise<string> {
+async function resolveZoneId(): Promise<string> {
   const configuredZoneId = normalizeEnvValue(process.env.CLOUDFLARE_ZONE_ID);
   if (configuredZoneId) {
     return configuredZoneId;

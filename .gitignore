@@ -52,6 +52,7 @@ apps/cloud/.dev-db/
 .nitro/
 .output/
 .tanstack/
+*.bun-build
 .env*
 !.env.example
 !.env.op
