@@ -795,16 +795,18 @@ const createWindow = (): BrowserWindow => {
         -webkit-app-region: no-drag;
       }
 
-      /* Push ShadCN sidebar content below traffic lights */
-      [data-slot="sidebar-inner"] > [data-slot="sidebar-header"] {
-        padding-top: 44px !important;
+      /* Reserve only the titlebar row; the desktop toggle is pinned below. */
+      [data-slot="sidebar-inner"] > [data-slot="sidebar-header"].desktop-sidebar-header {
+        height: 44px !important;
+        min-height: 44px !important;
+        padding: 0 !important;
       }
 
       /* Pin the desktop sidebar toggle next to the macOS traffic lights. */
-      [data-slot="sidebar-inner"] > [data-slot="sidebar-header"] [data-slot="sidebar-trigger"] {
+      [data-slot="sidebar-trigger"].desktop-sidebar-trigger {
         position: fixed !important;
-        top: 44px !important;
-        left: 182px !important;
+        top: 5px !important;
+        left: 72px !important;
         z-index: 10000 !important;
       }
 

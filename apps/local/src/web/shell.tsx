@@ -259,15 +259,8 @@ function AppSidebar(props: {
 
   return (
     <Sidebar collapsible="icon">
-      <SidebarHeader>
-        <div className="flex h-10 items-center px-2 group-data-[collapsible=icon]:justify-center">
-          <div className="min-w-0 flex-1 overflow-hidden max-w-[999px] transition-[max-width] duration-200 ease-linear group-data-[collapsible=icon]:max-w-0 group-data-[collapsible=icon]:flex-none">
-            <Link to="/" className="flex items-center gap-2 text-foreground">
-              <span className="font-display text-base tracking-tight">GOD TOOL</span>
-            </Link>
-          </div>
-          <SidebarTrigger className="shrink-0" />
-        </div>
+      <SidebarHeader className="desktop-sidebar-header">
+        <SidebarTrigger className="desktop-sidebar-trigger shrink-0" />
       </SidebarHeader>
 
       <ShadSidebarContent>
