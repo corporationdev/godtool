@@ -27,6 +27,11 @@ type ExecuteRequestBody = {
   readonly code?: unknown;
 };
 
+type SourceRpcRequestBody = {
+  readonly sourceIds?: unknown;
+  readonly sources?: unknown;
+};
+
 type DeviceRpcResponse =
   | {
       readonly type: "execute.response";
@@ -36,6 +41,18 @@ type DeviceRpcResponse =
     }
   | {
       readonly type: "execute.response";
+      readonly requestId: string;
+      readonly status: "error";
+      readonly error: string;
+    }
+  | {
+      readonly type: "source.response";
+      readonly requestId: string;
+      readonly status: "completed";
+      readonly result: unknown;
+    }
+  | {
+      readonly type: "source.response";
       readonly requestId: string;
       readonly status: "error";
       readonly error: string;
@@ -80,6 +97,10 @@ export class DeviceSessionDO extends DurableObject<DeviceSessionEnv> {
 
     if (url.pathname === "/execute") {
       return this.handleExecute(request);
+    }
+
+    if (url.pathname.startsWith("/source/")) {
+      return this.handleSourceRpc(request, url.pathname.slice("/source/".length));
     }
 
     return json({ error: "not_found" }, { status: 404 });
@@ -215,6 +236,58 @@ export class DeviceSessionDO extends DurableObject<DeviceSessionEnv> {
     }
   }
 
+  private async handleSourceRpc(request: Request, route: string): Promise<Response> {
+    if (request.method !== "POST") {
+      return json({ error: "method_not_allowed" }, { status: 405 });
+    }
+
+    const userId = request.headers.get(INTERNAL_USER_ID_HEADER);
+    const organizationId = request.headers.get(INTERNAL_ORGANIZATION_ID_HEADER);
+    const organizationName = request.headers.get(INTERNAL_ORGANIZATION_NAME_HEADER);
+    if (!userId || !organizationId || !organizationName) {
+      return json({ error: "unauthorized" }, { status: 401 });
+    }
+
+    const activeDeviceId = await this.resolveActiveSocketDeviceId();
+    if (!activeDeviceId) return json({ error: "device_offline" }, { status: 409 });
+    const socket = this.sockets.get(activeDeviceId);
+    if (!socket) return json({ error: "device_offline" }, { status: 409 });
+
+    const body = (await request.json().catch(() => ({}))) as SourceRpcRequestBody;
+    const requestId = crypto.randomUUID();
+    const requestType =
+      route === "export"
+        ? "source.export.request"
+        : route === "import"
+          ? "source.import.request"
+          : route === "delete"
+            ? "source.delete.request"
+            : route === "import-candidates"
+              ? "source.importCandidates.request"
+              : null;
+    if (!requestType) return json({ error: "not_found" }, { status: 404 });
+
+    try {
+      const response = await this.sendRpc(activeDeviceId, socket, {
+        type: requestType,
+        requestId,
+        sourceIds: body.sourceIds,
+        sources: body.sources,
+      });
+
+      if (response.status === "error") {
+        return json({ status: "error", error: response.error }, { status: 502 });
+      }
+
+      return json(response.result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const status =
+        message === "no_connected_device" || message === "device_disconnected" ? 409 : 504;
+      return json({ error: status === 409 ? "device_offline" : message }, { status });
+    }
+  }
+
   private async resolveActiveSocketDeviceId(): Promise<string | null> {
     const activeDeviceId = await this.ctx.storage.get<string>(ACTIVE_DEVICE_KEY);
     if (activeDeviceId && this.sockets.has(activeDeviceId)) return activeDeviceId;
@@ -277,7 +350,7 @@ export class DeviceSessionDO extends DurableObject<DeviceSessionEnv> {
         return;
       }
 
-      if (message.type === "execute.response") {
+      if (message.type === "execute.response" || message.type === "source.response") {
         this.resolvePending(deviceId, message);
       }
     } catch {
@@ -299,7 +372,7 @@ export class DeviceSessionDO extends DurableObject<DeviceSessionEnv> {
 
   private parseRpcResponse(message: { readonly type?: string }): DeviceRpcResponse | null {
     if (
-      message.type !== "execute.response" ||
+      (message.type !== "execute.response" && message.type !== "source.response") ||
       !("requestId" in message) ||
       typeof message.requestId !== "string" ||
       !("status" in message)
@@ -307,9 +380,10 @@ export class DeviceSessionDO extends DurableObject<DeviceSessionEnv> {
       return null;
     }
 
+    const type = message.type;
     if (message.status === "completed" && "result" in message) {
       return {
-        type: "execute.response",
+        type,
         requestId: message.requestId,
         status: "completed",
         result: message.result,
@@ -322,7 +396,7 @@ export class DeviceSessionDO extends DurableObject<DeviceSessionEnv> {
           ? message.error
           : "Desktop execution failed";
       return {
-        type: "execute.response",
+        type,
         requestId: message.requestId,
         status: "error",
         error,

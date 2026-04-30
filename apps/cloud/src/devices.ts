@@ -61,6 +61,7 @@ type CatalogRow = {
   readonly kind: string;
   readonly plugin_id: string;
   readonly tool_count: number;
+  readonly device_ids: string[];
 };
 
 const decodeBase64Url = (value: string): string | null => {
@@ -233,15 +234,18 @@ const listCatalog = (auth: DeviceAuth) =>
     const onlineDeviceIds = new Set(
       (status?.devices ?? []).filter((device) => device.online).map((device) => device.deviceId),
     );
-    if (onlineDeviceIds.size === 0) return json({ sources: [] });
-
     const { sql } = yield* DbService;
     const rows = yield* Effect.promise(
       () => sql<CatalogRow[]>`
-      select source_id, name, kind, plugin_id, max(tool_count)::int as tool_count
+      select
+        source_id,
+        name,
+        kind,
+        plugin_id,
+        max(tool_count)::int as tool_count,
+        array_agg(device_id) as device_ids
       from source_catalog
       where organization_id = ${auth.organizationId}
-        and device_id in ${sql(Array.from(onlineDeviceIds))}
         and local_available = true
       group by source_id, name, kind, plugin_id
       order by source_id asc
@@ -255,7 +259,7 @@ const listCatalog = (auth: DeviceAuth) =>
         kind: row.kind,
         pluginId: row.plugin_id,
         toolCount: row.tool_count,
-        localAvailable: true,
+        localAvailable: row.device_ids.some((deviceId) => onlineDeviceIds.has(deviceId)),
       })),
     });
   }).pipe(

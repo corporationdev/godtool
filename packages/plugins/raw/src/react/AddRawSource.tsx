@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useAtomSet } from "@effect-atom/atom-react";
 
 import { useScope } from "@executor/react/api/scope-context";
@@ -23,10 +23,7 @@ import {
   useSourceIdentity,
 } from "@executor/react/plugins/source-identity";
 import { useSecretPickerSecrets } from "@executor/react/plugins/use-secret-picker-secrets";
-import {
-  type HeaderState,
-  headersFromState,
-} from "@executor/react/plugins/secret-header-auth";
+import { type HeaderState, headersFromState } from "@executor/react/plugins/secret-header-auth";
 
 import { rawPresets } from "../sdk/presets";
 import { addRawSource } from "./atoms";
@@ -37,14 +34,13 @@ export default function AddRawSource(props: {
   initialUrl?: string;
   initialPreset?: string;
   initialNamespace?: string;
+  placement?: ReactNode;
 }) {
   const resolvedPreset = props.initialPreset
     ? (rawPresets.find((preset) => preset.id === props.initialPreset) ?? null)
     : null;
 
-  const [baseUrl, setBaseUrl] = useState(
-    props.initialUrl ?? resolvedPreset?.baseUrl ?? "",
-  );
+  const [baseUrl, setBaseUrl] = useState(props.initialUrl ?? resolvedPreset?.baseUrl ?? "");
   const identity = useSourceIdentity({
     fallbackName: resolvedPreset?.name ?? displayNameFromUrl(baseUrl) ?? "",
     fallbackNamespace: props.initialNamespace,
@@ -60,9 +56,7 @@ export default function AddRawSource(props: {
 
   const namespaceSlug =
     slugifyNamespace(identity.namespace) ||
-    slugifyNamespace(
-      resolvedPreset?.name ?? displayNameFromUrl(baseUrl.trim()) ?? "",
-    ) ||
+    slugifyNamespace(resolvedPreset?.name ?? displayNameFromUrl(baseUrl.trim()) ?? "") ||
     "raw";
   const displayName =
     identity.name.trim() ||
@@ -73,14 +67,9 @@ export default function AddRawSource(props: {
     ...(resolvedPreset?.defaultHeaders ?? {}),
     ...headersFromState(headers),
   };
-  const presetHeaderEntries = Object.entries(
-    resolvedPreset?.defaultHeaders ?? {},
-  );
-  const headersValid = headers.every(
-    (header) => header.name.trim() && header.secretId,
-  );
-  const canAdd =
-    baseUrl.trim().length > 0 && (headers.length === 0 || headersValid);
+  const presetHeaderEntries = Object.entries(resolvedPreset?.defaultHeaders ?? {});
+  const headersValid = headers.every((header) => header.name.trim() && header.secretId);
+  const canAdd = baseUrl.trim().length > 0 && (headers.length === 0 || headersValid);
 
   const handleAdd = async () => {
     setAdding(true);
@@ -100,9 +89,7 @@ export default function AddRawSource(props: {
           baseUrl: baseUrl.trim(),
           name: identity.name.trim() || undefined,
           namespace: slugifyNamespace(identity.namespace) || undefined,
-          ...(Object.keys(configuredHeaders).length > 0
-            ? { headers: configuredHeaders }
-            : {}),
+          ...(Object.keys(configuredHeaders).length > 0 ? { headers: configuredHeaders } : {}),
         },
         reactivityKeys: sourceWriteKeys,
       });
@@ -120,6 +107,7 @@ export default function AddRawSource(props: {
       <h1 className="text-xl font-semibold text-foreground">
         {resolvedPreset ? `Connect ${resolvedPreset.name}` : "Connect Raw HTTP"}
       </h1>
+      {props.placement}
 
       <CardStack>
         <CardStackContent className="border-t-0">
@@ -145,13 +133,8 @@ export default function AddRawSource(props: {
           <CardStack>
             <CardStackContent className="[&>*+*]:before:inset-x-0">
               {presetHeaderEntries.map(([name, value]) => (
-                <CardStackEntry
-                  key={name}
-                  className="items-center justify-between gap-4"
-                >
-                  <span className="min-w-0 font-mono text-sm text-muted-foreground">
-                    {name}
-                  </span>
+                <CardStackEntry key={name} className="items-center justify-between gap-4">
+                  <span className="min-w-0 font-mono text-sm text-muted-foreground">{name}</span>
                   <span className="min-w-0 truncate font-mono text-sm text-foreground">
                     {value}
                   </span>
@@ -165,11 +148,7 @@ export default function AddRawSource(props: {
           onHeadersChange={setHeaders}
           existingSecrets={secretList}
           sourceName={displayName}
-          emptyLabel={
-            presetHeaderEntries.length > 0
-              ? "No additional headers"
-              : "No headers"
-          }
+          emptyLabel={presetHeaderEntries.length > 0 ? "No additional headers" : "No headers"}
           initiallyPicking={headers.length === 0}
         />
       </section>

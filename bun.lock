@@ -76,6 +76,7 @@
         "@executor/runtime-dynamic-worker": "workspace:*",
         "@executor/runtime-quickjs": "workspace:*",
         "@executor/sdk": "workspace:*",
+        "@executor/source-sync": "workspace:*",
         "@executor/storage-core": "workspace:*",
         "@executor/storage-postgres": "workspace:*",
         "@microlabs/otel-cf-workers": "^1.0.0-rc.52",
@@ -164,6 +165,7 @@
         "@executor/react": "workspace:*",
         "@executor/runtime-quickjs": "workspace:*",
         "@executor/sdk": "workspace:*",
+        "@executor/source-sync": "workspace:*",
         "@executor/storage-file": "workspace:*",
         "@modelcontextprotocol/sdk": "^1.12.1",
         "@tanstack/react-router": "catalog:",
@@ -341,6 +343,17 @@
         "tsup": "catalog:",
         "typescript": "catalog:",
         "vitest": "catalog:",
+      },
+    },
+    "packages/core/source-sync": {
+      "name": "@executor/source-sync",
+      "version": "0.0.0",
+      "dependencies": {
+        "@executor/sdk": "workspace:*",
+        "effect": "catalog:",
+      },
+      "devDependencies": {
+        "typescript": "catalog:",
       },
     },
     "packages/core/storage-core": {
@@ -1495,6 +1508,8 @@
     "@executor/runtime-secure-exec": ["@executor/runtime-secure-exec@workspace:packages/kernel/runtime-secure-exec"],
 
     "@executor/sdk": ["@executor/sdk@workspace:packages/core/sdk"],
+
+    "@executor/source-sync": ["@executor/source-sync@workspace:packages/core/source-sync"],
 
     "@executor/storage-core": ["@executor/storage-core@workspace:packages/core/storage-core"],
 

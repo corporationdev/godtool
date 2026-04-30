@@ -1,10 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useAtomSet, useAtomValue, Result } from "@effect-atom/atom-react";
 
-import {
-  openOAuthPopup,
-  type OAuthPopupResult,
-} from "@executor/plugin-oauth2/react";
+import { openOAuthPopup, type OAuthPopupResult } from "@executor/plugin-oauth2/react";
 
 import { secretsAtom, setSecret } from "@executor/react/api/atoms";
 import { usePendingSources } from "@executor/react/api/optimistic";
@@ -380,9 +377,10 @@ const OAUTH_RESULT_CHANNEL = "executor:google-discovery-oauth-result";
 const OAUTH_POPUP_NAME = "google-discovery-oauth";
 
 export default function AddGoogleDiscoverySource(props: {
-  readonly onComplete: () => void;
+  readonly onComplete: (sourceId?: string) => void;
   readonly onCancel: () => void;
   readonly initialUrl?: string;
+  readonly placement?: ReactNode;
 }) {
   const defaultTemplate =
     GOOGLE_DISCOVERY_TEMPLATES.find((template) => template.id === "google-sheets") ??
@@ -538,7 +536,15 @@ export default function AddGoogleDiscoverySource(props: {
       setStartingOAuth(false);
       setError(e instanceof Error ? e.message : "Failed to start OAuth");
     }
-  }, [probe, doStartOAuth, scopeId, identity, discoveryUrl, clientIdSecretId, clientSecretSecretId]);
+  }, [
+    probe,
+    doStartOAuth,
+    scopeId,
+    identity,
+    discoveryUrl,
+    clientIdSecretId,
+    clientSecretSecretId,
+  ]);
 
   const handleCancelOAuth = useCallback(() => {
     oauthCleanup.current?.();
@@ -558,7 +564,7 @@ export default function AddGoogleDiscoverySource(props: {
       kind: "google-discovery",
     });
     try {
-      await doAdd({
+      const result = await doAdd({
         path: { scopeId },
         payload: {
           name: displayName,
@@ -577,7 +583,7 @@ export default function AddGoogleDiscoverySource(props: {
         },
         reactivityKeys: [...sourceWriteKeys],
       });
-      props.onComplete();
+      props.onComplete(result.namespace);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to add source");
       setAdding(false);
@@ -597,6 +603,7 @@ export default function AddGoogleDiscoverySource(props: {
           Connect a Google API from its Discovery document and register its methods as tools.
         </p>
       </div>
+      {props.placement}
 
       <FieldGroup>
         <FieldSet>
@@ -654,7 +661,6 @@ export default function AddGoogleDiscoverySource(props: {
               )}
             </div>
           </CardStackEntryField>
-
         </CardStackContent>
       </CardStack>
 

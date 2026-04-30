@@ -303,10 +303,11 @@ function openOAuthPopup(
 // ---------------------------------------------------------------------------
 
 export default function AddMcpSource(props: {
-  onComplete: () => void;
+  onComplete: (sourceId?: string) => void;
   onCancel: () => void;
   initialUrl?: string;
   initialPreset?: string;
+  placement?: ReactNode;
   /** Whether the stdio transport is enabled on the server. */
   allowStdio?: boolean;
 }) {
@@ -366,8 +367,7 @@ export default function AddMcpSource(props: {
   const tokens = "tokens" in state ? state.tokens : null;
 
   const remoteIdentity = useSourceIdentity({
-    fallbackName:
-      probe?.serverName ?? probe?.name ?? displayNameFromUrl(state.url) ?? "",
+    fallbackName: probe?.serverName ?? probe?.name ?? displayNameFromUrl(state.url) ?? "",
   });
   const isProbing = state.step === "probing";
   const isAdding = state.step === "adding";
@@ -537,7 +537,7 @@ export default function AddMcpSource(props: {
       url: state.url.trim(),
     });
     try {
-      await doAdd({
+      const result = await doAdd({
         path: { scopeId },
         payload: {
           transport: "remote" as const,
@@ -549,7 +549,7 @@ export default function AddMcpSource(props: {
         },
         reactivityKeys: sourceWriteKeys,
       });
-      props.onComplete();
+      props.onComplete(result.namespace);
     } catch (e) {
       dispatch({
         type: "add-fail",
@@ -611,7 +611,7 @@ export default function AddMcpSource(props: {
       kind: "mcp",
     });
     try {
-      await doAdd({
+      const result = await doAdd({
         path: { scopeId },
         payload: {
           transport: "stdio" as const,
@@ -623,7 +623,7 @@ export default function AddMcpSource(props: {
         },
         reactivityKeys: sourceWriteKeys,
       });
-      props.onComplete();
+      props.onComplete(result.namespace);
     } catch (e) {
       setStdioError(e instanceof Error ? e.message : "Failed to add source");
       setStdioAdding(false);
@@ -642,6 +642,7 @@ export default function AddMcpSource(props: {
           Connect to an MCP server to discover and use its tools.
         </p>
       </div>
+      {props.placement}
 
       {/* Transport toggle — only shown when stdio is enabled server-side */}
       {allowStdio && (
@@ -762,10 +763,7 @@ export default function AddMcpSource(props: {
           </CardStack>
 
           {probe && (
-            <SourceIdentityFields
-              identity={remoteIdentity}
-              namePlaceholder="e.g. Linear"
-            />
+            <SourceIdentityFields identity={remoteIdentity} namePlaceholder="e.g. Linear" />
           )}
 
           {/* Authentication */}
@@ -808,8 +806,8 @@ export default function AddMcpSource(props: {
                         Sign in
                       </Button>
                       <p className="text-[11px] text-muted-foreground">
-                        Optional — you can save the source now and each user can sign
-                        in from the source detail page later.
+                        Optional — you can save the source now and each user can sign in from the
+                        source detail page later.
                       </p>
                     </div>
                   )}
@@ -1040,10 +1038,7 @@ export default function AddMcpSource(props: {
             </CardStackContent>
           </CardStack>
 
-          <SourceIdentityFields
-            identity={stdioIdentity}
-            namePlaceholder="My MCP Server"
-          />
+          <SourceIdentityFields identity={stdioIdentity} namePlaceholder="My MCP Server" />
 
           {/* Stdio error */}
           {stdioError && (

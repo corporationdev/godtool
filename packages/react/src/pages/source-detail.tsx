@@ -21,6 +21,8 @@ import { Skeleton } from "../components/skeleton";
 export function SourceDetailPage(props: {
   namespace: string;
   sourcePlugins?: readonly SourcePlugin[];
+  onDeleteSource?: (sourceId: string) => Promise<void>;
+  deleteDisabledReason?: string | null;
 }) {
   const { namespace, sourcePlugins } = props;
   const scopeId = useScope();
@@ -80,10 +82,14 @@ export function SourceDetailPage(props: {
   const handleDelete = async () => {
     setDeleting(true);
     try {
-      await doRemove({
-        path: { scopeId, sourceId: namespace },
-        reactivityKeys: sourceWriteKeys,
-      });
+      if (props.onDeleteSource) {
+        await props.onDeleteSource(namespace);
+      } else {
+        await doRemove({
+          path: { scopeId, sourceId: namespace },
+          reactivityKeys: sourceWriteKeys,
+        });
+      }
       void navigate({ to: "/" });
     } catch {
       setDeleting(false);
@@ -173,7 +179,8 @@ export function SourceDetailPage(props: {
                   variant="destructive"
                   size="sm"
                   onClick={() => void handleDelete()}
-                  disabled={deleting}
+                  disabled={deleting || Boolean(props.deleteDisabledReason)}
+                  title={props.deleteDisabledReason ?? undefined}
                 >
                   {deleting ? "Deleting..." : "Delete"}
                 </Button>
@@ -183,6 +190,8 @@ export function SourceDetailPage(props: {
                 variant="outline"
                 size="sm"
                 onClick={() => setConfirmDelete(true)}
+                disabled={Boolean(props.deleteDisabledReason)}
+                title={props.deleteDisabledReason ?? undefined}
                 className="border-destructive/30 text-destructive hover:bg-destructive/10"
               >
                 Delete
@@ -215,7 +224,9 @@ export function SourceDetailPage(props: {
           {/* Content -- split pane */}
           {Result.match(tools, {
             onInitial: () => <SourceDetailSkeleton />,
-            onFailure: () => <div className="p-6 text-sm text-destructive">Failed to load tools</div>,
+            onFailure: () => (
+              <div className="p-6 text-sm text-destructive">Failed to load tools</div>
+            ),
             onSuccess: () => (
               <div className="flex min-h-0 flex-1 overflow-hidden">
                 {/* Left: tool tree */}
@@ -258,10 +269,7 @@ function SourceDetailSkeleton() {
         {Array.from({ length: 8 }).map((_, i) => (
           <div key={i} className="flex items-center gap-2 rounded-md px-2 py-1.5">
             <Skeleton className="size-4 shrink-0 rounded" />
-            <Skeleton
-              className="h-3.5"
-              style={{ width: `${55 + ((i * 13) % 35)}%` }}
-            />
+            <Skeleton className="h-3.5" style={{ width: `${55 + ((i * 13) % 35)}%` }} />
           </div>
         ))}
       </div>

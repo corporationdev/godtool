@@ -5,6 +5,7 @@ import { graphqlPresets } from "../sdk/presets";
 export const graphqlSourcePlugin: SourcePlugin = {
   key: "graphql",
   label: "GraphQL",
+  supportsCloud: true,
   add: lazy(() => import("./AddGraphqlSource")),
   edit: lazy(() => import("./EditGraphqlSource")),
   summary: lazy(() => import("./GraphqlSourceSummary")),

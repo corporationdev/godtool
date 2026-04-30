@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useAtomSet } from "@effect-atom/atom-react";
 
 import { useScope } from "@executor/react/api/scope-context";
@@ -34,9 +34,10 @@ const initialHeader = (): HeaderState => ({
 });
 
 export default function AddGraphqlSource(props: {
-  onComplete: () => void;
+  onComplete: (sourceId?: string) => void;
   onCancel: () => void;
   initialUrl?: string;
+  placement?: ReactNode;
 }) {
   const [endpoint, setEndpoint] = useState(props.initialUrl ?? "");
   const identity = useSourceIdentity({
@@ -73,8 +74,7 @@ export default function AddGraphqlSource(props: {
       slugifyNamespace(identity.namespace) ||
       slugifyNamespace(displayNameFromUrl(trimmedEndpoint) ?? "") ||
       "graphql";
-    const displayName =
-      identity.name.trim() || displayNameFromUrl(trimmedEndpoint) || namespace;
+    const displayName = identity.name.trim() || displayNameFromUrl(trimmedEndpoint) || namespace;
     const placeholder = beginAdd({
       id: namespace,
       name: displayName,
@@ -82,7 +82,7 @@ export default function AddGraphqlSource(props: {
       url: trimmedEndpoint || undefined,
     });
     try {
-      await doAdd({
+      const result = await doAdd({
         path: { scopeId },
         payload: {
           endpoint: trimmedEndpoint,
@@ -92,7 +92,7 @@ export default function AddGraphqlSource(props: {
         },
         reactivityKeys: sourceWriteKeys,
       });
-      props.onComplete();
+      props.onComplete(result.namespace);
     } catch (e) {
       setAddError(e instanceof Error ? e.message : "Failed to add source");
       setAdding(false);
@@ -104,6 +104,7 @@ export default function AddGraphqlSource(props: {
   return (
     <div className="flex flex-1 flex-col gap-6">
       <h1 className="text-xl font-semibold text-foreground">Add GraphQL Source</h1>
+      {props.placement}
 
       <CardStack>
         <CardStackContent className="border-t-0">
@@ -121,10 +122,7 @@ export default function AddGraphqlSource(props: {
         </CardStackContent>
       </CardStack>
 
-      <SourceIdentityFields
-        identity={identity}
-        namePlaceholder="e.g. Shopify API"
-      />
+      <SourceIdentityFields identity={identity} namePlaceholder="e.g. Shopify API" />
 
       <section className="space-y-2.5">
         <FieldLabel>Headers</FieldLabel>

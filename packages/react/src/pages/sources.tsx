@@ -1,7 +1,8 @@
 import { Suspense, useEffect, useState, useCallback, useMemo } from "react";
+import type { MouseEvent } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Result, useAtomSet } from "@effect-atom/atom-react";
-import { detectSource } from "../api/atoms";
+import { Result, useAtomRefresh, useAtomSet } from "@effect-atom/atom-react";
+import { detectSource, sourcesAtom } from "../api/atoms";
 import { useSourcesWithPending } from "../api/optimistic";
 import { useScope } from "../hooks/use-scope";
 import type { SourcePlugin, SourcePreset } from "../plugins/source-plugin";
@@ -133,7 +134,7 @@ const mergeDisplaySources = (
     byId.set(source.id, source);
   }
 
-  for (const source of catalogSources.filter((candidate) => candidate.localAvailable !== false)) {
+  for (const source of catalogSources) {
     const existing = byId.get(source.id);
     if (existing) {
       byId.set(source.id, {
@@ -171,6 +172,9 @@ export function SourcesPage(props: {
   baseSourceAvailability?: SourceAvailability;
   overlaySources?: readonly OverlaySource[];
   linkableSourceAvailabilities?: readonly SourceAvailability[];
+  localDeviceAvailable?: boolean;
+  onSyncToCloud?: (sourceId: string) => Promise<void>;
+  onSyncToLocal?: (sourceId: string) => Promise<void>;
 }) {
   const { sourcePlugins } = props;
   const urlSourcePlugins = useMemo(
@@ -183,6 +187,7 @@ export function SourcesPage(props: {
 
   const scopeId = useScope();
   const sources = useSourcesWithPending(scopeId);
+  const refreshSources = useAtomRefresh(sourcesAtom(scopeId));
   const catalogSources = useCatalogSources(props.catalogEndpoint);
   const doDetect = useAtomSet(detectSource, { mode: "promise" });
   const navigate = useNavigate();
@@ -322,6 +327,10 @@ export function SourcesPage(props: {
                       sources={connectedSources}
                       sourcePlugins={sourcePlugins}
                       linkableSourceAvailabilities={props.linkableSourceAvailabilities}
+                      localDeviceAvailable={props.localDeviceAvailable}
+                      onSyncToCloud={props.onSyncToCloud}
+                      onSyncToLocal={props.onSyncToLocal}
+                      onChanged={refreshSources}
                     />
                   </section>
                 )}
@@ -441,6 +450,10 @@ function SourceGrid(props: {
   sources: readonly DisplaySource[];
   sourcePlugins: readonly SourcePlugin[];
   linkableSourceAvailabilities?: readonly SourceAvailability[];
+  localDeviceAvailable?: boolean;
+  onSyncToCloud?: (sourceId: string) => Promise<void>;
+  onSyncToLocal?: (sourceId: string) => Promise<void>;
+  onChanged?: () => void;
 }) {
   const pluginByKind = useMemo(() => {
     const out = new Map<string, SourcePlugin>();
@@ -455,6 +468,7 @@ function SourceGrid(props: {
         {props.sources.map((s) => {
           const pluginKey = KIND_TO_PLUGIN_KEY[s.kind] ?? s.kind;
           const plugin = pluginByKind.get(pluginKey);
+          const supportsCloud = plugin?.supportsCloud === true;
           const SummaryComponent = plugin?.summary;
           const linkableAvailabilities = props.linkableSourceAvailabilities ?? ["cloud", "both"];
           const isLinkable = s.availability
@@ -477,6 +491,14 @@ function SourceGrid(props: {
                 )}
                 {s.availability && <AvailabilityBadge availability={s.availability} />}
                 <Badge variant="secondary">{s.kind}</Badge>
+                <SourceActions
+                  source={s}
+                  supportsCloud={supportsCloud}
+                  localDeviceAvailable={props.localDeviceAvailable ?? true}
+                  onSyncToCloud={props.onSyncToCloud}
+                  onSyncToLocal={props.onSyncToLocal}
+                  onChanged={props.onChanged}
+                />
               </CardStackEntryActions>
             </>
           );
@@ -499,6 +521,59 @@ function SourceGrid(props: {
         })}
       </CardStackContent>
     </CardStack>
+  );
+}
+
+function SourceActions(props: {
+  source: DisplaySource;
+  supportsCloud: boolean;
+  localDeviceAvailable: boolean;
+  onSyncToCloud?: (sourceId: string) => Promise<void>;
+  onSyncToLocal?: (sourceId: string) => Promise<void>;
+  onChanged?: () => void;
+}) {
+  const [busy, setBusy] = useState<"cloud" | "local" | null>(null);
+  const availability = props.source.availability;
+  if (!availability || props.source.runtime) return null;
+
+  const run = async (event: MouseEvent, action: "cloud" | "local", task: () => Promise<void>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setBusy(action);
+    try {
+      await task();
+      props.onChanged?.();
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-1">
+      {availability === "local" && props.supportsCloud && props.onSyncToCloud && (
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={busy !== null}
+          onClick={(event) => void run(event, "cloud", () => props.onSyncToCloud!(props.source.id))}
+        >
+          {busy === "cloud" ? "Syncing..." : "Bring to cloud"}
+        </Button>
+      )}
+      {availability === "cloud" && props.supportsCloud && props.onSyncToLocal && (
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={busy !== null || !props.localDeviceAvailable}
+          title={
+            props.localDeviceAvailable ? undefined : "Connect the desktop app to save locally."
+          }
+          onClick={(event) => void run(event, "local", () => props.onSyncToLocal!(props.source.id))}
+        >
+          {busy === "local" ? "Syncing..." : "Make local"}
+        </Button>
+      )}
+    </div>
   );
 }
 

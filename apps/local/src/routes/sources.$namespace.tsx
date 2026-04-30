@@ -8,6 +8,7 @@ import { googleDiscoverySourcePlugin } from "@executor/plugin-google-discovery/r
 import { graphqlSourcePlugin } from "@executor/plugin-graphql/react";
 import { rawSourcePlugin } from "@executor/plugin-raw/react";
 import { computerUseSourcePlugin } from "@executor/plugin-computer-use/react";
+import { useLocalAuth } from "../web/auth";
 
 const sourcePlugins = [
   computerUseSourcePlugin,
@@ -21,6 +22,17 @@ const sourcePlugins = [
 export const Route = createFileRoute("/sources/$namespace")({
   component: () => {
     const { namespace } = Route.useParams();
-    return <SourceDetailPage namespace={namespace} sourcePlugins={sourcePlugins} />;
+    const { auth, deleteSources } = useLocalAuth();
+    return (
+      <SourceDetailPage
+        namespace={namespace}
+        sourcePlugins={sourcePlugins}
+        onDeleteSource={
+          auth.status === "authenticated"
+            ? (sourceId) => deleteSources([sourceId], ["local", "cloud"])
+            : undefined
+        }
+      />
+    );
   },
 });

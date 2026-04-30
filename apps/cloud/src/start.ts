@@ -3,6 +3,7 @@ import { createMiddleware, createStart } from "@tanstack/react-start";
 import { handleApiRequest } from "./api";
 import { deviceFetch } from "./devices";
 import { mcpFetch } from "./mcp";
+import { sourceSyncFetch } from "./source-sync";
 
 // ---------------------------------------------------------------------------
 // MCP middleware — routes /mcp and /.well-known/* to the MCP handler
@@ -75,6 +76,20 @@ const deviceRequestMiddleware = createMiddleware({ type: "request" }).server(
 );
 
 // ---------------------------------------------------------------------------
+// Source sync middleware — routes source placement operations before /api/*
+// ---------------------------------------------------------------------------
+
+const sourceSyncRequestMiddleware = createMiddleware({ type: "request" }).server(
+  async ({ pathname, request, next }) => {
+    if (pathname.startsWith("/api/source-sync/")) {
+      const response = await sourceSyncFetch(request);
+      if (response) return response;
+    }
+    return next();
+  },
+);
+
+// ---------------------------------------------------------------------------
 // API middleware — routes /api/* to the Effect HTTP layer
 // ---------------------------------------------------------------------------
 
@@ -94,6 +109,7 @@ export const startInstance = createStart(() => ({
     mcpRequestMiddleware,
     sentryTunnelMiddleware,
     deviceRequestMiddleware,
+    sourceSyncRequestMiddleware,
     apiRequestMiddleware,
   ],
 }));

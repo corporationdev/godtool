@@ -1,4 +1,4 @@
-import type { ComponentType } from "react";
+import type { ComponentType, ReactNode } from "react";
 
 /**
  * A curated preset — a well-known API/service that can be added with one click.
@@ -43,6 +43,12 @@ export interface SourcePlugin {
   readonly label: string;
 
   /**
+   * True when this plugin can run from the cloud executor. Plugins that omit
+   * this are treated as local-only.
+   */
+  readonly supportsCloud?: boolean;
+
+  /**
    * The "add source" flow.
    * Plugin controls the entire experience.
    * Call `onComplete` when done, `onCancel` to bail out.
@@ -55,6 +61,7 @@ export interface SourcePlugin {
     readonly initialUrl?: string;
     readonly initialPreset?: string;
     readonly initialNamespace?: string;
+    readonly placement?: ReactNode;
   }>;
 
   /**

@@ -256,6 +256,13 @@ type CloudSource = {
   readonly canEdit?: boolean;
 };
 
+type CloudSourceImportCandidate = {
+  readonly id: string;
+  readonly kind: string;
+  readonly name: string;
+  readonly pluginId: string;
+};
+
 type WorkspaceFileNode = {
   readonly type: "file" | "directory";
   readonly name: string;
@@ -1072,6 +1079,64 @@ const fetchCloudSources = async (): Promise<readonly CloudSource[]> => {
   return (await sourcesResponse.json()) as readonly CloudSource[];
 };
 
+const callCloudSourceSync = async <T>(
+  route: "to-cloud" | "to-local" | "delete" | "import-candidates",
+  payload: unknown,
+): Promise<T> => {
+  const cookie = await getCloudCookieHeader();
+  if (!cookie) throw new Error("Not signed in");
+
+  const response = await fetch(cloudUrl(`/api/source-sync/${route}`), {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      cookie,
+    },
+    body: JSON.stringify(payload ?? {}),
+    signal: AbortSignal.timeout(120_000),
+  });
+  return readJsonResponse<T>(response);
+};
+
+const syncSourcesToCloud = async (sourceIds: readonly string[]): Promise<unknown> => {
+  const exported = await callLocalSourceSync("export", { sourceIds });
+  return callCloudSourceSync("to-cloud", exported);
+};
+
+const syncSourcesToLocal = async (sourceIds: readonly string[]): Promise<unknown> => {
+  const result = await callCloudSourceSync("to-local", { sourceIds });
+  const { deviceId } = ensureDeviceIdentity();
+  await publishLocalSourceCatalog(deviceId, { force: true }).catch((error) =>
+    console.warn("[devices] source catalog sync failed", error),
+  );
+  return result;
+};
+
+const deleteSyncedSources = async (
+  sourceIds: readonly string[],
+  placements: readonly ("local" | "cloud")[],
+): Promise<unknown> => {
+  if (placements.includes("local")) {
+    await callLocalSourceSync("delete", { sourceIds });
+    const { deviceId } = ensureDeviceIdentity();
+    await publishLocalSourceCatalog(deviceId, { force: true }).catch((error) =>
+      console.warn("[devices] source catalog sync failed", error),
+    );
+  }
+  if (placements.includes("cloud")) {
+    return callCloudSourceSync("delete", { sourceIds, placements: ["cloud"] });
+  }
+  return { sourceIds };
+};
+
+const fetchSourceImportCandidates = async (): Promise<readonly CloudSourceImportCandidate[]> => {
+  const data = await callCloudSourceSync<{
+    readonly sources?: readonly CloudSourceImportCandidate[];
+  }>("import-candidates", {});
+  return data.sources ?? [];
+};
+
 const pendingDesktopAuth = new Map<
   string,
   {
@@ -1284,6 +1349,8 @@ type DeviceSocketMessage = {
   readonly type?: string;
   readonly requestId?: unknown;
   readonly code?: unknown;
+  readonly sourceIds?: unknown;
+  readonly sources?: unknown;
 };
 
 const encodeBase64Url = (value: string): string =>
@@ -1327,6 +1394,16 @@ const executeLocalDesktopRpc = async (code: string): Promise<LocalDesktopRpcResp
     body: JSON.stringify({ code }),
   });
   return readJsonResponse<LocalDesktopRpcResponse>(response);
+};
+
+const callLocalSourceSync = async (path: string, payload: unknown): Promise<unknown> => {
+  const response = await fetch(localAppUrl(`/api/__desktop/sources/${path}`), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload ?? {}),
+    signal: AbortSignal.timeout(60_000),
+  });
+  return readJsonResponse(response);
 };
 
 const fetchLocalSourceCatalog = async (): Promise<LocalSourceCatalog> => {
@@ -1473,6 +1550,18 @@ const sendDeviceExecutionResponse = (
   );
 };
 
+const sendDeviceRpcResponse = (
+  socket: WebSocket,
+  requestId: string,
+  responseType: string,
+  response:
+    | { readonly status: "completed"; readonly result: unknown }
+    | { readonly status: "error"; readonly error: string },
+): void => {
+  if (socket.readyState !== WebSocket.OPEN) return;
+  socket.send(JSON.stringify({ type: responseType, requestId, ...response }));
+};
+
 const handleDeviceSocketMessage = async (socket: WebSocket, data: unknown): Promise<void> => {
   if (typeof data !== "string") return;
 
@@ -1483,16 +1572,45 @@ const handleDeviceSocketMessage = async (socket: WebSocket, data: unknown): Prom
     return;
   }
 
-  if (message.type !== "execute.request") return;
-  if (typeof message.requestId !== "string" || typeof message.code !== "string") {
+  if (typeof message.requestId !== "string") return;
+
+  if (message.type === "execute.request") {
+    if (typeof message.code !== "string") return;
+    try {
+      const response = await executeLocalDesktopRpc(message.code);
+      sendDeviceExecutionResponse(socket, message.requestId, response);
+    } catch (error) {
+      sendDeviceExecutionResponse(socket, message.requestId, {
+        status: "error",
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
     return;
   }
 
+  const sourceSyncRoute =
+    message.type === "source.export.request"
+      ? "export"
+      : message.type === "source.import.request"
+        ? "import"
+        : message.type === "source.delete.request"
+          ? "delete"
+          : message.type === "source.importCandidates.request"
+            ? "import-candidates"
+            : null;
+  if (!sourceSyncRoute) return;
+
   try {
-    const response = await executeLocalDesktopRpc(message.code);
-    sendDeviceExecutionResponse(socket, message.requestId, response);
+    const result = await callLocalSourceSync(sourceSyncRoute, {
+      sourceIds: message.sourceIds,
+      sources: message.sources,
+    });
+    sendDeviceRpcResponse(socket, message.requestId, "source.response", {
+      status: "completed",
+      result,
+    });
   } catch (error) {
-    sendDeviceExecutionResponse(socket, message.requestId, {
+    sendDeviceRpcResponse(socket, message.requestId, "source.response", {
       status: "error",
       error: error instanceof Error ? error.message : String(error),
     });
@@ -1602,7 +1720,23 @@ const setupIPC = (): void => {
   });
   ipcMain.handle("cloud-auth:sign-out", () => signOutCloud());
   ipcMain.handle("cloud-auth:get-cloud-url", () => CLOUD_APP_URL);
+  ipcMain.handle("cloud-auth:get-device-id", () => ensureDeviceIdentity().deviceId);
   ipcMain.handle("cloud-auth:list-sources", () => fetchCloudSources());
+  ipcMain.handle("cloud-auth:source-sync-to-cloud", (_event, sourceIds: readonly string[]) =>
+    syncSourcesToCloud(Array.isArray(sourceIds) ? sourceIds : []),
+  );
+  ipcMain.handle("cloud-auth:source-sync-to-local", (_event, sourceIds: readonly string[]) =>
+    syncSourcesToLocal(Array.isArray(sourceIds) ? sourceIds : []),
+  );
+  ipcMain.handle(
+    "cloud-auth:source-sync-delete",
+    (_event, sourceIds: readonly string[], placements: readonly ("local" | "cloud")[]) =>
+      deleteSyncedSources(
+        Array.isArray(sourceIds) ? sourceIds : [],
+        Array.isArray(placements) ? placements : [],
+      ),
+  );
+  ipcMain.handle("cloud-auth:source-sync-import-candidates", () => fetchSourceImportCandidates());
 
   ipcMain.handle("workspace-files:list", async () => {
     mkdirSync(DEFAULT_WORKSPACE_DIR, { recursive: true });

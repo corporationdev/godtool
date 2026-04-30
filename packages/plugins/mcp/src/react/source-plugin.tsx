@@ -20,9 +20,7 @@ export interface McpSourcePluginOptions {
   readonly allowStdio?: boolean;
 }
 
-export const createMcpSourcePlugin = (
-  options?: McpSourcePluginOptions,
-): SourcePlugin => {
+export const createMcpSourcePlugin = (options?: McpSourcePluginOptions): SourcePlugin => {
   const allowStdio = options?.allowStdio ?? false;
 
   const AddWithFlag: ComponentType<AddProps> = (props) => (
@@ -38,6 +36,7 @@ export const createMcpSourcePlugin = (
   return {
     key: "mcp",
     label: "MCP",
+    supportsCloud: true,
     add: AddWithFlag,
     edit: LazyEditMcpSource,
     summary: LazySummary,
