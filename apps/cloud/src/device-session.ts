@@ -313,11 +313,6 @@ export class DeviceSessionDO extends DurableObject<DeviceSessionEnv> {
     if (typeof data !== "string") return;
     try {
       const message = JSON.parse(data) as { type?: string };
-      if (message.type === "ping") {
-        socket.send(JSON.stringify({ type: "pong", at: Date.now() }));
-        return;
-      }
-
       if (message.type === "execute.response") {
         this.resolvePending(deviceId, message);
       }

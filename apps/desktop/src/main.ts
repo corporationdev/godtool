@@ -53,7 +53,6 @@ const SETTINGS_PATH = join(SETTINGS_DIR, "desktop-settings.json");
 const BROWSER_SESSIONS_PATH = join(SETTINGS_DIR, "browser-sessions.json");
 const DEFAULT_WORKSPACE_DIR = join(SETTINGS_DIR, "workspace");
 const DEVICE_CONNECTION_RECONNECT_MS = 5_000;
-const DEVICE_CONNECTION_PING_MS = 25_000;
 
 const CLI_BIN_DIR = join(SETTINGS_DIR, "bin");
 const CLI_BIN_PATH = join(CLI_BIN_DIR, process.platform === "win32" ? "godtool.exe" : "godtool");
@@ -1210,7 +1209,6 @@ const registerDeepLinkProtocol = (): void => {
 
 let deviceSocket: WebSocket | null = null;
 let deviceReconnectTimer: ReturnType<typeof setTimeout> | null = null;
-let devicePingTimer: ReturnType<typeof setInterval> | null = null;
 let deviceAuthState: Extract<CloudAuthState, { status: "authenticated" }> | null = null;
 let deviceConnecting = false;
 
@@ -1279,12 +1277,6 @@ const clearDeviceReconnectTimer = (): void => {
   deviceReconnectTimer = null;
 };
 
-const clearDevicePingTimer = (): void => {
-  if (!devicePingTimer) return;
-  clearInterval(devicePingTimer);
-  devicePingTimer = null;
-};
-
 const scheduleDeviceReconnect = (delayMs = DEVICE_CONNECTION_RECONNECT_MS): void => {
   if (!deviceAuthState?.organization) return;
   if (deviceReconnectTimer) return;
@@ -1297,7 +1289,6 @@ const scheduleDeviceReconnect = (delayMs = DEVICE_CONNECTION_RECONNECT_MS): void
 const stopDeviceConnection = (): void => {
   deviceAuthState = null;
   clearDeviceReconnectTimer();
-  clearDevicePingTimer();
   const socket = deviceSocket;
   deviceSocket = null;
   if (socket && socket.readyState !== WebSocket.CLOSED) {
@@ -1392,12 +1383,6 @@ const connectDeviceWebSocket = async (): Promise<void> => {
 
     socket.addEventListener("open", () => {
       console.log(`[devices] connected ${deviceId}`);
-      clearDevicePingTimer();
-      devicePingTimer = setInterval(() => {
-        if (socket.readyState === WebSocket.OPEN) {
-          socket.send(JSON.stringify({ type: "ping", at: Date.now() }));
-        }
-      }, DEVICE_CONNECTION_PING_MS);
     });
 
     socket.addEventListener("message", (event) => {
@@ -1406,13 +1391,11 @@ const connectDeviceWebSocket = async (): Promise<void> => {
 
     socket.addEventListener("close", () => {
       if (deviceSocket === socket) deviceSocket = null;
-      clearDevicePingTimer();
       scheduleDeviceReconnect();
     });
 
     socket.addEventListener("error", () => {
       if (deviceSocket === socket) deviceSocket = null;
-      clearDevicePingTimer();
       scheduleDeviceReconnect();
     });
   } catch (error) {
