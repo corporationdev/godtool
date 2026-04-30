@@ -1,4 +1,4 @@
-import { Suspense, useState, useCallback, useMemo } from "react";
+import { Suspense, useEffect, useState, useCallback, useMemo } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Result, useAtomSet } from "@effect-atom/atom-react";
 import { detectSource } from "../api/atoms";
@@ -38,11 +38,140 @@ const isConnectedSource = (source: { id: string; runtime?: boolean }) =>
 
 const supportsUrlSourceDetection = (plugin: SourcePlugin) => plugin.key !== "computer_use";
 
+type CatalogSource = {
+  readonly id: string;
+  readonly name: string;
+  readonly kind: string;
+  readonly pluginId?: string;
+  readonly toolCount?: number;
+  readonly localAvailable?: boolean;
+};
+
+type SourceAvailability = "local" | "cloud" | "both";
+
+type DisplaySource = {
+  readonly id: string;
+  readonly name: string;
+  readonly kind: string;
+  readonly url?: string;
+  readonly runtime?: boolean;
+  readonly pluginId?: string;
+  readonly toolCount?: number;
+  readonly availability?: SourceAvailability;
+};
+
+type OverlaySource = DisplaySource & {
+  readonly availability: SourceAvailability;
+};
+
+const mergeAvailability = (
+  current: SourceAvailability | undefined,
+  next: SourceAvailability,
+): SourceAvailability => {
+  if (!current || current === next) return next;
+  if (current === "both" || next === "both") return "both";
+  return "both";
+};
+
+const useCatalogSources = (endpoint: string | undefined) => {
+  const [sources, setSources] = useState<readonly CatalogSource[]>([]);
+
+  useEffect(() => {
+    if (!endpoint) {
+      setSources([]);
+      return;
+    }
+
+    let alive = true;
+    const load = async () => {
+      try {
+        const response = await fetch(endpoint, { headers: { accept: "application/json" } });
+        if (!response.ok) throw new Error(`Catalog failed: ${response.status}`);
+        const data = (await response.json()) as { readonly sources?: readonly CatalogSource[] };
+        if (alive) setSources(data.sources ?? []);
+      } catch {
+        if (alive) setSources([]);
+      }
+    };
+
+    void load();
+    const interval = window.setInterval(() => void load(), 5_000);
+    return () => {
+      alive = false;
+      window.clearInterval(interval);
+    };
+  }, [endpoint]);
+
+  return sources;
+};
+
+const mergeDisplaySources = (
+  baseSources: readonly DisplaySource[],
+  catalogSources: readonly CatalogSource[],
+  baseSourceAvailability: SourceAvailability | undefined,
+  overlaySources: readonly OverlaySource[],
+): readonly DisplaySource[] => {
+  const remote = baseSources.filter(isConnectedSource);
+  const byId = new Map<string, DisplaySource>();
+  for (const source of remote) {
+    byId.set(source.id, { ...source, availability: baseSourceAvailability });
+  }
+
+  for (const source of overlaySources) {
+    const existing = byId.get(source.id);
+    if (existing) {
+      byId.set(source.id, {
+        ...source,
+        ...existing,
+        pluginId: existing.pluginId ?? source.pluginId,
+        toolCount: existing.toolCount ?? source.toolCount,
+        availability: mergeAvailability(existing.availability, source.availability),
+      });
+      continue;
+    }
+
+    byId.set(source.id, source);
+  }
+
+  for (const source of catalogSources.filter((candidate) => candidate.localAvailable !== false)) {
+    const existing = byId.get(source.id);
+    if (existing) {
+      byId.set(source.id, {
+        ...existing,
+        name: existing.name || source.name,
+        kind: existing.kind || source.kind,
+        pluginId: existing.pluginId ?? source.pluginId,
+        toolCount: source.toolCount ?? existing.toolCount,
+        availability: mergeAvailability(existing.availability, "local"),
+      });
+      continue;
+    }
+
+    byId.set(source.id, {
+      id: source.id,
+      name: source.name,
+      kind: source.kind,
+      pluginId: source.pluginId,
+      toolCount: source.toolCount,
+      availability: "local",
+      runtime: false,
+    });
+  }
+
+  return Array.from(byId.values()).sort((left, right) => left.id.localeCompare(right.id));
+};
+
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
-export function SourcesPage(props: { sourcePlugins: readonly SourcePlugin[] }) {
+export function SourcesPage(props: {
+  sourcePlugins: readonly SourcePlugin[];
+  catalogEndpoint?: string;
+  baseSourceAvailability?: SourceAvailability;
+  overlaySources?: readonly OverlaySource[];
+  linkableSourceAvailabilities?: readonly SourceAvailability[];
+}) {
   const { sourcePlugins } = props;
   const urlSourcePlugins = useMemo(
     () => sourcePlugins.filter(supportsUrlSourceDetection),
@@ -54,6 +183,7 @@ export function SourcesPage(props: { sourcePlugins: readonly SourcePlugin[] }) {
 
   const scopeId = useScope();
   const sources = useSourcesWithPending(scopeId);
+  const catalogSources = useCatalogSources(props.catalogEndpoint);
   const doDetect = useAtomSet(detectSource, { mode: "promise" });
   const navigate = useNavigate();
 
@@ -160,9 +290,14 @@ export function SourcesPage(props: { sourcePlugins: readonly SourcePlugin[] }) {
           onInitial: () => <SourcesGridSkeleton />,
           onFailure: () => <p className="text-sm text-destructive">Failed to load sources</p>,
           onSuccess: ({ value }) => {
-            const connectedSources = value.filter(isConnectedSource);
+            const connectedSources = mergeDisplaySources(
+              value,
+              catalogSources,
+              props.baseSourceAvailability,
+              props.overlaySources ?? [],
+            );
 
-            return value.length === 0 ? (
+            return connectedSources.length === 0 ? (
               <div className="mb-8 flex flex-col items-center justify-center rounded-2xl border border-dashed border-border py-20">
                 <div className="flex size-12 items-center justify-center rounded-2xl bg-muted text-muted-foreground mb-4">
                   <svg viewBox="0 0 24 24" fill="none" className="size-5">
@@ -186,6 +321,7 @@ export function SourcesPage(props: { sourcePlugins: readonly SourcePlugin[] }) {
                     <SourceGrid
                       sources={connectedSources}
                       sourcePlugins={sourcePlugins}
+                      linkableSourceAvailabilities={props.linkableSourceAvailabilities}
                     />
                   </section>
                 )}
@@ -200,7 +336,15 @@ export function SourcesPage(props: { sourcePlugins: readonly SourcePlugin[] }) {
           onInitial: () => <PresetGrid plugins={sourcePlugins} />,
           onFailure: () => <PresetGrid plugins={sourcePlugins} />,
           onSuccess: ({ value }) => (
-            <PresetGrid plugins={sourcePlugins} connectedSources={value.filter(isConnectedSource)} />
+            <PresetGrid
+              plugins={sourcePlugins}
+              connectedSources={mergeDisplaySources(
+                value,
+                catalogSources,
+                props.baseSourceAvailability,
+                props.overlaySources ?? [],
+              )}
+            />
           ),
         })}
       </div>
@@ -294,14 +438,9 @@ function PresetGrid(props: {
 // ---------------------------------------------------------------------------
 
 function SourceGrid(props: {
-  sources: readonly {
-    id: string;
-    name: string;
-    kind: string;
-    url?: string;
-    runtime?: boolean;
-  }[];
+  sources: readonly DisplaySource[];
   sourcePlugins: readonly SourcePlugin[];
+  linkableSourceAvailabilities?: readonly SourceAvailability[];
 }) {
   const pluginByKind = useMemo(() => {
     const out = new Map<string, SourcePlugin>();
@@ -317,31 +456,56 @@ function SourceGrid(props: {
           const pluginKey = KIND_TO_PLUGIN_KEY[s.kind] ?? s.kind;
           const plugin = pluginByKind.get(pluginKey);
           const SummaryComponent = plugin?.summary;
+          const linkableAvailabilities = props.linkableSourceAvailabilities ?? ["cloud", "both"];
+          const isLinkable = s.availability
+            ? linkableAvailabilities.includes(s.availability)
+            : true;
+          const content = (
+            <>
+              <CardStackEntryMedia>
+                <SourceFavicon url={s.url} size={32} sourceId={s.id} kind={s.kind} />
+              </CardStackEntryMedia>
+              <CardStackEntryContent>
+                <CardStackEntryTitle>{s.name}</CardStackEntryTitle>
+                <CardStackEntryDescription>{s.id}</CardStackEntryDescription>
+              </CardStackEntryContent>
+              <CardStackEntryActions>
+                {SummaryComponent && isLinkable && (
+                  <Suspense fallback={null}>
+                    <SummaryComponent sourceId={s.id} />
+                  </Suspense>
+                )}
+                {s.availability && <AvailabilityBadge availability={s.availability} />}
+                <Badge variant="secondary">{s.kind}</Badge>
+              </CardStackEntryActions>
+            </>
+          );
+
           return (
-            <CardStackEntry key={s.id} asChild searchText={`${s.name} ${s.id} ${s.kind}`}>
-              <Link to="/sources/$namespace" params={{ namespace: s.id }}>
-                <CardStackEntryMedia>
-                  <SourceFavicon url={s.url} size={32} sourceId={s.id} kind={s.kind} />
-                </CardStackEntryMedia>
-                <CardStackEntryContent>
-                  <CardStackEntryTitle>{s.name}</CardStackEntryTitle>
-                  <CardStackEntryDescription>{s.id}</CardStackEntryDescription>
-                </CardStackEntryContent>
-                <CardStackEntryActions>
-                  {SummaryComponent && (
-                    <Suspense fallback={null}>
-                      <SummaryComponent sourceId={s.id} />
-                    </Suspense>
-                  )}
-                  <Badge variant="secondary">{s.kind}</Badge>
-                </CardStackEntryActions>
-              </Link>
+            <CardStackEntry
+              key={s.id}
+              asChild={isLinkable}
+              searchText={`${s.name} ${s.id} ${s.kind}`}
+            >
+              {isLinkable ? (
+                <Link to="/sources/$namespace" params={{ namespace: s.id }}>
+                  {content}
+                </Link>
+              ) : (
+                content
+              )}
             </CardStackEntry>
           );
         })}
       </CardStackContent>
     </CardStack>
   );
+}
+
+function AvailabilityBadge(props: { availability: SourceAvailability }) {
+  const label =
+    props.availability === "both" ? "Both" : props.availability === "local" ? "Local" : "Cloud";
+  return <Badge variant={props.availability === "both" ? "default" : "outline"}>{label}</Badge>;
 }
 
 // ---------------------------------------------------------------------------

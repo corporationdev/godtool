@@ -1,11 +1,27 @@
 import { Link, Outlet, useLocation } from "@tanstack/react-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import type { ComponentType } from "react";
+import { DatabaseZap, Folder, Globe, KeyRound } from "lucide-react";
 import { useAtomRefresh } from "@effect-atom/atom-react";
 import { sourcesAtom, toolsAtom } from "@executor/react/api/atoms";
 import { useScope } from "@executor/react/api/scope-context";
 import { Button } from "@executor/react/components/button";
 import { CommandPalette } from "@executor/react/components/command-palette";
 import { AccountMenu } from "@executor/react/components/account-menu";
+import {
+  Sidebar,
+  SidebarContent as ShadSidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarRail,
+  SidebarTrigger,
+} from "@executor/react/components/sidebar";
 import { openApiSourcePlugin } from "@executor/plugin-openapi/react";
 import { createMcpSourcePlugin } from "@executor/plugin-mcp/react";
 import { useLocalAuth } from "./auth";
@@ -144,7 +160,7 @@ function UpdateCard(props: { latestVersion: string; channel: UpdateChannel }) {
   }, [command]);
 
   return (
-    <div className="mx-2 mb-2 rounded-xl border border-primary/25 bg-primary/[0.06] p-3">
+    <div className="mx-2 mb-2 rounded-xl border border-primary/25 bg-primary/[0.06] p-3 group-data-[collapsible=icon]:hidden">
       <div className="flex items-center gap-2">
         <div className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/15">
           <svg viewBox="0 0 16 16" fill="none" className="size-3 text-primary">
@@ -208,29 +224,29 @@ function UpdateCard(props: { latestVersion: string; channel: UpdateChannel }) {
 
 // ── NavItem ──────────────────────────────────────────────────────────────
 
-function NavItem(props: { to: string; label: string; active: boolean; onNavigate?: () => void }) {
+function NavItem(props: {
+  to: string;
+  label: string;
+  active: boolean;
+  icon: ComponentType<{ className?: string }>;
+}) {
+  const Icon = props.icon;
   return (
-    <Link
-      to={props.to}
-      onClick={props.onNavigate}
-      className={[
-        "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors",
-        props.active
-          ? "bg-sidebar-active text-foreground font-medium"
-          : "text-sidebar-foreground hover:bg-sidebar-active/60 hover:text-foreground",
-      ].join(" ")}
-    >
-      {props.label}
-    </Link>
+    <SidebarMenuItem>
+      <SidebarMenuButton asChild isActive={props.active} tooltip={props.label}>
+        <Link to={props.to}>
+          <Icon />
+          <span>{props.label}</span>
+        </Link>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
   );
 }
 
 // ── SidebarContent ───────────────────────────────────────────────────────
 
-function SidebarContent(props: {
+function AppSidebar(props: {
   pathname: string;
-  onNavigate?: () => void;
-  showBrand?: boolean;
   updateAvailable: boolean;
   latestVersion: string | null;
   channel: UpdateChannel;
@@ -242,40 +258,44 @@ function SidebarContent(props: {
   const isFiles = props.pathname === "/files";
 
   return (
-    <>
-      {props.showBrand !== false && (
-        <div className="flex h-12 shrink-0 items-center border-b border-sidebar-border px-4">
-          <Link to="/" className="flex items-center gap-1.5">
-            <span className="font-display text-base tracking-tight text-foreground">executor</span>
-          </Link>
+    <Sidebar collapsible="icon">
+      <SidebarHeader>
+        <div className="flex h-10 items-center px-2 group-data-[collapsible=icon]:justify-center">
+          <div className="min-w-0 flex-1 overflow-hidden max-w-[999px] transition-[max-width] duration-200 ease-linear group-data-[collapsible=icon]:max-w-0 group-data-[collapsible=icon]:flex-none">
+            <Link to="/" className="flex items-center gap-2 text-foreground">
+              <span className="font-display text-base tracking-tight">GOD TOOL</span>
+            </Link>
+          </div>
+          <SidebarTrigger className="shrink-0" />
         </div>
-      )}
+      </SidebarHeader>
 
-      <nav className="flex flex-1 flex-col overflow-y-auto p-2">
-        <NavItem to="/" label="Sources" active={isHome} onNavigate={props.onNavigate} />
-        <NavItem
-          to="/browsers"
-          label="Browsers"
-          active={isBrowsers}
-          onNavigate={props.onNavigate}
-        />
-        <NavItem to="/files" label="Files" active={isFiles} onNavigate={props.onNavigate} />
-        <NavItem to="/secrets" label="Secrets" active={isSecrets} onNavigate={props.onNavigate} />
-      </nav>
+      <ShadSidebarContent>
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <NavItem to="/" label="Sources" icon={DatabaseZap} active={isHome} />
+              <NavItem to="/browsers" label="Browsers" icon={Globe} active={isBrowsers} />
+              <NavItem to="/files" label="Files" icon={Folder} active={isFiles} />
+              <NavItem to="/secrets" label="Secrets" icon={KeyRound} active={isSecrets} />
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </ShadSidebarContent>
 
       {props.updateAvailable && props.latestVersion && (
         <UpdateCard latestVersion={props.latestVersion} channel={props.channel} />
       )}
 
-      {/* Footer */}
-      <div className="shrink-0 border-t border-sidebar-border px-3 py-2.5">
+      <SidebarFooter className="group-data-[collapsible=icon]:items-center">
         <AccountMenu
           auth={props.auth.auth}
           onSignIn={props.auth.available ? () => void props.auth.signIn() : undefined}
           onSignOut={props.auth.available ? () => void props.auth.signOut() : undefined}
         />
-      </div>
-    </>
+      </SidebarFooter>
+      <SidebarRail />
+    </Sidebar>
   );
 }
 
@@ -289,22 +309,6 @@ export function Shell() {
   const refreshTools = useAtomRefresh(toolsAtom(scopeId));
   const auth = useLocalAuth();
   const { latestVersion, updateAvailable, channel } = useLatestVersion(VITE_APP_VERSION);
-  const lastPathname = useRef(pathname);
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  if (lastPathname.current !== pathname) {
-    lastPathname.current = pathname;
-    if (mobileSidebarOpen) setMobileSidebarOpen(false);
-  }
-
-  // Lock scroll when mobile sidebar open
-  useEffect(() => {
-    if (!mobileSidebarOpen) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, [mobileSidebarOpen]);
 
   useEffect(() => {
     if (!import.meta.hot) {
@@ -324,94 +328,18 @@ export function Shell() {
   }, [refreshSources, refreshTools]);
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <SidebarProvider>
       <CommandPalette sourcePlugins={sourcePlugins} />
-      {/* Desktop sidebar */}
-      <aside className="hidden w-52 shrink-0 border-r border-sidebar-border bg-sidebar md:flex md:flex-col lg:w-56">
-        <SidebarContent
-          pathname={pathname}
-          updateAvailable={updateAvailable}
-          latestVersion={latestVersion}
-          channel={channel}
-          auth={auth}
-        />
-      </aside>
-
-      {/* Mobile sidebar overlay */}
-      {mobileSidebarOpen && (
-        <div className="fixed inset-0 z-50 flex md:hidden">
-          {/* oxlint-disable-next-line react/forbid-elements */}
-          <button
-            type="button"
-            aria-label="Close navigation"
-            className="absolute inset-0 bg-black/45 backdrop-blur-[1px]"
-            onClick={() => setMobileSidebarOpen(false)}
-          />
-          <div className="relative flex h-full w-[84vw] max-w-xs flex-col border-r border-sidebar-border bg-sidebar shadow-2xl">
-            <div className="flex h-12 shrink-0 items-center justify-between border-b border-sidebar-border px-4">
-              <Link to="/" className="flex items-center gap-1.5">
-                <span className="font-display text-base tracking-tight text-foreground">
-                  executor
-                </span>
-              </Link>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Close navigation"
-                onClick={() => setMobileSidebarOpen(false)}
-                className="text-sidebar-foreground hover:bg-sidebar-active hover:text-foreground"
-              >
-                <svg viewBox="0 0 16 16" className="size-3.5">
-                  <path
-                    d="M3 3l10 10M13 3L3 13"
-                    stroke="currentColor"
-                    strokeWidth="1.4"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </Button>
-            </div>
-            <SidebarContent
-              pathname={pathname}
-              onNavigate={() => setMobileSidebarOpen(false)}
-              showBrand={false}
-              updateAvailable={updateAvailable}
-              latestVersion={latestVersion}
-              channel={channel}
-              auth={auth}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Main content */}
+      <AppSidebar
+        pathname={pathname}
+        updateAvailable={updateAvailable}
+        latestVersion={latestVersion}
+        channel={channel}
+        auth={auth}
+      />
       <main className="flex min-h-0 flex-1 flex-col min-w-0 overflow-hidden">
-        {/* Mobile top bar */}
-        <div className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-background px-4 md:hidden">
-          <Button
-            variant="outline"
-            size="icon-sm"
-            aria-label="Open navigation"
-            onClick={() => setMobileSidebarOpen(true)}
-            className="bg-card hover:bg-accent/50"
-          >
-            <svg viewBox="0 0 16 16" className="size-4">
-              <path
-                d="M2 4h12M2 8h12M2 12h12"
-                stroke="currentColor"
-                strokeWidth="1.2"
-                strokeLinecap="round"
-              />
-            </svg>
-          </Button>
-          <Link to="/" className="flex items-center gap-1.5">
-            <span className="font-display text-base tracking-tight text-foreground">executor</span>
-          </Link>
-          <div className="w-8 shrink-0" />
-        </div>
-
         <Outlet />
       </main>
-    </div>
+    </SidebarProvider>
   );
 }

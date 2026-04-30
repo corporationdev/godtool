@@ -53,12 +53,12 @@ const ENTERPRISE_FEATURES = [
 ];
 
 const ENTERPRISE_MAILTO = `mailto:rhys@executor.sh?subject=${encodeURIComponent(
-  "Executor Enterprise inquiry",
+  "GOD TOOL Enterprise inquiry",
 )}&body=${encodeURIComponent(
   [
     "Hi,",
     "",
-    "We're interested in Executor Enterprise.",
+    "We're interested in GOD TOOL Enterprise.",
     "",
     "Company:",
     "Team size:",

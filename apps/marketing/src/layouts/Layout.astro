@@ -7,18 +7,17 @@ interface Props {
 }
 
 const {
-  title = 'Executor — The Integration Layer for AI Agents',
-  description = 'A unified execution environment that gives AI agents typed, sandboxed access to every tool and API. OpenAPI, GraphQL, MCP, and more — one catalog, zero CLI sprawl.'
+  title = 'GOD TOOL',
+  description = 'A shared computer for agents with persistent files, integrations, credentials, browser state, binaries, and a remote desktop in one workspace.'
 } = Astro.props
 ---
 
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
-    <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=godtool-hammer-wings" />
+    <link rel="icon" href="/favicon.ico?v=godtool-hammer-wings" sizes="48x48" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=godtool-hammer-wings" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
     <meta name="description" content={description} />
@@ -27,7 +26,8 @@ const {
     <title>{title}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <slot name="head" />
   </head>
   <body class="bg-surface text-ink antialiased selection:bg-teal/20 selection:text-teal">
     <slot />

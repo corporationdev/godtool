@@ -54,6 +54,7 @@ const BROWSER_SESSIONS_PATH = join(SETTINGS_DIR, "browser-sessions.json");
 const DEFAULT_WORKSPACE_DIR = join(SETTINGS_DIR, "workspace");
 const DEVICE_CONNECTION_RECONNECT_MS = 5_000;
 const DEVICE_CONNECTION_PING_MS = 25_000;
+const DEVICE_CATALOG_SYNC_MS = 5_000;
 
 const CLI_BIN_DIR = join(SETTINGS_DIR, "bin");
 const CLI_BIN_PATH = join(CLI_BIN_DIR, process.platform === "win32" ? "godtool.exe" : "godtool");
@@ -203,13 +204,13 @@ const installCli = (): void => {
     if (!existsSync(profile)) continue;
     const content = readFileSync(profile, "utf-8");
     if (content.includes(CLI_BIN_DIR)) continue;
-    appendFileSync(profile, `\n# Added by Executor desktop app\n${pathLine}\n`);
+    appendFileSync(profile, `\n# Added by GOD TOOL desktop app\n${pathLine}\n`);
   }
 
   if (existsSync(fishConfig)) {
     const content = readFileSync(fishConfig, "utf-8");
     if (!content.includes(CLI_BIN_DIR)) {
-      appendFileSync(fishConfig, `\n# Added by Executor desktop app\n${fishLine}\n`);
+      appendFileSync(fishConfig, `\n# Added by GOD TOOL desktop app\n${fishLine}\n`);
     }
   }
 };
@@ -243,6 +244,17 @@ type CloudAuthState =
       readonly user: CloudAuthUser;
       readonly organization: CloudAuthOrganization | null;
     };
+
+type CloudSource = {
+  readonly id: string;
+  readonly name: string;
+  readonly kind: string;
+  readonly url?: string;
+  readonly runtime?: boolean;
+  readonly canRemove?: boolean;
+  readonly canRefresh?: boolean;
+  readonly canEdit?: boolean;
+};
 
 type WorkspaceFileNode = {
   readonly type: "file" | "directory";
@@ -734,7 +746,7 @@ const createWindow = (): BrowserWindow => {
     ...bounds,
     minWidth: 800,
     minHeight: 600,
-    title: "Executor",
+    title: "GOD TOOL",
     titleBarStyle: "hidden",
     trafficLightPosition: { x: 12, y: 12 },
     webPreferences: {
@@ -783,13 +795,21 @@ const createWindow = (): BrowserWindow => {
         -webkit-app-region: no-drag;
       }
 
-      /* Push sidebar content below traffic lights */
-      aside > :first-child {
-        margin-top: 38px !important;
+      /* Push ShadCN sidebar content below traffic lights */
+      [data-slot="sidebar-inner"] > [data-slot="sidebar-header"] {
+        padding-top: 44px !important;
       }
 
-      /* Push main content mobile bar below traffic lights */
-      main > :first-child {
+      /* Pin the desktop sidebar toggle next to the macOS traffic lights. */
+      [data-slot="sidebar-inner"] > [data-slot="sidebar-header"] [data-slot="sidebar-trigger"] {
+        position: fixed !important;
+        top: 44px !important;
+        left: 182px !important;
+        z-index: 10000 !important;
+      }
+
+      /* Keep any mobile top bar clear of the titlebar drag region */
+      main > :first-child[data-mobile-titlebar] {
         margin-top: 38px !important;
       }
     `);
@@ -894,7 +914,7 @@ const stopComputerUseHost = (): void => {
 const loadScope = async (scopePath: string): Promise<void> => {
   if (!mainWindow) return;
 
-  mainWindow.setTitle(`Godtool — ${basename(scopePath)}`);
+  mainWindow.setTitle(`GOD TOOL — ${basename(scopePath)}`);
 
   if (isDev) {
     // In dev mode, the Vite dev server handles both UI and API.
@@ -1019,6 +1039,37 @@ const fetchCloudAuthState = async (): Promise<CloudAuthState> => {
   };
 };
 
+const fetchCloudSources = async (): Promise<readonly CloudSource[]> => {
+  const authState = await fetchCloudAuthState();
+  if (authState.status !== "authenticated" || authState.organization === null) return [];
+
+  const cookie = await getCloudCookieHeader();
+  const headers = {
+    accept: "application/json",
+    cookie,
+  };
+
+  const scopeResponse = await fetch(cloudUrl("/api/scope"), { headers });
+  if (scopeResponse.status === 401 || scopeResponse.status === 403) return [];
+  if (!scopeResponse.ok) {
+    throw new Error(`Cloud scope request failed: ${scopeResponse.status}`);
+  }
+
+  const scope = (await scopeResponse.json()) as { readonly id?: string };
+  if (!scope.id) return [];
+
+  const sourcesResponse = await fetch(
+    cloudUrl(`/api/scopes/${encodeURIComponent(scope.id)}/sources`),
+    { headers },
+  );
+  if (sourcesResponse.status === 401 || sourcesResponse.status === 403) return [];
+  if (!sourcesResponse.ok) {
+    throw new Error(`Cloud sources request failed: ${sourcesResponse.status}`);
+  }
+
+  return (await sourcesResponse.json()) as readonly CloudSource[];
+};
+
 const pendingDesktopAuth = new Map<
   string,
   {
@@ -1080,7 +1131,7 @@ const desktopAuthCallbackHTML = (message: string): string => `<!DOCTYPE html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Godtool</title>
+  <title>GOD TOOL</title>
   <style>
     body {
       margin: 0;
@@ -1100,7 +1151,7 @@ const desktopAuthCallbackHTML = (message: string): string => `<!DOCTYPE html>
 <body>
   <main>
     <h1>${message}</h1>
-    <p>You can return to Godtool.</p>
+    <p>You can return to GOD TOOL.</p>
   </main>
   <script>
     try { history.replaceState(null, "", "/auth/complete"); } catch {}
@@ -1201,8 +1252,11 @@ const registerDeepLinkProtocol = (): void => {
 let deviceSocket: WebSocket | null = null;
 let deviceReconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let devicePingTimer: ReturnType<typeof setInterval> | null = null;
+let deviceCatalogSyncTimer: ReturnType<typeof setInterval> | null = null;
 let deviceAuthState: Extract<CloudAuthState, { status: "authenticated" }> | null = null;
 let deviceConnecting = false;
+let deviceCatalogSyncInFlight = false;
+let lastDeviceCatalogHash: string | null = null;
 
 type LocalDesktopRpcResponse =
   | {
@@ -1213,6 +1267,16 @@ type LocalDesktopRpcResponse =
       readonly status: "error";
       readonly error: string;
     };
+
+type LocalSourceCatalog = {
+  readonly sources: readonly {
+    readonly id: string;
+    readonly name: string;
+    readonly kind: string;
+    readonly pluginId: string;
+    readonly toolCount: number;
+  }[];
+};
 
 type DeviceSocketMessage = {
   readonly type?: string;
@@ -1237,8 +1301,7 @@ const ensureDeviceIdentity = (): { deviceId: string; deviceName: string } => {
   return { deviceId: settings.deviceId, deviceName: settings.deviceName };
 };
 
-const localAppBaseUrl = (): string =>
-  isDev ? DEV_SERVER_URL : `http://127.0.0.1:${currentPort}`;
+const localAppBaseUrl = (): string => (isDev ? DEV_SERVER_URL : `http://127.0.0.1:${currentPort}`);
 
 const localAppUrl = (path: string): string => new URL(path, localAppBaseUrl()).toString();
 
@@ -1247,10 +1310,7 @@ const readJsonResponse = async <T>(response: Response): Promise<T> => {
   const data = text.length > 0 ? JSON.parse(text) : {};
   if (!response.ok) {
     const message =
-      data &&
-      typeof data === "object" &&
-      "error" in data &&
-      typeof data.error === "string"
+      data && typeof data === "object" && "error" in data && typeof data.error === "string"
         ? data.error
         : `Local request failed with status ${response.status}`;
     throw new Error(message);
@@ -1265,6 +1325,59 @@ const executeLocalDesktopRpc = async (code: string): Promise<LocalDesktopRpcResp
     body: JSON.stringify({ code }),
   });
   return readJsonResponse<LocalDesktopRpcResponse>(response);
+};
+
+const fetchLocalSourceCatalog = async (): Promise<LocalSourceCatalog> => {
+  const response = await fetch(localAppUrl("/api/__desktop/catalog"), {
+    headers: { accept: "application/json" },
+    signal: AbortSignal.timeout(10_000),
+  });
+  return readJsonResponse<LocalSourceCatalog>(response);
+};
+
+const catalogHash = (catalog: LocalSourceCatalog): string =>
+  JSON.stringify(
+    [...catalog.sources]
+      .map((source) => ({
+        id: source.id,
+        name: source.name,
+        kind: source.kind,
+        pluginId: source.pluginId,
+        toolCount: source.toolCount,
+      }))
+      .sort((left, right) => left.id.localeCompare(right.id)),
+  );
+
+const publishLocalSourceCatalog = async (
+  deviceId: string,
+  options: { readonly force?: boolean } = {},
+): Promise<void> => {
+  if (deviceCatalogSyncInFlight) return;
+  deviceCatalogSyncInFlight = true;
+  try {
+    const [cookie, catalog] = await Promise.all([
+      getCloudCookieHeader(),
+      fetchLocalSourceCatalog(),
+    ]);
+    if (!cookie) return;
+    const nextHash = catalogHash(catalog);
+    if (!options.force && nextHash === lastDeviceCatalogHash) return;
+
+    const response = await fetch(cloudUrl("/api/devices/catalog"), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        cookie,
+      },
+      body: JSON.stringify({ deviceId, sources: catalog.sources }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    await readJsonResponse(response);
+    lastDeviceCatalogHash = nextHash;
+    console.log(`[devices] source catalog synced (${catalog.sources.length})`);
+  } finally {
+    deviceCatalogSyncInFlight = false;
+  }
 };
 
 const ensureLocalComputerUseSource = async (): Promise<void> => {
@@ -1302,6 +1415,12 @@ const clearDevicePingTimer = (): void => {
   devicePingTimer = null;
 };
 
+const clearDeviceCatalogSyncTimer = (): void => {
+  if (!deviceCatalogSyncTimer) return;
+  clearInterval(deviceCatalogSyncTimer);
+  deviceCatalogSyncTimer = null;
+};
+
 const scheduleDeviceReconnect = (delayMs = DEVICE_CONNECTION_RECONNECT_MS): void => {
   if (!deviceAuthState?.organization) return;
   if (deviceReconnectTimer) return;
@@ -1315,6 +1434,8 @@ const stopDeviceConnection = (): void => {
   deviceAuthState = null;
   clearDeviceReconnectTimer();
   clearDevicePingTimer();
+  clearDeviceCatalogSyncTimer();
+  lastDeviceCatalogHash = null;
   const socket = deviceSocket;
   deviceSocket = null;
   if (socket && socket.readyState !== WebSocket.CLOSED) {
@@ -1408,7 +1529,17 @@ const connectDeviceWebSocket = async (): Promise<void> => {
 
     socket.addEventListener("open", () => {
       console.log(`[devices] connected ${deviceId}`);
-      void ensureLocalComputerUseSource();
+      void ensureLocalComputerUseSource()
+        .then(() => publishLocalSourceCatalog(deviceId, { force: true }))
+        .catch((error) => console.warn("[devices] source catalog sync failed", error));
+      clearDeviceCatalogSyncTimer();
+      deviceCatalogSyncTimer = setInterval(() => {
+        if (socket.readyState === WebSocket.OPEN) {
+          void publishLocalSourceCatalog(deviceId).catch((error) =>
+            console.warn("[devices] source catalog sync failed", error),
+          );
+        }
+      }, DEVICE_CATALOG_SYNC_MS);
       clearDevicePingTimer();
       devicePingTimer = setInterval(() => {
         if (socket.readyState === WebSocket.OPEN) {
@@ -1424,12 +1555,14 @@ const connectDeviceWebSocket = async (): Promise<void> => {
     socket.addEventListener("close", () => {
       if (deviceSocket === socket) deviceSocket = null;
       clearDevicePingTimer();
+      clearDeviceCatalogSyncTimer();
       scheduleDeviceReconnect();
     });
 
     socket.addEventListener("error", () => {
       if (deviceSocket === socket) deviceSocket = null;
       clearDevicePingTimer();
+      clearDeviceCatalogSyncTimer();
       scheduleDeviceReconnect();
     });
   } catch (error) {
@@ -1467,6 +1600,7 @@ const setupIPC = (): void => {
   });
   ipcMain.handle("cloud-auth:sign-out", () => signOutCloud());
   ipcMain.handle("cloud-auth:get-cloud-url", () => CLOUD_APP_URL);
+  ipcMain.handle("cloud-auth:list-sources", () => fetchCloudSources());
 
   ipcMain.handle("workspace-files:list", async () => {
     mkdirSync(DEFAULT_WORKSPACE_DIR, { recursive: true });
@@ -1662,12 +1796,12 @@ const loadingHTML = (scopePath: string): string => {
 <head>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Instrument+Serif&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500&display=swap" rel="stylesheet" />
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
   body {
-    font-family: "Inter", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    font-family: "Geist", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
     display: flex; align-items: center; justify-content: center;
     height: 100vh;
     background: ${bg};
@@ -1688,7 +1822,7 @@ const loadingHTML = (scopePath: string): string => {
 
   /* Wordmark */
   .wordmark {
-    font-family: "Instrument Serif", Georgia, serif;
+    font-family: "Geist", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
     font-size: 28px;
     font-weight: 400;
     letter-spacing: -0.01em;

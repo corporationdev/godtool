@@ -14,6 +14,7 @@ import postgres from "postgres";
 
 import { createExecutorMcpServer } from "@executor/host-mcp";
 import { buildExecuteDescription } from "@executor/execution";
+import type { Source } from "@executor/sdk";
 import type { DrizzleDb, DbServiceShape } from "./services/db";
 
 // Import directly from core-shared-services, NOT from ./api/layers.ts.
@@ -155,13 +156,76 @@ const makeLongLivedDb = (): DbHandle =>
 
 const makeEphemeralDb = (): DbHandle => makeDbHandle({ idleTimeout: 0, maxLifetime: 60 });
 
-const withDeviceExecutionDescription = (description: string): string =>
-  [
-    description,
-    "",
-    "## Local Mac execution",
-    "When the signed-in desktop app is connected, this server executes code on that Mac through the device connection. Use `tools.search({ namespace: \"computer_use\", query: \"list apps screen state click type\" })` to discover local Computer Use tools, then invoke them from code as usual. If no desktop is connected, code automatically runs in the cloud dynamic worker and local-only tools will not be available.",
-  ].join("\n");
+type DeviceSessionBinding = DurableObjectNamespace<import("./device-session").DeviceSessionDO>;
+
+type DeviceStatus = {
+  readonly activeDeviceId: string | null;
+  readonly devices: readonly {
+    readonly deviceId: string;
+    readonly online: boolean;
+  }[];
+};
+
+type SourceCatalogRow = {
+  readonly source_id: string;
+  readonly name: string;
+  readonly kind: string;
+  readonly plugin_id: string;
+};
+
+const deviceSessionNamespace = (): DeviceSessionBinding | null =>
+  (env as Env & { DEVICE_SESSION?: DeviceSessionBinding }).DEVICE_SESSION ?? null;
+
+const loadActiveDeviceId = async (organizationId: string): Promise<string | null> => {
+  const namespace = deviceSessionNamespace();
+  if (!namespace) return null;
+
+  const stub = namespace.get(namespace.idFromName(`org:${organizationId}`));
+  const response = await stub.fetch("https://device-session/status");
+  if (!response.ok) return null;
+
+  const status = (await response.json().catch(() => null)) as DeviceStatus | null;
+  if (!status) return null;
+  const onlineDevices = status.devices.filter((device) => device.online);
+  const active =
+    onlineDevices.find((device) => device.deviceId === status.activeDeviceId) ?? onlineDevices[0];
+  return active?.deviceId ?? null;
+};
+
+const loadAvailableCatalogSources = (
+  sessionMeta: SessionMeta,
+  dbHandle: DbHandle,
+): Effect.Effect<{ readonly activeDeviceId: string | null; readonly sources: readonly Source[] }> =>
+  Effect.promise(async () => {
+    const activeDeviceId = await loadActiveDeviceId(sessionMeta.organizationId);
+    if (!activeDeviceId) return { activeDeviceId: null, sources: [] };
+
+    const rows = await dbHandle.sql<SourceCatalogRow[]>`
+      select source_id, name, kind, plugin_id
+      from source_catalog
+      where organization_id = ${sessionMeta.organizationId}
+        and device_id = ${activeDeviceId}
+        and local_available = true
+      order by source_id asc
+    `;
+
+    return {
+      activeDeviceId,
+      sources: rows.map(
+        (row): Source => ({
+          id: row.source_id,
+          scopeId: sessionMeta.organizationId,
+          kind: row.kind,
+          name: row.name,
+          pluginId: row.plugin_id,
+          canRemove: false,
+          canRefresh: false,
+          canEdit: false,
+          runtime: false,
+        }),
+      ),
+    };
+  }).pipe(Effect.withSpan("mcp.session.load_available_source_catalog"));
 
 const makeResolveOrganizationServices = (dbHandle: DbHandle) => {
   const DbLive = Layer.succeed(DbService, { sql: dbHandle.sql, db: dbHandle.db });
@@ -298,9 +362,10 @@ export class McpSessionDO extends DurableObject {
       // `McpSessionDO.createRuntime`. host-mcp would otherwise call
       // `Effect.runPromise(engine.getDescription)` at its async
       // MCP-SDK boundary and orphan the sub-span.
-      const description = withDeviceExecutionDescription(
-        yield* buildExecuteDescription(executor),
-      );
+      const catalog = yield* loadAvailableCatalogSources(sessionMeta, options.dbHandle);
+      const description = yield* buildExecuteDescription(executor, {
+        ...(catalog.activeDeviceId ? { sourcesOverride: catalog.sources } : {}),
+      });
       const mcpServer = yield* createExecutorMcpServer({
         engine,
         description,

@@ -7,5 +7,11 @@ import { graphqlSourcePlugin } from "@executor/plugin-graphql/react";
 const sourcePlugins = [openApiSourcePlugin, mcpSourcePlugin, graphqlSourcePlugin];
 
 export const Route = createFileRoute("/")({
-  component: () => <SourcesPage sourcePlugins={sourcePlugins} />,
+  component: () => (
+    <SourcesPage
+      sourcePlugins={sourcePlugins}
+      catalogEndpoint="/api/devices/catalog"
+      baseSourceAvailability="cloud"
+    />
+  ),
 });

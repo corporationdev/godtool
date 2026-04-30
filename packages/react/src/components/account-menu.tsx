@@ -89,10 +89,10 @@ export function AccountMenu(props: AccountMenuProps) {
         type="button"
         variant="ghost"
         disabled
-        className="flex h-auto w-full items-center justify-start gap-2.5 rounded-md px-1 py-1 text-left"
+        className="flex h-auto w-full items-center justify-start gap-2.5 rounded-md px-1 py-1 text-left group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0"
       >
         <div className="size-7 shrink-0 rounded-full bg-muted" />
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
           <div className="h-3 w-24 rounded bg-muted" />
           <div className="mt-1.5 h-3 w-16 rounded bg-muted" />
         </div>
@@ -107,7 +107,7 @@ export function AccountMenu(props: AccountMenuProps) {
         variant="outline"
         disabled={!props.onSignIn}
         onClick={props.onSignIn}
-        className="h-9 w-full justify-center rounded-md bg-background/50 text-sm"
+        className="h-9 w-full justify-center rounded-md bg-background/50 text-sm group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:text-[0]"
       >
         Sign in
       </Button>
@@ -126,10 +126,10 @@ export function AccountMenu(props: AccountMenuProps) {
         <Button
           type="button"
           variant="ghost"
-          className="flex h-auto w-full items-center justify-start gap-2.5 rounded-md px-1 py-1 text-left hover:bg-sidebar-active/60"
+          className="flex h-auto w-full items-center justify-start gap-2.5 rounded-md px-1 py-1 text-left hover:bg-sidebar-active/60 group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0"
         >
           <AccountAvatar url={user.avatarUrl} name={user.name} email={user.email} />
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
             <p className="truncate text-xs font-medium text-foreground">
               {user.name ?? user.email}
             </p>
@@ -137,7 +137,11 @@ export function AccountMenu(props: AccountMenuProps) {
               <p className="truncate text-xs text-muted-foreground">{organization.name}</p>
             )}
           </div>
-          <svg viewBox="0 0 16 16" fill="none" className="size-3.5 shrink-0 text-muted-foreground">
+          <svg
+            viewBox="0 0 16 16"
+            fill="none"
+            className="size-3.5 shrink-0 text-muted-foreground group-data-[collapsible=icon]:hidden"
+          >
             <path
               d="M4 6l4 4 4-4"
               stroke="currentColor"

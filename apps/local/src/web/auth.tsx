@@ -6,6 +6,18 @@ type CloudAuthApi = {
   readonly signIn: () => Promise<AccountAuthState>;
   readonly signOut: () => Promise<AccountAuthState>;
   readonly getCloudUrl: () => Promise<string>;
+  readonly listSources: () => Promise<readonly CloudSource[]>;
+};
+
+export type CloudSource = {
+  readonly id: string;
+  readonly name: string;
+  readonly kind: string;
+  readonly url?: string;
+  readonly runtime?: boolean;
+  readonly canRemove?: boolean;
+  readonly canRefresh?: boolean;
+  readonly canEdit?: boolean;
 };
 
 type ElectronWindow = Window & {
@@ -19,6 +31,7 @@ type LocalAuthContextValue = {
   readonly available: boolean;
   readonly signIn: () => Promise<void>;
   readonly signOut: () => Promise<void>;
+  readonly listCloudSources: () => Promise<readonly CloudSource[]>;
 };
 
 const LocalAuthContext = createContext<LocalAuthContextValue>({
@@ -26,6 +39,7 @@ const LocalAuthContext = createContext<LocalAuthContextValue>({
   available: false,
   signIn: async () => {},
   signOut: async () => {},
+  listCloudSources: async () => [],
 });
 
 const getCloudAuthApi = (): CloudAuthApi | null => {
@@ -64,8 +78,13 @@ export function LocalAuthProvider(props: React.PropsWithChildren) {
     setAuth(await api.signOut());
   }, [api]);
 
+  const listCloudSources = useCallback(async () => {
+    if (!api) return [];
+    return await api.listSources();
+  }, [api]);
+
   return (
-    <LocalAuthContext.Provider value={{ auth, available, signIn, signOut }}>
+    <LocalAuthContext.Provider value={{ auth, available, signIn, signOut, listCloudSources }}>
       {props.children}
     </LocalAuthContext.Provider>
   );

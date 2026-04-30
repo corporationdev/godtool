@@ -2,7 +2,7 @@
   "name": "@executor/desktop",
   "version": "1.4.11",
   "private": true,
-  "description": "Executor desktop app",
+  "description": "GOD TOOL desktop app",
   "homepage": "https://github.com/RhysSullivan/executor",
   "author": {
     "name": "Rhys Sullivan",
@@ -29,7 +29,7 @@
   },
   "build": {
     "appId": "com.godtool.desktop",
-    "productName": "Godtool",
+    "productName": "GOD TOOL",
     "publish": null,
     "directories": {
       "output": "release"
@@ -72,7 +72,7 @@
       "icon": "build/icons"
     },
     "dmg": {
-      "title": "Executor",
+      "title": "GOD TOOL",
       "contents": [
         {
           "x": 130,

@@ -38,6 +38,7 @@ import {
   ComputerUseHandlers,
   ComputerUseExtensionService,
 } from "@executor/plugin-computer-use/api";
+import type { Source, Tool } from "@executor/sdk";
 import { getExecutor } from "./executor";
 import { createMcpRequestHandler, type McpRequestHandler } from "./mcp";
 import { ErrorCaptureLive } from "./observability";
@@ -122,6 +123,14 @@ const errorMessage = (error: unknown): string => {
   return String(error);
 };
 
+type DesktopCatalogSource = {
+  readonly id: string;
+  readonly name: string;
+  readonly kind: string;
+  readonly pluginId: string;
+  readonly toolCount: number;
+};
+
 const makeDesktopRpcHandler = (engine: ReturnType<typeof createExecutionEngine>) => {
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
@@ -151,6 +160,41 @@ const makeDesktopRpcHandler = (engine: ReturnType<typeof createExecutionEngine>)
         },
         { status: 409 },
       );
+    } catch (error) {
+      return json({ status: "error", error: errorMessage(error) }, { status: 500 });
+    }
+  };
+};
+
+const makeDesktopCatalogHandler = (executor: Awaited<ReturnType<typeof getExecutor>>) => {
+  return async (request: Request): Promise<Response> => {
+    const url = new URL(request.url);
+    if (url.pathname !== "/catalog") return json({ error: "not_found" }, { status: 404 });
+    if (request.method !== "GET") {
+      return json({ error: "method_not_allowed" }, { status: 405 });
+    }
+
+    try {
+      const [sources, tools] = await Promise.all([
+        Effect.runPromise(executor.sources.list()),
+        Effect.runPromise(executor.tools.list({ includeAnnotations: false })),
+      ]);
+      const toolCountBySource = new Map<string, number>();
+      for (const tool of tools as readonly Tool[]) {
+        toolCountBySource.set(tool.sourceId, (toolCountBySource.get(tool.sourceId) ?? 0) + 1);
+      }
+
+      const catalog = (sources as readonly Source[]).map(
+        (source): DesktopCatalogSource => ({
+          id: source.id,
+          name: source.name,
+          kind: source.kind,
+          pluginId: source.pluginId,
+          toolCount: toolCountBySource.get(source.id) ?? 0,
+        }),
+      );
+
+      return json({ sources: catalog });
     } catch (error) {
       return json({ status: "error", error: errorMessage(error) }, { status: 500 });
     }
@@ -187,7 +231,15 @@ export const createServerHandlers = async (): Promise<ServerHandlers> => {
   );
 
   const mcp = createMcpRequestHandler({ engine });
-  const desktopRpc = { handler: makeDesktopRpcHandler(engine) };
+  const executeHandler = makeDesktopRpcHandler(engine);
+  const catalogHandler = makeDesktopCatalogHandler(executor);
+  const desktopRpc = {
+    handler: async (request: Request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/catalog") return catalogHandler(request);
+      return executeHandler(request);
+    },
+  };
 
   return { api, desktopRpc, mcp };
 };

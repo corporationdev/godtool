@@ -171,5 +171,5 @@ export async function startServer(opts: StartServerOptions = {}): Promise<Server
 
 if (import.meta.main) {
   const server = await startServer();
-  console.log(`Executor listening on http://localhost:${server.port}`);
+  console.log(`GOD TOOL listening on http://localhost:${server.port}`);
 }

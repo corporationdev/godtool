@@ -38,18 +38,18 @@ export function McpInstallCard(props: { className?: string }) {
   const command =
     mode === "stdio"
       ? isDev
-        ? `npx add-mcp "bun run dev:cli mcp${scopeFlag}" --name "executor"`
-        : `npx add-mcp "executor mcp${scopeFlag}" --name "executor"`
+        ? `npx add-mcp "bun run dev:cli mcp${scopeFlag}" --name "GOD TOOL"`
+        : `npx add-mcp "executor mcp${scopeFlag}" --name "GOD TOOL"`
       : origin
-        ? `npx add-mcp "${origin}/mcp" --transport http --name "executor"`
-        : 'npx add-mcp "<this-server>/mcp" --transport http --name "executor"';
+        ? `npx add-mcp "${origin}/mcp" --transport http --name "GOD TOOL"`
+        : 'npx add-mcp "<this-server>/mcp" --transport http --name "GOD TOOL"';
 
   const subtitle =
     mode === "stdio"
       ? isDev
         ? "Uses the repo-local dev CLI. Run from the repository root."
-        : "Requires the executor CLI on your PATH."
-      : "Connect to executor as a remote MCP server over streamable HTTP.";
+        : "Requires the GOD TOOL CLI on your PATH."
+      : "Connect to GOD TOOL as a remote MCP server over streamable HTTP.";
 
   const agentLogos = (
     <div className="flex shrink-0 items-center gap-2 text-muted-foreground">

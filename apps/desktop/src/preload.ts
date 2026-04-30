@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     signIn: () => ipcRenderer.invoke("cloud-auth:sign-in"),
     signOut: () => ipcRenderer.invoke("cloud-auth:sign-out"),
     getCloudUrl: () => ipcRenderer.invoke("cloud-auth:get-cloud-url"),
+    listSources: () => ipcRenderer.invoke("cloud-auth:list-sources"),
   },
   files: {
     list: () => ipcRenderer.invoke("workspace-files:list"),
