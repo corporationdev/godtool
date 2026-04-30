@@ -43,16 +43,16 @@ function PermissionBadge(props: {
   }
 
   return (
-    <Badge asChild variant="secondary">
-      <button
-        type="button"
-        className="cursor-pointer hover:bg-secondary/80 disabled:pointer-events-none disabled:opacity-50"
-        onClick={props.onRequest}
-        disabled={props.disabled}
-      >
-        Request
-      </button>
-    </Badge>
+    <Button
+      type="button"
+      variant="secondary"
+      size="xs"
+      className="h-5 rounded-full px-2 py-0.5 text-xs"
+      onClick={props.onRequest}
+      disabled={props.disabled}
+    >
+      Request
+    </Button>
   );
 }
 

@@ -369,7 +369,7 @@ export function BrowsersPage() {
       return;
     }
     setAddress(selected.url);
-  }, [selected?.id, selected?.url]);
+  }, [selected]);
 
   useEffect(() => {
     const element = viewportRef.current;
@@ -401,15 +401,22 @@ export function BrowsersPage() {
               <h1 className="truncate text-sm font-semibold tracking-normal">Browsers</h1>
               <p className="shrink-0 text-xs text-muted-foreground">{activeCount} active</p>
             </div>
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon-sm"
               className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50"
               aria-label="New browser"
               onClick={() => void startNewBrowser()}
             >
               <PlusIcon aria-hidden className="size-4" />
-            </button>
+            </Button>
           </div>
+          {error ? (
+            <div className="border-b border-border px-4 py-2 text-xs text-destructive">
+              {error}
+            </div>
+          ) : null}
           {sessions.length === 0 ? (
             <div className="p-5 text-sm text-muted-foreground">No browser sessions yet.</div>
           ) : (
@@ -418,12 +425,13 @@ export function BrowsersPage() {
                 const active = isRecentlyUsedByAgent(session, now);
                 return (
                   <div key={session.id} className="group relative border-b border-border">
-                    <button
+                    <Button
                       type="button"
+                      variant="ghost"
                       onClick={() => void showSession(session.id)}
                       aria-current={selectedId === session.id ? "page" : undefined}
                       className={[
-                        "relative w-full cursor-pointer px-4 py-3 pr-12 text-left transition-colors hover:bg-accent/40",
+                        "relative h-auto w-full cursor-pointer justify-start rounded-none px-4 py-3 pr-12 text-left font-normal transition-colors hover:bg-accent/40",
                         selectedId === session.id
                           ? "bg-accent/60 before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-primary"
                           : "bg-background",
@@ -443,15 +451,17 @@ export function BrowsersPage() {
                       <div className="mt-2 text-xs text-muted-foreground">
                         <span>Used {formatAge(session.lastUsedAt)}</span>
                       </div>
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
+                      variant="ghost"
+                      size="icon-xs"
                       aria-label={`Archive ${session.sessionName}`}
                       onClick={() => void archiveSession(session.id)}
                       className="absolute top-3 right-3 inline-flex size-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground opacity-0 transition-colors transition-opacity hover:bg-background/80 hover:text-foreground hover:opacity-100 focus-visible:bg-background/80 focus-visible:text-foreground focus-visible:opacity-100 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none group-hover:opacity-100"
                     >
                       <ArchiveIcon aria-hidden className="size-4" />
-                    </button>
+                    </Button>
                   </div>
                 );
               })}

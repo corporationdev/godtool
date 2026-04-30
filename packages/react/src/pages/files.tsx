@@ -535,7 +535,10 @@ export function FilesPage() {
     [saveSelectedFile, selectedPath],
   );
 
-  const openTargets = filesState.status === "ready" ? filesState.openTargets : [];
+  const openTargets = useMemo(
+    () => (filesState.status === "ready" ? filesState.openTargets : []),
+    [filesState],
+  );
   const effectiveOpenTarget = useMemo(() => {
     if (preferredOpenTarget && openTargets.some((target) => target.id === preferredOpenTarget)) {
       return preferredOpenTarget;
@@ -1354,7 +1357,7 @@ function CreateRow(props: {
     >
       <div className="flex h-7 items-center gap-2 rounded-md bg-sidebar-active/70 px-2 ring-1 ring-primary/40">
         <Icon className="size-3.5 shrink-0 text-muted-foreground" />
-        <input
+        <Input
           ref={props.inputRef}
           value={props.name}
           onChange={(event) => props.onNameChange(event.target.value)}
@@ -1369,18 +1372,20 @@ function CreateRow(props: {
               props.onCancel();
             }
           }}
-          className="min-w-0 flex-1 bg-transparent font-mono text-xs text-foreground outline-none placeholder:text-muted-foreground"
+          className="h-auto min-w-0 flex-1 rounded-none border-0 bg-transparent px-0 py-0 font-mono text-xs text-foreground shadow-none outline-none focus-visible:border-transparent focus-visible:ring-0 placeholder:text-muted-foreground"
           aria-label={props.kind === "file" ? "New file name" : "New folder name"}
         />
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="icon-xs"
           aria-label="Cancel"
           onMouseDown={(event) => event.preventDefault()}
           onClick={props.onCancel}
-          className="text-muted-foreground hover:text-foreground"
+          className="size-5 text-muted-foreground hover:text-foreground"
         >
           <XIcon className="size-3" />
-        </button>
+        </Button>
       </div>
       {props.error && <div className="mt-1 text-[11px] text-destructive">{props.error}</div>}
     </div>
