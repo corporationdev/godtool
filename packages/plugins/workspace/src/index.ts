@@ -423,13 +423,16 @@ const resolveExistingPath = async (
 const resolveWritablePath = async (
   config: WorkspacePluginConfig | undefined,
   inputPath: string,
+  options?: { readonly createParentDirectories?: boolean },
 ): Promise<{ readonly root: string; readonly path: string; readonly relativePath: string }> => {
   const root = await ensureWorkspaceRoot(config);
   const relativePath = normalizeRelativePath(inputPath);
   const target = resolve(root, relativePath);
   assertInsideRoot(root, target);
   await validateExistingSegments(root, relativePath, false);
-  await mkdir(dirname(target), { recursive: true });
+  if (options?.createParentDirectories !== false) {
+    await mkdir(dirname(target), { recursive: true });
+  }
   await validateExistingSegments(root, relative(root, dirname(target)).split(sep).join("/"), true);
   try {
     const entry = await lstat(target);
@@ -787,6 +790,29 @@ const applyPatchTool = (config: WorkspacePluginConfig | undefined, args: unknown
   Effect.tryPromise(async () => {
     const input = decodeApplyPatchArgs(args);
     const operations = parsePatch(input.patch);
+    type PatchAction =
+      | {
+          readonly kind: "write";
+          readonly path: string;
+          readonly relativePath: string;
+          readonly content: string;
+          readonly createOnly: boolean;
+        }
+      | {
+          readonly kind: "delete";
+          readonly path: string;
+          readonly relativePath: string;
+        }
+      | {
+          readonly kind: "move";
+          readonly fromPath: string;
+          readonly fromRelativePath: string;
+          readonly toPath: string;
+          readonly toRelativePath: string;
+          readonly content: string;
+        };
+    const actions: PatchAction[] = [];
+    const moveTargets = new Set<string>();
     const changedFiles: string[] = [];
     const addedFiles: string[] = [];
     const deletedFiles: string[] = [];
@@ -794,15 +820,26 @@ const applyPatchTool = (config: WorkspacePluginConfig | undefined, args: unknown
 
     for (const operation of operations) {
       if (operation.kind === "add") {
-        const resolved = await resolveWritablePath(config, operation.path);
+        const resolved = await resolveWritablePath(config, operation.path, {
+          createParentDirectories: false,
+        });
         const content = joinContentLines(
           operation.hunks[0]?.map((line) => line.slice(1)) ?? [],
           true,
         );
-        if (!input.dryRun) {
-          await writeFile(resolved.path, content, { flag: "wx" });
+        try {
+          await lstat(resolved.path);
+          throw new Error(`Add File target already exists: ${resolved.relativePath}`);
+        } catch (cause) {
+          if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
         }
-        addedFiles.push(resolved.relativePath);
+        actions.push({
+          kind: "write",
+          path: resolved.path,
+          relativePath: resolved.relativePath,
+          content,
+          createOnly: true,
+        });
         continue;
       }
 
@@ -810,10 +847,7 @@ const applyPatchTool = (config: WorkspacePluginConfig | undefined, args: unknown
         const resolved = await resolveExistingPath(config, operation.path);
         const entry = await lstat(resolved.path);
         if (!entry.isFile()) throw new Error("Delete File only supports files");
-        if (!input.dryRun) {
-          await rm(resolved.path);
-        }
-        deletedFiles.push(resolved.relativePath);
+        actions.push({ kind: "delete", path: resolved.path, relativePath: resolved.relativePath });
         continue;
       }
 
@@ -824,19 +858,74 @@ const applyPatchTool = (config: WorkspacePluginConfig | undefined, args: unknown
       const next = applyPatchHunks(current, operation.hunks);
 
       if (operation.moveTo) {
-        const destination = await resolveWritablePath(config, operation.moveTo);
-        if (!input.dryRun) {
-          await writeFile(destination.path, next, { flag: "wx" });
-          await rm(source.path);
+        const destination = await resolveWritablePath(config, operation.moveTo, {
+          createParentDirectories: false,
+        });
+        if (moveTargets.has(destination.path)) {
+          throw new Error(`Move target is used more than once: ${destination.relativePath}`);
         }
-        movedFiles.push({ from: source.relativePath, to: destination.relativePath });
-        changedFiles.push(destination.relativePath);
+        moveTargets.add(destination.path);
+        try {
+          await lstat(destination.path);
+          throw new Error(`Move target already exists: ${destination.relativePath}`);
+        } catch (cause) {
+          if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
+        }
+        actions.push({
+          kind: "move",
+          fromPath: source.path,
+          fromRelativePath: source.relativePath,
+          toPath: destination.path,
+          toRelativePath: destination.relativePath,
+          content: next,
+        });
       } else {
-        if (!input.dryRun) {
-          await writeFile(source.path, next);
-        }
-        changedFiles.push(source.relativePath);
+        actions.push({
+          kind: "write",
+          path: source.path,
+          relativePath: source.relativePath,
+          content: next,
+          createOnly: false,
+        });
       }
+    }
+
+    for (const action of actions) {
+      if (action.kind === "write") {
+        if (!input.dryRun) {
+          await mkdir(dirname(action.path), { recursive: true });
+          if (action.createOnly) {
+            await writeFile(action.path, action.content, { flag: "wx" });
+          } else {
+            const tempPath = `${action.path}.godtool-${crypto.randomUUID()}.tmp`;
+            try {
+              await writeFile(tempPath, action.content, { flag: "wx" });
+              await rename(tempPath, action.path);
+            } finally {
+              await rm(tempPath, { force: true });
+            }
+          }
+        }
+        if (action.createOnly) addedFiles.push(action.relativePath);
+        else changedFiles.push(action.relativePath);
+        continue;
+      }
+
+      if (action.kind === "delete") {
+        if (!input.dryRun) {
+          await rm(action.path);
+        }
+        deletedFiles.push(action.relativePath);
+        continue;
+      }
+
+      if (!input.dryRun) {
+        await mkdir(dirname(action.toPath), { recursive: true });
+        await writeFile(action.toPath, action.content, { flag: "wx" });
+        await rm(action.fromPath);
+      }
+      movedFiles.push({ from: action.fromRelativePath, to: action.toRelativePath });
+      changedFiles.push(action.toRelativePath);
     }
 
     return { changedFiles, addedFiles, deletedFiles, movedFiles, dryRun: Boolean(input.dryRun) };

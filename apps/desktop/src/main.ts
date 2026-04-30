@@ -53,6 +53,7 @@ const SETTINGS_PATH = join(SETTINGS_DIR, "desktop-settings.json");
 const BROWSER_SESSIONS_PATH = join(SETTINGS_DIR, "browser-sessions.json");
 const DEFAULT_WORKSPACE_DIR = join(SETTINGS_DIR, "workspace");
 const DEVICE_CONNECTION_RECONNECT_MS = 5_000;
+const DESKTOP_RPC_SECRET = randomUUID();
 
 const CLI_BIN_DIR = join(SETTINGS_DIR, "bin");
 const CLI_BIN_PATH = join(CLI_BIN_DIR, process.platform === "win32" ? "godtool.exe" : "godtool");
@@ -723,6 +724,7 @@ const startServer = async (scopePath: string, port: number): Promise<void> => {
       GODTOOL_CLOUD_URL: CLOUD_APP_URL,
       GODTOOL_DESKTOP_AUTH_BRIDGE_URL: `http://127.0.0.1:${DESKTOP_AUTH_CALLBACK_PORT}`,
       GODTOOL_DESKTOP_AUTH_BRIDGE_TOKEN: ensureAuthBridgeSettings(),
+      GODTOOL_DESKTOP_RPC_SECRET: DESKTOP_RPC_SECRET,
     },
   });
 
@@ -1473,7 +1475,7 @@ const readJsonResponse = async <T>(response: Response): Promise<T> => {
 const executeLocalDesktopRpc = async (code: string): Promise<LocalDesktopRpcResponse> => {
   const response = await fetch(localAppUrl("/api/__desktop/execute"), {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", "x-desktop-secret": DESKTOP_RPC_SECRET },
     body: JSON.stringify({ code }),
   });
   return readJsonResponse<LocalDesktopRpcResponse>(response);

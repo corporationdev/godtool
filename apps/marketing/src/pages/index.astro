@@ -33,7 +33,7 @@ import Layout from '../layouts/Layout.astro'
           Give every agent the same <span class="italic text-teal">interface to the world.</span>
         </h1>
         <p class="rise-d2 mx-auto max-w-[720px] text-[17px] leading-[1.7] text-ink-muted">
-          One setup for connected accounts, logged-in browsers, persistent files, and Mac computer-use. Works from Claude Code, Codex, Cursor, and any MCP client.
+          One setup for connected accounts, logged-in browsers, persistent files, and Mac computer-use. Use it from Claude Code, Codex, Cursor, or any other MCP client, from any machine.
         </p>
         <div class="rise-d3 mt-9 flex flex-wrap items-center justify-center gap-4">
           <a href="/setup" class="inline-flex items-center gap-2 rounded-md bg-teal px-5 py-2.5 text-[14px] font-medium text-surface transition-colors hover:bg-teal-dim">
@@ -403,48 +403,15 @@ import Layout from '../layouts/Layout.astro'
     </div>
   </section>
 
-  <section class="relative border-y border-rule py-28 sm:py-36">
-    <div class="mx-auto grid max-w-[1200px] gap-12 px-6 sm:px-10 lg:grid-cols-[0.85fr_1.15fr] lg:items-center">
-      <div class="reveal">
-        <span class="mb-4 block font-mono text-[11px] uppercase tracking-[0.2em] text-ink-faint">MCP anywhere</span>
-        <h2 class="font-display text-[clamp(2rem,4.5vw,3.5rem)] leading-[1.05] tracking-tight text-ink">
-          Use the same capabilities <span class="italic text-teal">from any client.</span>
-        </h2>
-        <p class="mt-6 text-[15px] leading-7 text-ink-muted">
-          Connect something on your desktop once. The same interface is available to Claude Code, Codex, Cursor, scripts, custom agents, and any MCP client.
-        </p>
-      </div>
-
-      <div class="reveal rounded-xl border border-rule bg-surface-raised p-6 sm:p-8">
-        <div class="grid gap-4 md:grid-cols-[1fr_auto_1fr] md:items-center">
-          <div class="grid gap-3">
-            {['Claude Code', 'Codex', 'Cursor', 'Any MCP client'].map((name) => (
-              <div class="rounded-lg border border-rule bg-surface px-4 py-3 text-[13px] text-ink-muted">{name}</div>
-            ))}
-          </div>
-          <div class="hidden h-px w-16 bg-gradient-to-r from-transparent via-teal/60 to-transparent md:block"></div>
-          <div class="rounded-xl border border-teal/20 bg-teal/[0.05] p-5">
-            <div class="font-mono text-[11px] uppercase tracking-[0.16em] text-teal">GOD TOOL MCP</div>
-            <div class="mt-4 grid gap-2">
-              {['Integrations', 'Browsers', 'Mac computer-use', 'Shared memory'].map((name) => (
-                <div class="rounded-md border border-teal/15 bg-surface/60 px-3 py-2 text-[12px] text-ink-muted">{name}</div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
   <section class="relative py-28 sm:py-36">
     <div class="mx-auto grid max-w-[1200px] gap-8 px-6 sm:px-10 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
       <div class="reveal">
-        <span class="mb-4 block font-mono text-[11px] uppercase tracking-[0.2em] text-ink-faint">Tool use</span>
+        <span class="mb-4 block font-mono text-[11px] uppercase tracking-[0.2em] text-ink-faint">Token-efficient tool use</span>
         <h2 class="font-display text-[clamp(2rem,4.5vw,3.5rem)] leading-[1.05] tracking-tight text-ink">
-          Tool calling that can <span class="italic text-teal">program.</span>
+          Use fewer tokens <span class="italic text-teal">per workflow.</span>
         </h2>
         <p class="mt-6 text-[15px] leading-7 text-ink-muted">
-          Agents use TypeScript to call tools, so they can loop, branch, filter, transform, and compose actions without dumping every schema into the conversation.
+          GOD TOOL searches for the right tools instead of dumping every schema into context. Agents can chain calls in TypeScript, filter results, and pass only the useful output back to the conversation.
         </p>
       </div>
 

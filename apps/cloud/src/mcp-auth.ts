@@ -64,7 +64,7 @@ export const verifyMcpAccessToken = (
   jwks: JWTVerifyGetKey,
   options: {
     readonly issuer: string;
-    readonly audience?: string;
+    readonly audience?: string | string[];
   },
 ) =>
   Effect.gen(function* () {
@@ -91,15 +91,16 @@ export const verifyWorkOSMcpAccessToken = (
   jwks: JWTVerifyGetKey,
   options: {
     readonly issuer: string;
-    readonly audience: string;
+    readonly audience: string | string[];
   },
 ) =>
   Effect.gen(function* () {
     const verified = yield* verifyMcpAccessToken(token, jwks, {
       issuer: options.issuer,
+      audience: options.audience,
     });
     yield* Effect.annotateCurrentSpan({
-      "mcp.auth.audience_mode": "issuer_only",
+      "mcp.auth.audience_mode": "issuer_and_audience",
     });
     return verified;
   });

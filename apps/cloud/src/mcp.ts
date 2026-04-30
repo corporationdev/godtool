@@ -117,7 +117,7 @@ export class McpOrganizationAuth extends Context.Tag("@executor/cloud/McpOrganiz
 const verifyJwt = (token: string) =>
   verifyWorkOSMcpAccessToken(token, jwks, {
     issuer: AUTHKIT_DOMAIN,
-    audience: WORKOS_CLIENT_ID,
+    audience: [WORKOS_CLIENT_ID, RESOURCE_URL],
   });
 
 const DbLive = DbService.Live;

@@ -122,12 +122,18 @@ const errorMessage = (error: unknown): string => {
   return String(error);
 };
 
-const makeDesktopRpcHandler = (engine: ReturnType<typeof createExecutionEngine>) => {
+export const makeDesktopRpcHandler = (
+  engine: ReturnType<typeof createExecutionEngine>,
+  desktopSecret: string | undefined,
+) => {
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
     if (url.pathname !== "/execute") return json({ error: "not_found" }, { status: 404 });
     if (request.method !== "POST") {
       return json({ error: "method_not_allowed" }, { status: 405 });
+    }
+    if (!desktopSecret || request.headers.get("x-desktop-secret") !== desktopSecret) {
+      return json({ error: "unauthorized" }, { status: 401 });
     }
 
     const payload = (await request.json().catch(() => null)) as { readonly code?: unknown } | null;
@@ -187,7 +193,7 @@ export const createServerHandlers = async (): Promise<ServerHandlers> => {
   );
 
   const mcp = createMcpRequestHandler({ engine });
-  const executeHandler = makeDesktopRpcHandler(engine);
+  const executeHandler = makeDesktopRpcHandler(engine, process.env.GODTOOL_DESKTOP_RPC_SECRET);
   const desktopRpc = {
     handler: executeHandler,
   };

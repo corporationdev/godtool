@@ -6,6 +6,7 @@
     "dev": "astro dev --host 127.0.0.1 --port 4321",
     "build": "astro build",
     "preview": "astro preview",
+    "deploy:ci": "astro build && npx wrangler deploy --config dist/server/wrangler.json",
     "deploy": "astro build && npx wrangler deploy --config dist/server/wrangler.json",
     "astro": "astro",
     "typecheck": "tsgo --noEmit",

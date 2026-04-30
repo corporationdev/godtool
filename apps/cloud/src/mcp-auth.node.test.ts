@@ -90,7 +90,7 @@ describe("MCP AuthKit token verification", () => {
 
       const verified = yield* verifyWorkOSMcpAccessToken(token, jwks, {
         issuer,
-        audience: workosApplicationClientId,
+        audience: [workosApplicationClientId, resource],
       });
 
       expect(verified?.accountId).toBe("user_test");
@@ -98,20 +98,21 @@ describe("MCP AuthKit token verification", () => {
     }),
   );
 
-  it.effect("MCP verifier accepts dynamic OAuth client-audience tokens", () =>
+  it.effect("MCP verifier rejects dynamic OAuth client-audience tokens", () =>
     Effect.gen(function* () {
       const { jwks, sign } = yield* Effect.promise(() => makeVerifier());
       const token = yield* Effect.promise(() =>
         sign({ aud: dynamicOAuthClientId, sid: "app_consent_test" }),
       );
 
-      const verified = yield* verifyWorkOSMcpAccessToken(token, jwks, {
-        issuer,
-        audience: workosApplicationClientId,
-      });
+      const error = yield* Effect.flip(
+        verifyWorkOSMcpAccessToken(token, jwks, {
+          issuer,
+          audience: [workosApplicationClientId, resource],
+        }),
+      );
 
-      expect(verified?.accountId).toBe("user_test");
-      expect(verified?.organizationId).toBe("org_test");
+      expect(error).toBeInstanceOf(McpJwtVerificationError);
     }),
   );
 });

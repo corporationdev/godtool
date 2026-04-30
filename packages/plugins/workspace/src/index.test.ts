@@ -213,6 +213,68 @@ describe("workspacePlugin", () => {
     await executor.close();
   });
 
+  it("does not partially apply patch operations when validation fails", async () => {
+    const root = await makeWorkspace();
+    const executor = await makeExecutor({ root });
+    await writeFile(join(root, "keep.txt"), "hello\nold\nbye\n", "utf8");
+
+    await expect(
+      executor.tools.invoke("workspace.applyPatch", {
+        patch: [
+          "*** Begin Patch",
+          "*** Add File: added.txt",
+          "+new file",
+          "*** Update File: keep.txt",
+          "@@",
+          "-missing line",
+          "+new",
+          "*** End Patch",
+        ].join("\n"),
+      }),
+    ).rejects.toThrow("Patch hunk did not match file contents");
+
+    await expect(readFile(join(root, "added.txt"), "utf8")).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    await expect(readFile(join(root, "keep.txt"), "utf8")).resolves.toBe("hello\nold\nbye\n");
+
+    await executor.close();
+  });
+
+  it("rejects duplicate patch move targets before changing files", async () => {
+    const root = await makeWorkspace();
+    const executor = await makeExecutor({ root });
+    await writeFile(join(root, "one.txt"), "one\n", "utf8");
+    await writeFile(join(root, "two.txt"), "two\n", "utf8");
+
+    await expect(
+      executor.tools.invoke("workspace.applyPatch", {
+        patch: [
+          "*** Begin Patch",
+          "*** Update File: one.txt",
+          "*** Move to: moved.txt",
+          "@@",
+          "-one",
+          "+moved one",
+          "*** Update File: two.txt",
+          "*** Move to: moved.txt",
+          "@@",
+          "-two",
+          "+moved two",
+          "*** End Patch",
+        ].join("\n"),
+      }),
+    ).rejects.toThrow("Move target is used more than once");
+
+    await expect(readFile(join(root, "one.txt"), "utf8")).resolves.toBe("one\n");
+    await expect(readFile(join(root, "two.txt"), "utf8")).resolves.toBe("two\n");
+    await expect(readFile(join(root, "moved.txt"), "utf8")).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+
+    await executor.close();
+  });
+
   it("rejects absolute paths, parent escapes, NUL bytes, and symlink traversal", async () => {
     const root = await makeWorkspace();
     const outside = await makeWorkspace();
