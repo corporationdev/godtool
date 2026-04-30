@@ -37,11 +37,7 @@ import {
   useCreateOrganizationForm,
 } from "./components/create-organization-form";
 
-const sourcePlugins = [
-  openApiSourcePlugin,
-  mcpSourcePlugin,
-  graphqlSourcePlugin,
-];
+const sourcePlugins = [openApiSourcePlugin, mcpSourcePlugin, graphqlSourcePlugin];
 
 // ── NavItem ──────────────────────────────────────────────────────────────
 
@@ -133,7 +129,12 @@ function initialsFor(name: string | null, email: string) {
   return email[0]!.toUpperCase();
 }
 
-function Avatar(props: { url: string | null; name: string | null; email: string; size?: "sm" | "md" }) {
+function Avatar(props: {
+  url: string | null;
+  name: string | null;
+  email: string;
+  size?: "sm" | "md";
+}) {
   const size = props.size === "md" ? "size-8" : "size-7";
   const text = props.size === "md" ? "text-sm" : "text-xs";
   if (props.url) {
@@ -204,9 +205,7 @@ function UserFooter() {
   const [createOrganizationOpen, setCreateOrganizationOpen] = useState(false);
 
   const suggestedOrganizationName =
-    auth.status === "authenticated" &&
-    auth.user.name?.trim() !== "" &&
-    auth.user.name != null
+    auth.status === "authenticated" && auth.user.name?.trim() !== "" && auth.user.name != null
       ? `${auth.user.name}'s Organization`
       : "New Organization";
 
@@ -238,11 +237,7 @@ function UserFooter() {
               variant="ghost"
               className="flex h-auto w-full items-center justify-start gap-2.5 rounded-md px-1 py-1 text-left hover:bg-sidebar-active/60"
             >
-              <Avatar
-                url={auth.user.avatarUrl}
-                name={auth.user.name}
-                email={auth.user.email}
-              />
+              <Avatar url={auth.user.avatarUrl} name={auth.user.name} email={auth.user.email} />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-xs font-medium text-foreground">
                   {auth.user.name ?? auth.user.email}
@@ -360,7 +355,6 @@ function UserFooter() {
 function SidebarContent(props: { pathname: string; onNavigate?: () => void; showBrand?: boolean }) {
   const isHome = props.pathname === "/";
   const isSecrets = props.pathname === "/secrets";
-  const isConnections = props.pathname === "/connections";
   const isBilling = props.pathname === "/billing" || props.pathname.startsWith("/billing/");
   const isOrg = props.pathname === "/org";
 
@@ -376,7 +370,6 @@ function SidebarContent(props: { pathname: string; onNavigate?: () => void; show
 
       <nav className="flex flex-1 flex-col overflow-y-auto p-2">
         <NavItem to="/" label="Sources" active={isHome} onNavigate={props.onNavigate} />
-        <NavItem to="/connections" label="Connections" active={isConnections} onNavigate={props.onNavigate} />
         <NavItem to="/secrets" label="Secrets" active={isSecrets} onNavigate={props.onNavigate} />
         <NavItem to="/org" label="Organization" active={isOrg} onNavigate={props.onNavigate} />
         <NavItem to="/billing" label="Billing" active={isBilling} onNavigate={props.onNavigate} />

@@ -28,8 +28,8 @@
     "typescript": "catalog:"
   },
   "build": {
-    "appId": "com.executor.desktop",
-    "productName": "Executor",
+    "appId": "com.godtool.desktop",
+    "productName": "Godtool",
     "publish": null,
     "files": [
       "dist/**/*"
@@ -40,7 +40,9 @@
         "to": "",
         "filter": [
           "executor*",
-          "emscripten-module.wasm"
+          "emscripten-module.wasm",
+          "agent-browser/**",
+          "computer-use/**"
         ]
       }
     ],

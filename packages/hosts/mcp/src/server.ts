@@ -92,7 +92,24 @@ const getElicitationSupport = (server: McpServer): { form: boolean; url: boolean
 const readDebugDefault = (): boolean => {
   if (typeof process === "undefined" || !process.env) return false;
   const value = process.env.EXECUTOR_MCP_DEBUG;
+  if (value === undefined) return true;
   return value === "1" || value === "true";
+};
+
+const DEBUG_LOG_FILE = "/tmp/executor-mcp-debug.log";
+
+const appendDebugLine = (file: string, line: string): void => {
+  if (typeof process === "undefined") return;
+  const getBuiltinModule = (process as unknown as {
+    getBuiltinModule?: (name: string) => { appendFileSync?: (...args: unknown[]) => void };
+  }).getBuiltinModule;
+  const fs = getBuiltinModule?.("node:fs");
+  fs?.appendFileSync?.(file, line, "utf8");
+};
+
+const readDebugLogFile = (): string => {
+  if (typeof process === "undefined" || !process.env) return DEBUG_LOG_FILE;
+  return process.env.EXECUTOR_MCP_DEBUG_FILE || DEBUG_LOG_FILE;
 };
 
 const supportsManagedElicitation = (server: McpServer): boolean =>
@@ -208,16 +225,49 @@ const makeMcpElicitationHandler =
 // ---------------------------------------------------------------------------
 
 type McpToolResult = {
-  content: Array<{ type: "text"; text: string }>;
+  content: Array<
+    | { type: "text"; text: string }
+    | { type: "image"; mimeType: string; data: string }
+  >;
   structuredContent?: Record<string, unknown>;
   isError?: boolean;
 };
 
-const toMcpResult = (formatted: ReturnType<typeof formatExecuteResult>): McpToolResult => ({
-  content: [{ type: "text", text: formatted.text }],
-  structuredContent: formatted.structured,
-  isError: formatted.isError || undefined,
+const summarizeMcpResult = (result: McpToolResult): Record<string, unknown> => ({
+  isError: Boolean(result.isError),
+  structuredKeys: result.structuredContent ? Object.keys(result.structuredContent) : [],
+  content: result.content.map((content, index) =>
+    content.type === "image"
+      ? {
+          index,
+          type: content.type,
+          mimeType: content.mimeType,
+          base64Length: content.data.length,
+        }
+      : {
+          index,
+          type: content.type,
+          textLength: content.text.length,
+          textPreview: content.text.slice(0, 500),
+        },
+  ),
 });
+
+const toMcpResult = (formatted: ReturnType<typeof formatExecuteResult>): McpToolResult => {
+  const result = {
+    content: [
+      { type: "text" as const, text: formatted.text },
+      ...formatted.contentImages.map((image) => ({
+        type: "image" as const,
+        mimeType: image.mimeType,
+        data: image.data,
+      })),
+    ],
+    structuredContent: formatted.structured,
+    isError: formatted.isError || undefined,
+  };
+  return result;
+};
 
 const toMcpPausedResult = (formatted: ReturnType<typeof formatPausedExecution>): McpToolResult => ({
   content: [{ type: "text", text: formatted.text }],
@@ -281,6 +331,17 @@ export const createExecutorMcpServer = <E extends Cause.YieldableError>(
     const debugEnabled = config.debug ?? readDebugDefault();
     const debugLog = (event: string, data: Record<string, unknown>) => {
       if (!debugEnabled) return;
+      const payload = {
+        ts: new Date().toISOString(),
+        scope: "host-mcp",
+        event,
+        ...data,
+      };
+      try {
+        appendDebugLine(readDebugLogFile(), `${JSON.stringify(payload)}\n`);
+      } catch {
+        // Debug logging must never affect MCP tool handling.
+      }
       try {
         console.error(`[executor:mcp] ${event} ${JSON.stringify(data)}`);
       } catch {
@@ -328,7 +389,16 @@ export const createExecutorMcpServer = <E extends Cause.YieldableError>(
           const result = yield* engine.execute(code, {
             onElicitation: makeMcpElicitationHandler(server, debugLog),
           });
-          return toMcpResult(formatExecuteResult(result));
+          const formatted = formatExecuteResult(result);
+          const mcpResult = toMcpResult(formatted);
+          debugLog("execute.formatted_result", {
+            flow: "managed_elicitation",
+            imageCount: formatted.contentImages.length,
+            imageMimeTypes: formatted.contentImages.map((image) => image.mimeType),
+            imageBase64Lengths: formatted.contentImages.map((image) => image.data.length),
+            mcpResult: summarizeMcpResult(mcpResult),
+          });
+          return mcpResult;
         }
         const outcome = yield* engine.executeWithPause(code);
         debugLog("execute.paused_flow_result", {
@@ -339,9 +409,23 @@ export const createExecutorMcpServer = <E extends Cause.YieldableError>(
               ? outcome.execution.elicitationContext.request._tag
               : undefined,
         });
-        return outcome.status === "completed"
-          ? toMcpResult(formatExecuteResult(outcome.result))
-          : toMcpPausedResult(formatPausedExecution(outcome.execution));
+        if (outcome.status === "completed") {
+          const formatted = formatExecuteResult(outcome.result);
+          const mcpResult = toMcpResult(formatted);
+          debugLog("execute.formatted_result", {
+            flow: "pause_resume",
+            imageCount: formatted.contentImages.length,
+            imageMimeTypes: formatted.contentImages.map((image) => image.mimeType),
+            imageBase64Lengths: formatted.contentImages.map((image) => image.data.length),
+            mcpResult: summarizeMcpResult(mcpResult),
+          });
+          return mcpResult;
+        }
+        const pausedResult = toMcpPausedResult(formatPausedExecution(outcome.execution));
+        debugLog("execute.paused_result", {
+          mcpResult: summarizeMcpResult(pausedResult),
+        });
+        return pausedResult;
       }).pipe(
         Effect.withSpan("mcp.host.tool.execute", {
           attributes: {
@@ -382,9 +466,22 @@ export const createExecutorMcpServer = <E extends Cause.YieldableError>(
               ? outcome.execution.elicitationContext.request._tag
               : undefined,
         });
-        return outcome.status === "completed"
-          ? toMcpResult(formatExecuteResult(outcome.result))
-          : toMcpPausedResult(formatPausedExecution(outcome.execution));
+        if (outcome.status === "completed") {
+          const formatted = formatExecuteResult(outcome.result);
+          const mcpResult = toMcpResult(formatted);
+          debugLog("resume.formatted_result", {
+            imageCount: formatted.contentImages.length,
+            imageMimeTypes: formatted.contentImages.map((image) => image.mimeType),
+            imageBase64Lengths: formatted.contentImages.map((image) => image.data.length),
+            mcpResult: summarizeMcpResult(mcpResult),
+          });
+          return mcpResult;
+        }
+        const pausedResult = toMcpPausedResult(formatPausedExecution(outcome.execution));
+        debugLog("resume.paused_result", {
+          mcpResult: summarizeMcpResult(pausedResult),
+        });
+        return pausedResult;
       }).pipe(
         Effect.withSpan("mcp.host.tool.resume", {
           attributes: {

@@ -3,6 +3,7 @@ import { openApiPlugin } from "@executor/plugin-openapi";
 import { mcpPlugin } from "@executor/plugin-mcp";
 import { googleDiscoveryPlugin } from "@executor/plugin-google-discovery";
 import { graphqlPlugin } from "@executor/plugin-graphql";
+import { rawPlugin } from "@executor/plugin-raw";
 
 // ---------------------------------------------------------------------------
 // Executor config for CLI schema generation (local / sqlite).
@@ -19,5 +20,6 @@ export default defineExecutorConfig({
     mcpPlugin({ dangerouslyAllowStdioMCP: true }),
     googleDiscoveryPlugin(),
     graphqlPlugin(),
+    rawPlugin(),
   ],
 });

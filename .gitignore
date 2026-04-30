@@ -43,6 +43,7 @@ executor.har
 
 # desktop app build artifacts
 apps/desktop/resources/
+apps/desktop/native/computer-use-mac/computer-use-mac
 
 # cloud local dev database
 .pglite

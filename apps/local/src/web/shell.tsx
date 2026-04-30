@@ -1,11 +1,9 @@
 import { Link, Outlet, useLocation } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useAtomRefresh, Result } from "@effect-atom/atom-react";
+import { useAtomRefresh } from "@effect-atom/atom-react";
 import { sourcesAtom, toolsAtom } from "@executor/react/api/atoms";
-import { useSourcesWithPending } from "@executor/react/api/optimistic";
-import { useScope, useScopeInfo } from "@executor/react/api/scope-context";
+import { useScope } from "@executor/react/api/scope-context";
 import { Button } from "@executor/react/components/button";
-import { SourceFavicon } from "@executor/react/components/source-favicon";
 import { CommandPalette } from "@executor/react/components/command-palette";
 import { openApiSourcePlugin } from "@executor/plugin-openapi/react";
 import { createMcpSourcePlugin } from "@executor/plugin-mcp/react";
@@ -13,10 +11,14 @@ import { createMcpSourcePlugin } from "@executor/plugin-mcp/react";
 const mcpSourcePlugin = createMcpSourcePlugin({ allowStdio: true });
 import { googleDiscoverySourcePlugin } from "@executor/plugin-google-discovery/react";
 import { graphqlSourcePlugin } from "@executor/plugin-graphql/react";
+import { rawSourcePlugin } from "@executor/plugin-raw/react";
+import { computerUseSourcePlugin } from "@executor/plugin-computer-use/react";
 
 const sourcePlugins = [
+  computerUseSourcePlugin,
   openApiSourcePlugin,
   mcpSourcePlugin,
+  rawSourcePlugin,
   googleDiscoverySourcePlugin,
   graphqlSourcePlugin,
 ];
@@ -221,78 +223,6 @@ function NavItem(props: { to: string; label: string; active: boolean; onNavigate
   );
 }
 
-// ── SourceList ───────────────────────────────────────────────────────────
-
-function SourceList(props: { pathname: string; onNavigate?: () => void }) {
-  const scopeId = useScope();
-  const sources = useSourcesWithPending(scopeId);
-
-  return Result.match(sources, {
-    onInitial: () => (
-      <div className="px-2.5 py-2 text-xs text-muted-foreground">Loading…</div>
-    ),
-    onFailure: () => (
-      <div className="px-2.5 py-2 text-xs text-muted-foreground">No sources yet</div>
-    ),
-    onSuccess: ({ value }) =>
-      value.length === 0 ? (
-        <div className="px-2.5 py-2 text-sm leading-relaxed text-muted-foreground">
-          No sources yet
-        </div>
-      ) : (
-        <div className="flex flex-col gap-px">
-          {value.map((s) => {
-            const detailPath = `/sources/${s.id}`;
-            const active =
-              props.pathname === detailPath || props.pathname.startsWith(`${detailPath}/`);
-            return (
-              <Link
-                key={s.id}
-                to="/sources/$namespace"
-                params={{ namespace: s.id }}
-                onClick={props.onNavigate}
-                className={[
-                  "group flex items-center gap-2 rounded-md px-2.5 py-1.5 text-xs transition-colors",
-                  active
-                    ? "bg-sidebar-active text-foreground font-medium"
-                    : "text-sidebar-foreground hover:bg-sidebar-active/60 hover:text-foreground",
-                ].join(" ")}
-              >
-                <SourceFavicon url={s.url} />
-                <span className="flex-1 truncate">{s.name}</span>
-                <span className="rounded bg-secondary/50 px-1 py-px text-xs font-medium text-muted-foreground">
-                  {s.kind}
-                </span>
-              </Link>
-            );
-          })}
-        </div>
-      ),
-  });
-}
-
-// ── ScopeLabel ───────────────────────────────────────────────────────────
-
-function ScopeLabel() {
-  const { name } = useScopeInfo();
-  // Show just the last folder name, with full path as tooltip
-  const parts = name.replace(/[/\\]+$/, "").split(/[/\\]/);
-  const folder = parts[parts.length - 1] || name;
-
-  return (
-    <div className="mb-1.5 flex items-center gap-1.5 rounded-md px-2.5 py-1.5" title={name}>
-      <svg viewBox="0 0 16 16" fill="none" className="size-3.5 shrink-0 text-muted-foreground">
-        <path
-          d="M2 4.5C2 3.67 2.67 3 3.5 3h3.09a1 1 0 0 1 .7.29l1.42 1.42a1 1 0 0 0 .7.29H12.5c.83 0 1.5.67 1.5 1.5v5.5c0 .83-.67 1.5-1.5 1.5h-9A1.5 1.5 0 0 1 2 12V4.5z"
-          stroke="currentColor"
-          strokeWidth="1.2"
-        />
-      </svg>
-      <span className="truncate text-xs font-medium text-foreground/80">{folder}</span>
-    </div>
-  );
-}
-
 // ── SidebarContent ───────────────────────────────────────────────────────
 
 function SidebarContent(props: {
@@ -305,7 +235,8 @@ function SidebarContent(props: {
 }) {
   const isHome = props.pathname === "/";
   const isSecrets = props.pathname === "/secrets";
-  const isConnections = props.pathname === "/connections";
+  const isBrowsers = props.pathname === "/browsers";
+  const isFiles = props.pathname === "/files";
 
   return (
     <>
@@ -318,17 +249,15 @@ function SidebarContent(props: {
       )}
 
       <nav className="flex flex-1 flex-col overflow-y-auto p-2">
-        <ScopeLabel />
         <NavItem to="/" label="Sources" active={isHome} onNavigate={props.onNavigate} />
-        <NavItem to="/connections" label="Connections" active={isConnections} onNavigate={props.onNavigate} />
+        <NavItem
+          to="/browsers"
+          label="Browsers"
+          active={isBrowsers}
+          onNavigate={props.onNavigate}
+        />
+        <NavItem to="/files" label="Files" active={isFiles} onNavigate={props.onNavigate} />
         <NavItem to="/secrets" label="Secrets" active={isSecrets} onNavigate={props.onNavigate} />
-
-        {/* Sources list */}
-        <div className="mt-5 mb-1 px-2.5 text-xs font-medium uppercase tracking-widest text-muted-foreground">
-          <span>Sources</span>
-        </div>
-
-        <SourceList pathname={props.pathname} onNavigate={props.onNavigate} />
       </nav>
 
       {props.updateAvailable && props.latestVersion && (

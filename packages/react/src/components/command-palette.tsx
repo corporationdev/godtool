@@ -26,6 +26,9 @@ import {
 //   3. Popular sources (plugin presets)
 // ---------------------------------------------------------------------------
 
+const isConnectedSource = (source: { id: string; runtime?: boolean }) =>
+  !source.runtime || source.id === "browser_use";
+
 export function CommandPalette(props: { sourcePlugins: readonly SourcePlugin[] }) {
   const { sourcePlugins } = props;
   const [open, setOpen] = useState(false);
@@ -64,12 +67,13 @@ export function CommandPalette(props: { sourcePlugins: readonly SourcePlugin[] }
             url?: string;
             runtime?: boolean;
           }>,
-        onSuccess: ({ value }) => value.filter((s) => !s.runtime),
+        onSuccess: ({ value }) => value.filter(isConnectedSource),
       }),
     [sourcesResult],
   );
 
   const presetEntries = useMemo(() => {
+    const connectedSourceIds = new Set(connectedSources.map((source) => source.id));
     const entries: Array<{
       pluginKey: string;
       pluginLabel: string;
@@ -81,6 +85,7 @@ export function CommandPalette(props: { sourcePlugins: readonly SourcePlugin[] }
     }> = [];
     for (const plugin of sourcePlugins) {
       for (const preset of plugin.presets ?? []) {
+        if (plugin.key === "computer_use" && connectedSourceIds.has(preset.id)) continue;
         entries.push({
           pluginKey: plugin.key,
           pluginLabel: plugin.label,
@@ -93,7 +98,7 @@ export function CommandPalette(props: { sourcePlugins: readonly SourcePlugin[] }
       }
     }
     return entries;
-  }, [sourcePlugins]);
+  }, [connectedSources, sourcePlugins]);
 
   const close = useCallback(() => setOpen(false), []);
 
@@ -144,7 +149,7 @@ export function CommandPalette(props: { sourcePlugins: readonly SourcePlugin[] }
                 value={`connected ${s.name} ${s.id} ${s.kind}`}
                 onSelect={() => goToSource(s.id)}
               >
-                <SourceFavicon url={s.url} />
+                <SourceFavicon url={s.url} sourceId={s.id} kind={s.kind} />
                 <span className="flex-1 truncate">{s.name}</span>
                 <CommandShortcut>{s.kind}</CommandShortcut>
               </CommandItem>

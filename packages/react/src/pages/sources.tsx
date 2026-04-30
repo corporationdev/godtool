@@ -29,7 +29,14 @@ const KIND_TO_PLUGIN_KEY: Record<string, string> = {
   mcp: "mcp",
   graphql: "graphql",
   googleDiscovery: "googleDiscovery",
+  computer_use: "computer_use",
+  browser_use: "browser",
 };
+
+const isConnectedSource = (source: { id: string; runtime?: boolean }) =>
+  !source.runtime || source.id === "browser_use";
+
+const supportsUrlSourceDetection = (plugin: SourcePlugin) => plugin.key !== "computer_use";
 
 // ---------------------------------------------------------------------------
 // Page
@@ -37,6 +44,10 @@ const KIND_TO_PLUGIN_KEY: Record<string, string> = {
 
 export function SourcesPage(props: { sourcePlugins: readonly SourcePlugin[] }) {
   const { sourcePlugins } = props;
+  const urlSourcePlugins = useMemo(
+    () => sourcePlugins.filter(supportsUrlSourceDetection),
+    [sourcePlugins],
+  );
   const [url, setUrl] = useState("");
   const [detecting, setDetecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -124,7 +135,7 @@ export function SourcesPage(props: { sourcePlugins: readonly SourcePlugin[] }) {
                   </div>
                   <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                     Or add manually:{" "}
-                    {sourcePlugins.map((p) => (
+                    {urlSourcePlugins.map((p) => (
                       <Link
                         key={p.key}
                         to="/sources/add/$pluginKey"
@@ -149,7 +160,7 @@ export function SourcesPage(props: { sourcePlugins: readonly SourcePlugin[] }) {
           onInitial: () => <SourcesGridSkeleton />,
           onFailure: () => <p className="text-sm text-destructive">Failed to load sources</p>,
           onSuccess: ({ value }) => {
-            const connectedSources = value.filter((source) => !source.runtime);
+            const connectedSources = value.filter(isConnectedSource);
 
             return value.length === 0 ? (
               <div className="mb-8 flex flex-col items-center justify-center rounded-2xl border border-dashed border-border py-20">
@@ -185,7 +196,13 @@ export function SourcesPage(props: { sourcePlugins: readonly SourcePlugin[] }) {
 
         <div className="mb-8 border-t border-border/50" />
 
-        <PresetGrid plugins={sourcePlugins} />
+        {Result.match(sources, {
+          onInitial: () => <PresetGrid plugins={sourcePlugins} />,
+          onFailure: () => <PresetGrid plugins={sourcePlugins} />,
+          onSuccess: ({ value }) => (
+            <PresetGrid plugins={sourcePlugins} connectedSources={value.filter(isConnectedSource)} />
+          ),
+        })}
       </div>
     </div>
   );
@@ -201,11 +218,19 @@ type PresetEntry = {
   pluginLabel: string;
 };
 
-function PresetGrid(props: { plugins: readonly SourcePlugin[] }) {
+function PresetGrid(props: {
+  plugins: readonly SourcePlugin[];
+  connectedSources?: readonly { id: string; kind: string }[];
+}) {
+  const connectedSourceIds = useMemo(
+    () => new Set((props.connectedSources ?? []).map((source) => source.id)),
+    [props.connectedSources],
+  );
   const allPresets = useMemo(() => {
     const entries: PresetEntry[] = [];
     for (const plugin of props.plugins) {
       for (const preset of plugin.presets ?? []) {
+        if (plugin.key === "computer_use" && connectedSourceIds.has(preset.id)) continue;
         entries.push({
           preset,
           pluginKey: plugin.key,
@@ -214,7 +239,7 @@ function PresetGrid(props: { plugins: readonly SourcePlugin[] }) {
       }
     }
     return entries;
-  }, [props.plugins]);
+  }, [connectedSourceIds, props.plugins]);
 
   if (allPresets.length === 0) return null;
 
@@ -296,7 +321,7 @@ function SourceGrid(props: {
             <CardStackEntry key={s.id} asChild searchText={`${s.name} ${s.id} ${s.kind}`}>
               <Link to="/sources/$namespace" params={{ namespace: s.id }}>
                 <CardStackEntryMedia>
-                  <SourceFavicon url={s.url} size={32} />
+                  <SourceFavicon url={s.url} size={32} sourceId={s.id} kind={s.kind} />
                 </CardStackEntryMedia>
                 <CardStackEntryContent>
                   <CardStackEntryTitle>{s.name}</CardStackEntryTitle>
@@ -308,7 +333,6 @@ function SourceGrid(props: {
                       <SummaryComponent sourceId={s.id} />
                     </Suspense>
                   )}
-                  {s.runtime && <Badge className="bg-muted text-muted-foreground">built-in</Badge>}
                   <Badge variant="secondary">{s.kind}</Badge>
                 </CardStackEntryActions>
               </Link>

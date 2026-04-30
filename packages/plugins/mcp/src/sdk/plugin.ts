@@ -498,7 +498,7 @@ export interface McpPluginOptions {
    * `process.env`. Only enable for trusted single-user contexts.
    */
   readonly dangerouslyAllowStdioMCP?: boolean;
-  /** If provided, source add/remove is mirrored to executor.jsonc
+  /** If provided, source add/remove is mirrored to godtool.jsonc
    *  (best-effort — file errors are logged, not raised). */
   readonly configFile?: ConfigFileSink;
 }

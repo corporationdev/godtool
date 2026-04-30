@@ -3,7 +3,7 @@
 ## What happens today
 
 `config-sync` (apps/local/src/server/config-sync.ts) reads
-`executor.jsonc` and calls the plugin's `addSource` / `addSpec` for
+`godtool.jsonc` and calls the plugin's `addSource` / `addSpec` for
 each entry. If one fails (auth, network, unparseable spec), the error
 is logged and the rest keep loading:
 
@@ -14,7 +14,7 @@ is logged and the rest keep loading:
 [config-sync] 3/4 source(s) synced
 ```
 
-The row never reaches the DB. `executor.jsonc` still has it, so next
+The row never reaches the DB. `godtool.jsonc` still has it, so next
 boot retries — idempotent, but from the UI's perspective the source
 has silently vanished.
 

@@ -1,4 +1,4 @@
-import { BoxIcon } from "lucide-react";
+import { AppWindowIcon, BoxIcon, MonitorIcon } from "lucide-react";
 import { useState } from "react";
 import { getDomain } from "tldts";
 
@@ -15,9 +15,36 @@ function domainOf(url: string): string | null {
   }
 }
 
-export function SourceFavicon({ url, size = 16 }: { url?: string; size?: number }) {
+export function SourceFavicon({
+  url,
+  size = 16,
+  sourceId,
+  kind,
+}: {
+  url?: string;
+  size?: number;
+  sourceId?: string;
+  kind?: string;
+}) {
   const [failed, setFailed] = useState(false);
   const domain = url ? domainOf(url) : null;
+
+  const RuntimeIcon =
+    kind === "computer_use" || sourceId === "computer_use"
+      ? MonitorIcon
+      : kind === "browser_use" || sourceId === "browser_use"
+        ? AppWindowIcon
+        : null;
+
+  if (RuntimeIcon) {
+    return (
+      <RuntimeIcon
+        aria-hidden
+        className="shrink-0 text-muted-foreground"
+        style={{ width: size, height: size }}
+      />
+    );
+  }
 
   if (!domain || failed) {
     return (

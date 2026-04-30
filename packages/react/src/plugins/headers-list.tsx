@@ -27,6 +27,8 @@ export interface HeadersListProps {
   readonly singleHeader?: boolean;
   /** Text shown in the empty state. */
   readonly emptyLabel?: ReactNode;
+  /** When true, show the quick-add picker before the empty collapsed row. */
+  readonly initiallyPicking?: boolean;
   /**
    * Display name of the source that owns these headers (e.g. "Axiom"). Used
    * to derive unique default secret labels/IDs like `axiom-authorization`.
@@ -45,11 +47,12 @@ export function HeadersList({
   presets = defaultHeaderAuthPresets,
   singleHeader = false,
   emptyLabel = "No headers",
+  initiallyPicking = false,
   sourceName,
   targetScope,
   writeScope,
 }: HeadersListProps) {
-  const [picking, setPicking] = useState(false);
+  const [picking, setPicking] = useState(initiallyPicking);
   const canAddMore = !singleHeader || headers.length === 0;
 
   const addHeaderFromPreset = (preset: HeaderAuthPreset) => {

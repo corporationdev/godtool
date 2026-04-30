@@ -225,3 +225,16 @@ export const graphql_operation = sqliteTable("graphql_operation", {
   index("graphql_operation_source_id_idx").on(table.source_id),
 ]);
 
+export const raw_source = sqliteTable("raw_source", {
+  id: text('id').notNull(),
+  scope_id: text('scope_id').notNull(),
+  name: text('name').notNull(),
+  base_url: text('base_url').notNull(),
+  headers: text('headers', { mode: "json" }),
+  created_at: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  updated_at: integer('updated_at', { mode: 'timestamp_ms' }).notNull()
+}, (table) => [
+  primaryKey({ columns: [table.scope_id, table.id] }),
+  index("raw_source_scope_id_idx").on(table.scope_id),
+]);
+

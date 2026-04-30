@@ -2,10 +2,7 @@ import { useAtomSet, Result } from "@effect-atom/atom-react";
 import { ConnectionId } from "@executor/sdk";
 
 import { removeConnection } from "../api/atoms";
-import {
-  useConnectionsWithPendingRemovals,
-  usePendingConnectionRemovals,
-} from "../api/optimistic";
+import { useConnectionsWithPendingRemovals, usePendingConnectionRemovals } from "../api/optimistic";
 import { connectionWriteKeys } from "../api/reactivity-keys";
 import { useScope, useScopeStack } from "../hooks/use-scope";
 import { Badge } from "../components/badge";
@@ -39,8 +36,7 @@ const providerDisplayNames: Record<string, string> = {
   "google-discovery:oauth2": "Google",
 };
 
-const displayProvider = (provider: string): string =>
-  providerDisplayNames[provider] ?? provider;
+const displayProvider = (provider: string): string => providerDisplayNames[provider] ?? provider;
 
 const connectionScopeLabel = (
   scopeId: string,
@@ -117,7 +113,7 @@ function ConnectionRow(props: {
 // Page
 // ---------------------------------------------------------------------------
 
-export function ConnectionsPage() {
+export function ConnectionsSection() {
   const scopeId = useScope();
   const scopeStack = useScopeStack();
   const connections = useConnectionsWithPendingRemovals(scopeId);
@@ -137,69 +133,68 @@ export function ConnectionsPage() {
     }
   };
 
+  return Result.match(connections, {
+    onInitial: () => (
+      <div className="flex items-center gap-2 py-8">
+        <div className="size-1.5 rounded-full bg-muted-foreground/30 animate-pulse" />
+        <p className="text-sm text-muted-foreground">Loading connections…</p>
+      </div>
+    ),
+    onFailure: () => (
+      <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3">
+        <p className="text-sm text-destructive">Failed to load connections</p>
+      </div>
+    ),
+    onSuccess: ({ value }) => (
+      <CardStack>
+        <CardStackHeader>Connections</CardStackHeader>
+        <CardStackContent>
+          {value.length === 0 ? (
+            <CardStackEntry>
+              <CardStackEntryContent>
+                <CardStackEntryDescription>
+                  No signed-in accounts yet. Add an OAuth source and its sign-in will appear here.
+                </CardStackEntryDescription>
+              </CardStackEntryContent>
+            </CardStackEntry>
+          ) : (
+            value.map((c) => (
+              <ConnectionRow
+                key={c.id}
+                connection={{
+                  id: c.id,
+                  scopeId: c.scopeId,
+                  provider: c.provider,
+                  identityLabel: c.identityLabel,
+                }}
+                scopeStack={scopeStack}
+                onRemove={() => handleRemove(c.id)}
+              />
+            ))
+          )}
+        </CardStackContent>
+      </CardStack>
+    ),
+  });
+}
+
+export function ConnectionsPage() {
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto max-w-3xl px-6 py-10 lg:px-8 lg:py-14">
-        <div className="flex items-end justify-between mb-10">
+        <div className="mb-10 flex items-end justify-between">
           <div>
-            <h1 className="font-display text-[2rem] tracking-tight text-foreground leading-none">
+            <h1 className="font-display text-[2rem] leading-none tracking-tight text-foreground">
               Connections
             </h1>
-            <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
-              Signed-in accounts your sources use to call their APIs.
-              Remove a connection to revoke access and drop its tokens.
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              Signed-in accounts your sources use to call their APIs. Remove a connection to revoke
+              access and drop its tokens.
             </p>
           </div>
         </div>
 
-        {Result.match(connections, {
-          onInitial: () => (
-            <div className="flex items-center gap-2 py-8">
-              <div className="size-1.5 rounded-full bg-muted-foreground/30 animate-pulse" />
-              <p className="text-sm text-muted-foreground">
-                Loading connections…
-              </p>
-            </div>
-          ),
-          onFailure: () => (
-            <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3">
-              <p className="text-sm text-destructive">
-                Failed to load connections
-              </p>
-            </div>
-          ),
-          onSuccess: ({ value }) => (
-            <CardStack>
-              <CardStackHeader>Connections</CardStackHeader>
-              <CardStackContent>
-                {value.length === 0 ? (
-                  <CardStackEntry>
-                    <CardStackEntryContent>
-                      <CardStackEntryDescription>
-                        No signed-in accounts yet. Add an OAuth source and
-                        its sign-in will appear here.
-                      </CardStackEntryDescription>
-                    </CardStackEntryContent>
-                  </CardStackEntry>
-                ) : (
-                  value.map((c) => (
-                    <ConnectionRow
-                      key={c.id}
-                      connection={{
-                        id: c.id,
-                        scopeId: c.scopeId,
-                        provider: c.provider,
-                        identityLabel: c.identityLabel,
-                      }}
-                      scopeStack={scopeStack}
-                      onRemove={() => handleRemove(c.id)}
-                    />
-                  ))
-                )}
-              </CardStackContent>
-            </CardStack>
-          ),
-        })}
+        <ConnectionsSection />
       </div>
     </div>
   );

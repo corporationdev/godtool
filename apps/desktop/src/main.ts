@@ -1,15 +1,19 @@
 import {
   app,
   BrowserWindow,
-  dialog,
   ipcMain,
   Menu,
   nativeTheme,
+  net,
+  protocol,
   session,
+  shell,
   type MenuItemConstructorOptions,
 } from "electron";
 import { spawn, type ChildProcess } from "node:child_process";
-import { join, resolve, basename } from "node:path";
+import type { Server } from "node:http";
+import { join, resolve, basename, dirname, relative, sep } from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   existsSync,
   readFileSync,
@@ -19,23 +23,49 @@ import {
   chmodSync,
   appendFileSync,
 } from "node:fs";
+import { copyFile, lstat, mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
+import { BrowserSessionManager } from "./browser/session-manager";
+import { startBrowserHostServer } from "./browser/host-server";
+import type { BrowserBounds } from "./browser/types";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 const DEFAULT_PORT = 14788;
-const DEV_SERVER_URL = process.env.EXECUTOR_DEV_URL || "http://127.0.0.1:1355";
+const DEV_SERVER_URL = process.env.GODTOOL_DEV_URL || "http://127.0.0.1:1355";
+const BROWSER_HOST_PORT = Number(process.env.GODTOOL_BROWSER_HOST_PORT ?? "14789");
+const BROWSER_DEBUGGING_PORT = Number(process.env.GODTOOL_BROWSER_DEBUGGING_PORT ?? "9333");
+const BROWSER_MAX_SESSIONS = Number(process.env.GODTOOL_BROWSER_MAX_SESSIONS ?? "5");
+const COMPUTER_USE_HOST_PORT = Number(process.env.GODTOOL_COMPUTER_USE_HOST_PORT ?? "14790");
 const SERVER_STARTUP_TIMEOUT_MS = 30_000;
-const SETTINGS_DIR = join(homedir(), ".executor");
+const SETTINGS_DIR = join(homedir(), ".godtool");
 const SETTINGS_PATH = join(SETTINGS_DIR, "desktop-settings.json");
+const BROWSER_SESSIONS_PATH = join(SETTINGS_DIR, "browser-sessions.json");
+const DEFAULT_WORKSPACE_DIR = join(SETTINGS_DIR, "workspace");
 
 const CLI_BIN_DIR = join(SETTINGS_DIR, "bin");
-const CLI_BIN_PATH = join(CLI_BIN_DIR, process.platform === "win32" ? "executor.exe" : "executor");
+const CLI_BIN_PATH = join(CLI_BIN_DIR, process.platform === "win32" ? "godtool.exe" : "godtool");
+
+app.commandLine.appendSwitch("remote-debugging-address", "127.0.0.1");
+app.commandLine.appendSwitch("remote-debugging-port", String(BROWSER_DEBUGGING_PORT));
+app.commandLine.appendSwitch("remote-allow-origins", DEV_SERVER_URL);
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "godtool-workspace",
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      stream: true,
+    },
+  },
+]);
 
 // ---------------------------------------------------------------------------
-// CLI install — copy sidecar to ~/.executor/bin and patch shell PATH
+// CLI install — copy sidecar to ~/.godtool/bin and patch shell PATH
 // ---------------------------------------------------------------------------
 
 const getInstalledCliVersion = (): string | null => {
@@ -86,7 +116,7 @@ const installCli = (): void => {
     chmodSync(CLI_BIN_PATH, 0o755);
   } catch {}
   console.log(
-    `Installed executor CLI ${appVersion} to ${CLI_BIN_PATH}` +
+    `Installed godtool CLI ${appVersion} to ${CLI_BIN_PATH}` +
       (installedVersion ? ` (was ${installedVersion})` : ""),
   );
 
@@ -99,11 +129,7 @@ const installCli = (): void => {
   // Patch shell profiles with PATH
   if (process.platform === "win32") {
     // Add bin dir to the user PATH via registry so new terminals pick it up
-    const result = spawn(
-      "reg",
-      ["query", "HKCU\\Environment", "/v", "Path"],
-      { stdio: "pipe" },
-    );
+    const result = spawn("reg", ["query", "HKCU\\Environment", "/v", "Path"], { stdio: "pipe" });
     let out = "";
     result.stdout?.on("data", (d: Buffer) => (out += d.toString()));
     result.on("close", (code) => {
@@ -111,7 +137,7 @@ const installCli = (): void => {
       // Anything else (2 = access denied, etc.) is an unexpected failure —
       // bail rather than risk writing a malformed PATH.
       if (code !== 0 && code !== 1) {
-        console.warn(`executor: reg query failed (code ${code}), skipping PATH update`);
+        console.warn(`godtool: reg query failed (code ${code}), skipping PATH update`);
         return;
       }
       let current = "";
@@ -120,7 +146,7 @@ const installCli = (): void => {
         if (!match) {
           // reg query succeeded but the output didn't parse — this means the
           // format changed and we can't safely rewrite PATH. Bail.
-          console.warn("executor: could not parse reg query output, skipping PATH update");
+          console.warn("godtool: could not parse reg query output, skipping PATH update");
           return;
         }
         current = match[1].trim();
@@ -128,8 +154,15 @@ const installCli = (): void => {
       if (!current.toLowerCase().includes(CLI_BIN_DIR.toLowerCase())) {
         const updated = current ? `${current};${CLI_BIN_DIR}` : CLI_BIN_DIR;
         spawn("reg", [
-          "add", "HKCU\\Environment", "/v", "Path",
-          "/t", "REG_EXPAND_SZ", "/d", updated, "/f",
+          "add",
+          "HKCU\\Environment",
+          "/v",
+          "Path",
+          "/t",
+          "REG_EXPAND_SZ",
+          "/d",
+          updated,
+          "/f",
         ]);
       }
     });
@@ -167,10 +200,314 @@ const installCli = (): void => {
 // ---------------------------------------------------------------------------
 
 interface Settings {
-  recentScopes: string[];
-  lastScope: string | null;
   windowBounds?: { x: number; y: number; width: number; height: number };
 }
+
+type WorkspaceFileNode = {
+  readonly type: "file" | "directory";
+  readonly name: string;
+  readonly path: string;
+  readonly children?: readonly WorkspaceFileNode[];
+};
+
+type WorkspaceOpenTarget =
+  | "default"
+  | "file-manager"
+  | "cursor"
+  | "zed"
+  | "vscode"
+  | "vscode-insiders"
+  | "vscodium";
+
+type WorkspaceOpenTargetDefinition = {
+  readonly id: WorkspaceOpenTarget;
+  readonly label: string;
+  readonly commands: readonly [string, ...string[]] | null;
+  readonly macAppName?: string;
+};
+
+const WORKSPACE_TREE_EXCLUDED_NAMES = new Set([".DS_Store", ".git", ".hg", ".svn", "node_modules"]);
+
+const WORKSPACE_OPEN_TARGETS: readonly WorkspaceOpenTargetDefinition[] = [
+  { id: "cursor", label: "Cursor", commands: ["cursor"], macAppName: "Cursor" },
+  { id: "zed", label: "Zed", commands: ["zed", "zeditor"], macAppName: "Zed" },
+  { id: "vscode", label: "VS Code", commands: ["code"], macAppName: "Visual Studio Code" },
+  {
+    id: "vscode-insiders",
+    label: "VS Code Insiders",
+    commands: ["code-insiders"],
+    macAppName: "Visual Studio Code - Insiders",
+  },
+  { id: "vscodium", label: "VSCodium", commands: ["codium"], macAppName: "VSCodium" },
+  { id: "file-manager", label: "Finder", commands: null },
+  { id: "default", label: "Default app", commands: null },
+];
+
+const resolveWorkspacePath = (workspaceRelativePath: string): string => {
+  if (workspaceRelativePath.includes("\0")) {
+    throw new Error("Invalid workspace path");
+  }
+
+  const normalizedInput = workspaceRelativePath.replace(/\\/g, "/");
+  if (normalizedInput.startsWith("/") || /^[a-zA-Z]:\//.test(normalizedInput)) {
+    throw new Error("Workspace paths must be relative");
+  }
+
+  const root = resolve(DEFAULT_WORKSPACE_DIR);
+  const resolved = resolve(root, normalizedInput);
+  if (resolved !== root && !resolved.startsWith(`${root}${sep}`)) {
+    throw new Error("Workspace path escapes the workspace root");
+  }
+  return resolved;
+};
+
+const toWorkspaceRelativePath = (absolutePath: string): string =>
+  relative(DEFAULT_WORKSPACE_DIR, absolutePath).split(sep).join("/");
+
+const fileManagerLabel = (): string => {
+  if (process.platform === "darwin") return "Finder";
+  if (process.platform === "win32") return "Explorer";
+  return "Files";
+};
+
+const isCommandAvailable = (command: string): boolean => {
+  const pathValue = process.env.PATH ?? "";
+  if (pathValue.length === 0) return false;
+  return pathValue.split(process.platform === "win32" ? ";" : ":").some((pathEntry) => {
+    const candidate = join(pathEntry, command);
+    return existsSync(candidate);
+  });
+};
+
+const isMacAppAvailable = (appName: string): boolean => {
+  if (process.platform !== "darwin") return false;
+  return [join("/Applications", `${appName}.app`), join(homedir(), "Applications", `${appName}.app`)].some(
+    (appPath) => existsSync(appPath),
+  );
+};
+
+const availableWorkspaceOpenTargets = async (): Promise<
+  readonly { id: WorkspaceOpenTarget; label: string }[]
+> => {
+  const available: { id: WorkspaceOpenTarget; label: string }[] = [];
+  for (const target of WORKSPACE_OPEN_TARGETS) {
+    if (target.id === "default") {
+      available.push(target);
+      continue;
+    }
+    if (target.id === "file-manager") {
+      available.push({ ...target, label: fileManagerLabel() });
+      continue;
+    }
+    const hasCommand = target.commands?.some((command) => isCommandAvailable(command)) ?? false;
+    const hasMacApp = target.macAppName ? isMacAppAvailable(target.macAppName) : false;
+    if (hasCommand || hasMacApp) available.push(target);
+  }
+  return available;
+};
+
+const spawnAndWait = (command: string, args: readonly string[]): Promise<void> =>
+  new Promise((resolveSpawn, reject) => {
+    const proc = spawn(command, [...args], { stdio: "ignore" });
+    proc.once("error", reject);
+    proc.once("exit", (code) => {
+      if (code === 0) resolveSpawn();
+      else reject(new Error(`Failed to run ${command}`));
+    });
+  });
+
+const openWorkspacePath = async (
+  workspaceRelativePath: string,
+  target: WorkspaceOpenTarget,
+): Promise<void> => {
+  const absolutePath = resolveWorkspacePath(workspaceRelativePath);
+
+  if (target === "default") {
+    const error = await shell.openPath(absolutePath);
+    if (error) throw new Error(error);
+    return;
+  }
+
+  if (target === "file-manager") {
+    const stat = await lstat(absolutePath);
+    if (process.platform === "darwin" && !stat.isDirectory()) {
+      shell.showItemInFolder(absolutePath);
+      return;
+    }
+    if (process.platform === "win32") {
+      await spawnAndWait("explorer", [absolutePath]);
+      return;
+    }
+    if (process.platform === "linux") {
+      await spawnAndWait("xdg-open", [absolutePath]);
+      return;
+    }
+    if (stat.isDirectory()) {
+      const error = await shell.openPath(absolutePath);
+      if (error) throw new Error(error);
+    } else {
+      shell.showItemInFolder(absolutePath);
+    }
+    return;
+  }
+
+  const targetDefinition = WORKSPACE_OPEN_TARGETS.find((definition) => definition.id === target);
+  if (!targetDefinition || !targetDefinition.commands) {
+    throw new Error(`Unsupported open target: ${target}`);
+  }
+
+  const command = targetDefinition.commands.find((candidate) => isCommandAvailable(candidate));
+  if (command) {
+    await spawnAndWait(command, [absolutePath]);
+    return;
+  }
+
+  if (process.platform === "darwin" && targetDefinition.macAppName) {
+    await spawnAndWait("open", ["-a", targetDefinition.macAppName, absolutePath]);
+    return;
+  }
+
+  throw new Error(`Editor not found: ${targetDefinition.label}`);
+};
+
+const moveWorkspaceFile = async (
+  sourceWorkspaceRelativePath: string,
+  destinationDirectoryWorkspaceRelativePath: string,
+): Promise<{ path: string }> => {
+  const sourcePath = resolveWorkspacePath(sourceWorkspaceRelativePath);
+  const destinationDirectoryPath = resolveWorkspacePath(destinationDirectoryWorkspaceRelativePath);
+  const sourceStat = await lstat(sourcePath);
+  if (!sourceStat.isFile()) throw new Error("Only files can be moved into folders");
+
+  const destinationDirectoryStat = await lstat(destinationDirectoryPath);
+  if (!destinationDirectoryStat.isDirectory()) {
+    throw new Error("Drop target is not a folder");
+  }
+
+  const destinationPath = join(destinationDirectoryPath, basename(sourcePath));
+  if (sourcePath === destinationPath) {
+    return { path: toWorkspaceRelativePath(sourcePath) };
+  }
+  if (existsSync(destinationPath)) {
+    throw new Error("A file with that name already exists in the folder");
+  }
+
+  await rename(sourcePath, destinationPath);
+  return { path: toWorkspaceRelativePath(destinationPath) };
+};
+
+const copyExternalPath = async (sourcePath: string, destinationPath: string): Promise<void> => {
+  const sourceStat = await lstat(sourcePath);
+  if (sourceStat.isSymbolicLink()) {
+    throw new Error("Symlinks cannot be imported into the workspace");
+  }
+
+  if (sourceStat.isDirectory()) {
+    const nestedDestination = relative(sourcePath, destinationPath);
+    if (
+      nestedDestination === "" ||
+      (!nestedDestination.startsWith("..") && nestedDestination !== "")
+    ) {
+      throw new Error("Cannot import a folder into itself");
+    }
+    if (existsSync(destinationPath)) {
+      throw new Error(`A folder named ${basename(destinationPath)} already exists`);
+    }
+    await mkdir(destinationPath);
+    const entries = await readdir(sourcePath, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isSymbolicLink()) continue;
+      await copyExternalPath(join(sourcePath, entry.name), join(destinationPath, entry.name));
+    }
+    return;
+  }
+
+  if (!sourceStat.isFile()) {
+    throw new Error("Only files and folders can be imported");
+  }
+  if (existsSync(destinationPath)) {
+    throw new Error(`A file named ${basename(destinationPath)} already exists`);
+  }
+  await copyFile(sourcePath, destinationPath);
+};
+
+const importWorkspacePaths = async (
+  sourcePaths: readonly string[],
+  destinationDirectoryWorkspaceRelativePath: string,
+): Promise<{ paths: readonly string[] }> => {
+  const destinationDirectoryPath = resolveWorkspacePath(destinationDirectoryWorkspaceRelativePath);
+  const destinationDirectoryStat = await lstat(destinationDirectoryPath);
+  if (!destinationDirectoryStat.isDirectory()) {
+    throw new Error("Drop target is not a folder");
+  }
+
+  const importedPaths: string[] = [];
+  for (const sourcePath of sourcePaths) {
+    if (!sourcePath || sourcePath.includes("\0")) {
+      throw new Error("Invalid dropped file");
+    }
+    const resolvedSourcePath = resolve(sourcePath);
+    const destinationPath = join(destinationDirectoryPath, basename(resolvedSourcePath));
+    await copyExternalPath(resolvedSourcePath, destinationPath);
+    importedPaths.push(toWorkspaceRelativePath(destinationPath));
+  }
+
+  return { paths: importedPaths };
+};
+
+const workspaceFileUrl = (workspaceRelativePath: string): string =>
+  `godtool-workspace://file/${encodeURIComponent(workspaceRelativePath)}`;
+
+const setupWorkspaceFileProtocol = (): void => {
+  protocol.handle("godtool-workspace", async (request) => {
+    const url = new URL(request.url);
+    if (url.hostname !== "file") {
+      return new Response("Not found", { status: 404 });
+    }
+
+    const workspaceRelativePath = decodeURIComponent(url.pathname.replace(/^\//, ""));
+    const absolutePath = resolveWorkspacePath(workspaceRelativePath);
+    const stat = await lstat(absolutePath);
+    if (!stat.isFile()) {
+      return new Response("Not found", { status: 404 });
+    }
+
+    return net.fetch(pathToFileURL(absolutePath).toString());
+  });
+};
+
+const readWorkspaceTree = async (dir: string): Promise<readonly WorkspaceFileNode[]> => {
+  const entries = await readdir(dir, { withFileTypes: true });
+  const nodes = await Promise.all(
+    entries
+      .filter((entry) => !WORKSPACE_TREE_EXCLUDED_NAMES.has(entry.name))
+      .map(async (entry): Promise<WorkspaceFileNode | null> => {
+        const fullPath = join(dir, entry.name);
+        if (entry.isSymbolicLink()) return null;
+        if (entry.isDirectory()) {
+          return {
+            type: "directory",
+            name: entry.name,
+            path: toWorkspaceRelativePath(fullPath),
+            children: await readWorkspaceTree(fullPath),
+          };
+        }
+        if (!entry.isFile()) return null;
+        return {
+          type: "file",
+          name: entry.name,
+          path: toWorkspaceRelativePath(fullPath),
+        };
+      }),
+  );
+
+  return nodes
+    .filter((node): node is WorkspaceFileNode => node !== null)
+    .sort((a, b) => {
+      if (a.type !== b.type) return a.type === "directory" ? -1 : 1;
+      return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+    });
+};
 
 const loadSettings = (): Settings => {
   try {
@@ -178,21 +515,12 @@ const loadSettings = (): Settings => {
       return JSON.parse(readFileSync(SETTINGS_PATH, "utf-8"));
     }
   } catch {}
-  return { recentScopes: [], lastScope: null };
+  return {};
 };
 
 const saveSettings = (settings: Settings): void => {
   mkdirSync(SETTINGS_DIR, { recursive: true });
   writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2));
-};
-
-const addRecentScope = (settings: Settings, scopePath: string): void => {
-  settings.recentScopes = [
-    scopePath,
-    ...settings.recentScopes.filter((s) => s !== scopePath),
-  ].slice(0, 10);
-  settings.lastScope = scopePath;
-  saveSettings(settings);
 };
 
 // ---------------------------------------------------------------------------
@@ -202,10 +530,42 @@ const addRecentScope = (settings: Settings, scopePath: string): void => {
 let serverProcess: ChildProcess | null = null;
 let currentScope: string | null = null;
 let currentPort = DEFAULT_PORT;
+let browserHiddenWindow: BrowserWindow | null = null;
+let browserSessionManager: BrowserSessionManager | null = null;
+let browserHostServer: Server | null = null;
+let computerUseProcess: ChildProcess | null = null;
 
 const isDev = !app.isPackaged;
 
 const binaryName = process.platform === "win32" ? "executor.exe" : "executor";
+
+const resolveAgentBrowserPath = (): string => {
+  if (process.env.GODTOOL_AGENT_BROWSER_PATH) return process.env.GODTOOL_AGENT_BROWSER_PATH;
+  if (isDev) return "agent-browser";
+
+  const platform = process.platform === "win32" ? "win32" : process.platform;
+  const arch = process.arch === "arm64" ? "arm64" : "x64";
+  const name =
+    process.platform === "win32"
+      ? `agent-browser-${platform}-${arch}.exe`
+      : `agent-browser-${platform}-${arch}`;
+  const bundled = join(process.resourcesPath, "agent-browser", name);
+  return existsSync(bundled) ? bundled : "agent-browser";
+};
+
+const resolveComputerUsePath = (): string => {
+  if (process.env.GODTOOL_COMPUTER_USE_PATH) return process.env.GODTOOL_COMPUTER_USE_PATH;
+  if (isDev) return resolve(__dirname, "../native/computer-use-mac/computer-use-mac");
+
+  const platform = process.platform === "win32" ? "win32" : process.platform;
+  const arch = process.arch === "arm64" ? "arm64" : "x64";
+  const name =
+    process.platform === "win32"
+      ? `computer-use-${platform}-${arch}.exe`
+      : `computer-use-${platform}-${arch}`;
+  const bundled = join(process.resourcesPath, "computer-use", name);
+  return existsSync(bundled) ? bundled : "computer-use-mac";
+};
 
 /**
  * Returns { command, args, cwd } for spawning the server.
@@ -279,7 +639,14 @@ const startServer = async (scopePath: string, port: number): Promise<void> => {
   serverProcess = spawn(server.command, args, {
     cwd,
     stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, EXECUTOR_SCOPE_DIR: scopePath },
+    env: {
+      ...process.env,
+      GODTOOL_SCOPE_DIR: scopePath,
+      GODTOOL_WORKSPACE_DIR: DEFAULT_WORKSPACE_DIR,
+      GODTOOL_BROWSER_HOST_URL: `http://127.0.0.1:${BROWSER_HOST_PORT}`,
+      GODTOOL_AGENT_BROWSER_PATH: resolveAgentBrowserPath(),
+      GODTOOL_COMPUTER_USE_HOST_URL: `http://127.0.0.1:${COMPUTER_USE_HOST_PORT}`,
+    },
   });
 
   serverProcess.stdout?.on("data", (data: Buffer) => {
@@ -389,17 +756,110 @@ const createWindow = (): BrowserWindow => {
   return win;
 };
 
+const broadcastBrowserSessionsChanged = (): void => {
+  mainWindow?.webContents.send("browser-sessions-changed", browserSessionManager?.list() ?? []);
+};
+
+const startBrowserHost = async (): Promise<void> => {
+  if (browserSessionManager && browserHostServer) return;
+
+  browserHiddenWindow = new BrowserWindow({
+    show: false,
+    width: 1280,
+    height: 800,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+
+  browserSessionManager = new BrowserSessionManager({
+    maxSessions: Number.isFinite(BROWSER_MAX_SESSIONS) ? BROWSER_MAX_SESSIONS : 5,
+    debuggingPort: Number.isFinite(BROWSER_DEBUGGING_PORT) ? BROWSER_DEBUGGING_PORT : 9333,
+    hiddenWindow: browserHiddenWindow,
+    metadataPath: BROWSER_SESSIONS_PATH,
+    getMainWindow: () => mainWindow,
+    onSessionsChanged: broadcastBrowserSessionsChanged,
+  });
+
+  browserHostServer = await startBrowserHostServer({
+    port: Number.isFinite(BROWSER_HOST_PORT) ? BROWSER_HOST_PORT : 14789,
+    manager: browserSessionManager,
+  });
+
+  console.log(
+    `[browser] host listening on http://127.0.0.1:${BROWSER_HOST_PORT} ` +
+      `(debugging port ${BROWSER_DEBUGGING_PORT}, max sessions ${BROWSER_MAX_SESSIONS})`,
+  );
+};
+
+const stopBrowserHost = (): void => {
+  browserSessionManager?.closeAll();
+  browserSessionManager = null;
+  if (browserHostServer) {
+    browserHostServer.close();
+    browserHostServer = null;
+  }
+  if (browserHiddenWindow && !browserHiddenWindow.isDestroyed()) {
+    browserHiddenWindow.close();
+  }
+  browserHiddenWindow = null;
+};
+
+const startComputerUseHost = async (): Promise<void> => {
+  if (computerUseProcess) return;
+  if (process.platform !== "darwin") {
+    console.warn("[computer-use] macOS host is only available on darwin");
+    return;
+  }
+
+  const command = resolveComputerUsePath();
+  if (!existsSync(command)) {
+    console.warn(`[computer-use] host binary not found at ${command}`);
+    return;
+  }
+
+  computerUseProcess = spawn(
+    command,
+    ["--port", String(Number.isFinite(COMPUTER_USE_HOST_PORT) ? COMPUTER_USE_HOST_PORT : 14790)],
+    {
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+
+  computerUseProcess.stdout?.on("data", (data: Buffer) => {
+    console.log(`[computer-use] ${data.toString().trim()}`);
+  });
+
+  computerUseProcess.stderr?.on("data", (data: Buffer) => {
+    console.error(`[computer-use] ${data.toString().trim()}`);
+  });
+
+  computerUseProcess.on("exit", (code) => {
+    console.log(`[computer-use] exited with code ${code}`);
+    computerUseProcess = null;
+  });
+};
+
+const stopComputerUseHost = (): void => {
+  if (computerUseProcess) {
+    computerUseProcess.kill("SIGTERM");
+    computerUseProcess = null;
+  }
+};
+
 const loadScope = async (scopePath: string): Promise<void> => {
   if (!mainWindow) return;
 
-  mainWindow.setTitle(`Executor — ${basename(scopePath)}`);
+  mainWindow.setTitle(`Godtool — ${basename(scopePath)}`);
 
   if (isDev) {
     // In dev mode, the Vite dev server handles both UI and API.
     // Just set the scope env var and load the dev URL.
     currentScope = scopePath;
-    process.env.EXECUTOR_SCOPE_DIR = scopePath;
-    addRecentScope(settings, scopePath);
+    process.env.GODTOOL_SCOPE_DIR = scopePath;
+    process.env.GODTOOL_WORKSPACE_DIR = DEFAULT_WORKSPACE_DIR;
     buildMenu();
     mainWindow.loadURL(DEV_SERVER_URL);
     return;
@@ -410,7 +870,6 @@ const loadScope = async (scopePath: string): Promise<void> => {
 
   try {
     await startServer(scopePath, currentPort);
-    addRecentScope(settings, scopePath);
     buildMenu();
     mainWindow.loadURL(`http://127.0.0.1:${currentPort}`);
   } catch (err) {
@@ -418,31 +877,11 @@ const loadScope = async (scopePath: string): Promise<void> => {
   }
 };
 
-const selectFolder = async (): Promise<void> => {
-  if (!mainWindow) return;
-
-  const result = await dialog.showOpenDialog(mainWindow, {
-    properties: ["openDirectory"],
-    title: "Select Scope Directory",
-    message: "Choose a folder to use as the executor scope",
-  });
-
-  if (result.canceled || result.filePaths.length === 0) return;
-
-  await loadScope(result.filePaths[0]);
-};
-
 // ---------------------------------------------------------------------------
 // Menu
 // ---------------------------------------------------------------------------
 
 const buildMenu = (): void => {
-  const recentItems: MenuItemConstructorOptions[] = settings.recentScopes.map((scopePath) => ({
-    label: `${basename(scopePath)}  —  ${scopePath}`,
-    click: () => loadScope(scopePath),
-    enabled: scopePath !== currentScope,
-  }));
-
   const template: MenuItemConstructorOptions[] = [
     {
       role: "appMenu",
@@ -460,31 +899,7 @@ const buildMenu = (): void => {
     },
     {
       label: "File",
-      submenu: [
-        {
-          label: "Open Scope...",
-          accelerator: "CmdOrCtrl+O",
-          click: selectFolder,
-        },
-        { type: "separator" },
-        ...(recentItems.length > 0
-          ? [
-              { label: "Recent Scopes", enabled: false } as MenuItemConstructorOptions,
-              ...recentItems,
-              { type: "separator" as const },
-              {
-                label: "Clear Recent",
-                click: () => {
-                  settings.recentScopes = [];
-                  saveSettings(settings);
-                  buildMenu();
-                },
-              } as MenuItemConstructorOptions,
-            ]
-          : []),
-        { type: "separator" },
-        { role: "close" as const },
-      ],
+      submenu: [{ role: "close" as const }],
     },
     { role: "editMenu" },
     {
@@ -512,20 +927,184 @@ const buildMenu = (): void => {
 // ---------------------------------------------------------------------------
 
 const setupIPC = (): void => {
-  ipcMain.handle("select-scope", async () => {
-    await selectFolder();
-    return currentScope;
-  });
-
   ipcMain.handle("get-current-scope", () => currentScope);
 
-  ipcMain.handle("get-recent-scopes", () => settings.recentScopes);
+  ipcMain.handle("workspace-files:list", async () => {
+    mkdirSync(DEFAULT_WORKSPACE_DIR, { recursive: true });
+    return {
+      rootPath: DEFAULT_WORKSPACE_DIR,
+      tree: await readWorkspaceTree(DEFAULT_WORKSPACE_DIR),
+      openTargets: await availableWorkspaceOpenTargets(),
+    };
+  });
 
-  ipcMain.handle("switch-scope", async (_event, scopePath: string) => {
-    if (existsSync(scopePath)) {
-      await loadScope(scopePath);
-    }
-    return currentScope;
+  ipcMain.handle("workspace-files:read", async (_event, workspaceRelativePath: string) => {
+    const absolutePath = resolveWorkspacePath(workspaceRelativePath);
+    const stat = await lstat(absolutePath);
+    if (!stat.isFile()) throw new Error("Workspace path is not a file");
+    return {
+      path: toWorkspaceRelativePath(absolutePath),
+      content: await readFile(absolutePath, "utf-8"),
+    };
+  });
+
+  ipcMain.handle(
+    "workspace-files:write",
+    async (_event, workspaceRelativePath: string, content: string) => {
+      const absolutePath = resolveWorkspacePath(workspaceRelativePath);
+      mkdirSync(dirname(absolutePath), { recursive: true });
+      const tempPath = `${absolutePath}.${process.pid}.${Date.now()}.tmp`;
+      await writeFile(tempPath, content, "utf-8");
+      await rename(tempPath, absolutePath);
+      return {
+        path: toWorkspaceRelativePath(absolutePath),
+      };
+    },
+  );
+
+  ipcMain.handle(
+    "workspace-files:create-file",
+    async (_event, workspaceRelativePath: string, content = "") => {
+      const absolutePath = resolveWorkspacePath(workspaceRelativePath);
+      mkdirSync(dirname(absolutePath), { recursive: true });
+      await writeFile(absolutePath, content, { encoding: "utf-8", flag: "wx" });
+      return {
+        path: toWorkspaceRelativePath(absolutePath),
+      };
+    },
+  );
+
+  ipcMain.handle(
+    "workspace-files:create-directory",
+    async (_event, workspaceRelativePath: string) => {
+      const absolutePath = resolveWorkspacePath(workspaceRelativePath);
+      mkdirSync(absolutePath);
+      return {
+        path: toWorkspaceRelativePath(absolutePath),
+      };
+    },
+  );
+
+  ipcMain.handle(
+    "workspace-files:move-file",
+    async (
+      _event,
+      sourceWorkspaceRelativePath: string,
+      destinationDirectoryWorkspaceRelativePath: string,
+    ) => moveWorkspaceFile(sourceWorkspaceRelativePath, destinationDirectoryWorkspaceRelativePath),
+  );
+
+  ipcMain.handle(
+    "workspace-files:import-paths",
+    async (
+      _event,
+      sourcePaths: readonly string[],
+      destinationDirectoryWorkspaceRelativePath: string,
+    ) => importWorkspacePaths(sourcePaths, destinationDirectoryWorkspaceRelativePath),
+  );
+
+  ipcMain.handle("workspace-files:get-file-url", async (_event, workspaceRelativePath: string) => {
+    const absolutePath = resolveWorkspacePath(workspaceRelativePath);
+    const stat = await lstat(absolutePath);
+    if (!stat.isFile()) throw new Error("Workspace path is not a file");
+    return workspaceFileUrl(toWorkspaceRelativePath(absolutePath));
+  });
+
+  ipcMain.handle(
+    "workspace-files:open",
+    async (
+      _event,
+      workspaceRelativePath: string,
+      target: WorkspaceOpenTarget,
+    ) => {
+      await openWorkspacePath(workspaceRelativePath, target);
+      return true;
+    },
+  );
+
+  ipcMain.handle("browser-sessions:list", () => browserSessionManager?.list() ?? []);
+
+  ipcMain.handle("browser-sessions:ensure", async (_event, input) => {
+    if (!browserSessionManager) throw new Error("Browser host is not running");
+    return browserSessionManager.ensure(input);
+  });
+
+  ipcMain.handle("browser-sessions:activate-viewport", () => {
+    if (!browserSessionManager) throw new Error("Browser host is not running");
+    browserSessionManager.activateViewport();
+    return true;
+  });
+
+  ipcMain.handle("browser-sessions:deactivate-viewport", () => {
+    if (!browserSessionManager) throw new Error("Browser host is not running");
+    browserSessionManager.deactivateViewport();
+    return true;
+  });
+
+  ipcMain.handle(
+    "browser-sessions:show",
+    async (_event, sessionId: string, bounds: BrowserBounds) => {
+      if (!browserSessionManager) throw new Error("Browser host is not running");
+      return browserSessionManager.show(sessionId, bounds);
+    },
+  );
+
+  ipcMain.handle(
+    "browser-sessions:set-bounds",
+    async (_event, sessionId: string, bounds: BrowserBounds) => {
+      if (!browserSessionManager) throw new Error("Browser host is not running");
+      return browserSessionManager.setBounds(sessionId, bounds);
+    },
+  );
+
+  ipcMain.handle("browser-sessions:hide", async (_event, sessionId: string) => {
+    if (!browserSessionManager) throw new Error("Browser host is not running");
+    return browserSessionManager.hide(sessionId);
+  });
+
+  ipcMain.handle(
+    "browser-sessions:rename",
+    async (_event, sessionId: string, sessionName: string) => {
+      if (!browserSessionManager) throw new Error("Browser host is not running");
+      return browserSessionManager.rename(sessionId, sessionName);
+    },
+  );
+
+  ipcMain.handle("browser-sessions:navigate", async (_event, sessionId: string, url: string) => {
+    if (!browserSessionManager) throw new Error("Browser host is not running");
+    return browserSessionManager.navigate(sessionId, url);
+  });
+
+  ipcMain.handle("browser-sessions:back", async (_event, sessionId: string) => {
+    if (!browserSessionManager) throw new Error("Browser host is not running");
+    return browserSessionManager.goBack(sessionId);
+  });
+
+  ipcMain.handle("browser-sessions:forward", async (_event, sessionId: string) => {
+    if (!browserSessionManager) throw new Error("Browser host is not running");
+    return browserSessionManager.goForward(sessionId);
+  });
+
+  ipcMain.handle("browser-sessions:reload", async (_event, sessionId: string) => {
+    if (!browserSessionManager) throw new Error("Browser host is not running");
+    return browserSessionManager.reload(sessionId);
+  });
+
+  ipcMain.handle("browser-sessions:touch", async (_event, sessionId: string, input) => {
+    if (!browserSessionManager) throw new Error("Browser host is not running");
+    return browserSessionManager.touch(sessionId, input);
+  });
+
+  ipcMain.handle("browser-sessions:close", (_event, sessionId: string) => {
+    if (!browserSessionManager) throw new Error("Browser host is not running");
+    browserSessionManager.close(sessionId);
+    return true;
+  });
+
+  ipcMain.handle("browser-data:clear", async () => {
+    if (!browserSessionManager) throw new Error("Browser host is not running");
+    await browserSessionManager.clearBrowserData();
+    return true;
   });
 };
 
@@ -635,7 +1214,7 @@ const loadingHTML = (scopePath: string): string => {
 </head>
 <body>
   <div class="container">
-    <div class="wordmark">executor</div>
+    <div class="wordmark">godtool</div>
     <div class="bar-wrap"><div class="bar"></div></div>
     <div class="scope">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3">
@@ -668,104 +1247,15 @@ const errorHTML = (message: string): string => `<!DOCTYPE html>
     padding: 12px; border-radius: 8px; text-align: left;
     overflow-x: auto; white-space: pre-wrap; word-break: break-all;
   }
-  button {
-    margin-top: 16px; padding: 8px 20px;
-    background: ${nativeTheme.shouldUseDarkColors ? "#333" : "#e5e5e5"};
-    border: none; border-radius: 6px; cursor: pointer;
-    font-size: 13px; color: inherit;
-    -webkit-app-region: no-drag;
-  }
-  button:hover { opacity: 0.8; }
 </style>
 </head>
 <body>
   <div class="container">
     <h2>Failed to start server</h2>
     <pre>${message.replace(/</g, "&lt;")}</pre>
-    <button onclick="window.electronAPI.selectScope()">Choose Different Folder</button>
   </div>
 </body>
 </html>`;
-
-// ---------------------------------------------------------------------------
-// Welcome screen
-// ---------------------------------------------------------------------------
-
-const welcomeHTML = (): string => {
-  const isDark = nativeTheme.shouldUseDarkColors;
-  const bg = isDark ? "#0a0a0a" : "#ffffff";
-  const fg = isDark ? "#e5e5e5" : "#171717";
-  const muted = isDark ? "#666" : "#999";
-  const cardBg = isDark ? "#141414" : "#f9f9f9";
-  const borderColor = isDark ? "#262626" : "#e5e5e5";
-
-  const recentItems = settings.recentScopes
-    .map(
-      (s) =>
-        `<button class="scope-btn" onclick="window.electronAPI.switchScope('${s.replace(/'/g, "\\'")}')">
-          <span class="name">${basename(s)}</span>
-          <span class="path">${s}</span>
-        </button>`,
-    )
-    .join("");
-
-  return `<!DOCTYPE html>
-<html>
-<head>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-    display: flex; align-items: center; justify-content: center;
-    height: 100vh; background: ${bg}; color: ${fg};
-    -webkit-app-region: drag;
-  }
-  .container { text-align: center; max-width: 420px; width: 100%; padding: 24px; }
-  h1 { font-size: 24px; font-weight: 600; margin-bottom: 6px; }
-  .subtitle { font-size: 14px; color: ${muted}; margin-bottom: 32px; }
-  .open-btn {
-    display: inline-flex; align-items: center; gap: 8px;
-    padding: 10px 24px; font-size: 14px; font-weight: 500;
-    background: ${fg}; color: ${bg};
-    border: none; border-radius: 8px; cursor: pointer;
-    -webkit-app-region: no-drag;
-  }
-  .open-btn:hover { opacity: 0.9; }
-  .shortcut { font-size: 12px; color: ${muted}; margin-top: 8px; }
-  .recent { margin-top: 32px; text-align: left; }
-  .recent-label { font-size: 12px; font-weight: 500; color: ${muted}; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
-  .scope-btn {
-    display: block; width: 100%; text-align: left;
-    padding: 10px 14px; margin-bottom: 4px;
-    background: ${cardBg}; border: 1px solid ${borderColor};
-    border-radius: 8px; cursor: pointer; color: ${fg};
-    -webkit-app-region: no-drag; transition: background 0.1s;
-  }
-  .scope-btn:hover { background: ${borderColor}; }
-  .scope-btn .name { display: block; font-size: 14px; font-weight: 500; }
-  .scope-btn .path { display: block; font-size: 12px; color: ${muted}; margin-top: 2px; }
-</style>
-</head>
-<body>
-  <div class="container">
-    <h1>Executor</h1>
-    <p class="subtitle">Select a folder to set as your scope</p>
-    <button class="open-btn" onclick="window.electronAPI.selectScope()">
-      Open Folder
-    </button>
-    <p class="shortcut">\u2318O</p>
-    ${
-      recentItems
-        ? `<div class="recent">
-            <div class="recent-label">Recent</div>
-            ${recentItems}
-          </div>`
-        : ""
-    }
-  </div>
-</body>
-</html>`;
-};
 
 // ---------------------------------------------------------------------------
 // App lifecycle
@@ -775,24 +1265,25 @@ app.whenReady().then(async () => {
   // Clear cached web content so we always load the latest UI
   await session.defaultSession.clearCache();
 
-  // Install/update CLI binary to ~/.executor/bin
+  // Install/update CLI binary to ~/.godtool/bin
   installCli();
 
   settings = loadSettings();
+  setupWorkspaceFileProtocol();
   setupIPC();
   buildMenu();
 
   mainWindow = createWindow();
+  await startBrowserHost();
+  await startComputerUseHost();
 
-  // If we have a last scope and it still exists, open it directly
-  if (settings.lastScope && existsSync(settings.lastScope)) {
-    await loadScope(settings.lastScope);
-  } else {
-    mainWindow.loadURL(`data:text/html,${encodeURIComponent(welcomeHTML())}`);
-  }
+  mkdirSync(DEFAULT_WORKSPACE_DIR, { recursive: true });
+  await loadScope(DEFAULT_WORKSPACE_DIR);
 });
 
 app.on("window-all-closed", () => {
+  stopBrowserHost();
+  stopComputerUseHost();
   // Synchronously kill the server process before quitting
   if (serverProcess) {
     serverProcess.kill("SIGTERM");
@@ -802,6 +1293,8 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
+  stopBrowserHost();
+  stopComputerUseHost();
   if (serverProcess) {
     serverProcess.kill("SIGTERM");
     serverProcess = null;
@@ -810,6 +1303,7 @@ app.on("before-quit", () => {
 
 // Last resort: kill server on exit
 process.on("exit", () => {
+  stopComputerUseHost();
   if (serverProcess) {
     serverProcess.kill("SIGKILL");
     serverProcess = null;
@@ -819,6 +1313,7 @@ process.on("exit", () => {
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     mainWindow = createWindow();
-    mainWindow.loadURL(`data:text/html,${encodeURIComponent(welcomeHTML())}`);
+    mkdirSync(DEFAULT_WORKSPACE_DIR, { recursive: true });
+    void loadScope(DEFAULT_WORKSPACE_DIR);
   }
 });

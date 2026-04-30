@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Boot-time sync — replays sources from executor.jsonc into the executor.
+// Boot-time sync — replays sources from godtool.jsonc into the executor.
 // Plugins upsert so a re-sync on an already-populated DB is a no-op.
 // Write-back (DB → file) is handled by the ConfigFileSink passed to each
 // plugin in executor.ts.
@@ -58,7 +58,7 @@ const translateHeaders = (
 // ---------------------------------------------------------------------------
 
 export const resolveConfigPath = (scopeDir: string): string =>
-  join(scopeDir, "executor.jsonc");
+  join(scopeDir, "godtool.jsonc");
 
 // ---------------------------------------------------------------------------
 // Load config (sync, no Effect deps — runs at startup)
@@ -84,7 +84,7 @@ const addSourceFromConfig = (
   executor: LocalExecutor,
   source: SourceConfig,
 ): Effect.Effect<void, unknown> => {
-  // `executor.jsonc` is a single-scope artifact today — the file isn't
+  // `godtool.jsonc` is a single-scope artifact today — the file isn't
   // aware of per-user tenancy. Pin replayed sources to the outermost
   // scope so a future `[user, org]` stack still sees them via org
   // fall-through.
@@ -105,6 +105,14 @@ const addSourceFromConfig = (
         scope,
         namespace: source.namespace,
         headers: translateHeaders(source.headers) as Record<string, string> | undefined,
+      }).pipe(Effect.asVoid);
+
+    case "raw":
+      return executor.raw.addSource({
+        baseUrl: source.baseUrl,
+        scope,
+        namespace: source.namespace,
+        headers: translateHeaders(source.headers),
       }).pipe(Effect.asVoid);
 
     case "mcp":
@@ -134,7 +142,7 @@ const addSourceFromConfig = (
 };
 
 /**
- * Read executor.jsonc and replay all sources into the executor.
+ * Read godtool.jsonc and replay all sources into the executor.
  * Each source is added independently — if one fails, the rest still load.
  */
 export const syncFromConfig = (

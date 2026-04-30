@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Data, Effect } from "effect";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
@@ -113,6 +116,79 @@ describe("MCP host server — client with elicitation", () => {
       expect(result.content).toEqual([{ type: "text", text: "ran: 1+1" }]);
       expect(result.isError).toBeFalsy();
     });
+  });
+
+  it("execute tool returns extracted images as MCP image content", async () => {
+    const imageData = "iVBORw0KGgo=";
+    const artifactsDir = mkdtempSync(join(tmpdir(), "executor-artifacts-"));
+    const previousArtifactsDir = process.env.GODTOOL_ARTIFACTS_DIR;
+    process.env.GODTOOL_ARTIFACTS_DIR = artifactsDir;
+    const engine = makeStubEngine({
+      execute: () =>
+        Effect.succeed({
+          result: {
+            text: "Computer Use state",
+            screenshot: { data: imageData, mimeType: "image/png" },
+          },
+        }),
+    });
+
+    try {
+      await withClient(engine, ELICITATION_CAPS, async (client) => {
+        const result = await client.callTool({
+          name: "execute",
+          arguments: { code: "screenshot" },
+        });
+
+        const structured = result.structuredContent as {
+          result: { screenshot: { path: string } };
+        };
+        expect(structured.result.screenshot.path).toMatch(new RegExp(`^${artifactsDir}/image-`));
+
+        expect(result.content).toEqual([
+          {
+            type: "text",
+            text: JSON.stringify(
+              {
+                text: "Computer Use state",
+                screenshot: {
+                  mimeType: "image/png",
+                  byteLength: 8,
+                  contentIndex: 1,
+                  path: structured.result.screenshot.path,
+                  fallback: "If the image is not visible, read this file from disk.",
+                },
+              },
+              null,
+              2,
+            ),
+          },
+          { type: "image", mimeType: "image/png", data: imageData },
+        ]);
+        expect(result.structuredContent).toEqual({
+          status: "completed",
+          result: {
+            text: "Computer Use state",
+            screenshot: {
+              mimeType: "image/png",
+              byteLength: 8,
+              contentIndex: 1,
+              path: structured.result.screenshot.path,
+              fallback: "If the image is not visible, read this file from disk.",
+            },
+          },
+          logs: [],
+        });
+        expect(JSON.stringify(result.structuredContent)).not.toContain(imageData);
+      });
+    } finally {
+      if (previousArtifactsDir === undefined) {
+        delete process.env.GODTOOL_ARTIFACTS_DIR;
+      } else {
+        process.env.GODTOOL_ARTIFACTS_DIR = previousArtifactsDir;
+      }
+      rmSync(artifactsDir, { recursive: true, force: true });
+    }
   });
 
   it("execute tool resolves failed engine effects as MCP error results", async () => {

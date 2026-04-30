@@ -624,7 +624,7 @@ const toProviderStateRecord = (
 
 export interface OpenApiPluginOptions {
   readonly httpClientLayer?: Layer.Layer<HttpClient.HttpClient>;
-  /** If provided, source add/remove is mirrored to executor.jsonc
+  /** If provided, source add/remove is mirrored to godtool.jsonc
    *  (best-effort — file errors are logged, not raised). */
   readonly configFile?: ConfigFileSink;
 }

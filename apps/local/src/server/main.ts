@@ -32,6 +32,12 @@ import {
   GraphqlHandlers,
   GraphqlExtensionService,
 } from "@executor/plugin-graphql/api";
+import { RawGroup, RawHandlers, RawExtensionService } from "@executor/plugin-raw/api";
+import {
+  ComputerUseGroup,
+  ComputerUseHandlers,
+  ComputerUseExtensionService,
+} from "@executor/plugin-computer-use/api";
 import { getExecutor } from "./executor";
 import { createMcpRequestHandler, type McpRequestHandler } from "./mcp";
 import { ErrorCaptureLive } from "./observability";
@@ -44,7 +50,9 @@ const LocalApi = addGroup(OpenApiGroup)
   .add(McpGroup)
   .add(GoogleDiscoveryGroup)
   .add(OnePasswordGroup)
-  .add(GraphqlGroup);
+  .add(GraphqlGroup)
+  .add(RawGroup)
+  .add(ComputerUseGroup);
 
 // `ErrorCaptureLive` logs causes to the console and returns a short
 // correlation id. Provided above the handler + middleware layers so
@@ -62,6 +70,8 @@ const LocalApiBase = HttpApiBuilder.api(LocalApi).pipe(
       GoogleDiscoveryHandlers,
       OnePasswordHandlers,
       GraphqlHandlers,
+      RawHandlers,
+      ComputerUseHandlers,
     ),
   ),
   Layer.provide(LocalObservability),
@@ -99,6 +109,8 @@ export const createServerHandlers = async (): Promise<ServerHandlers> => {
     Layer.succeed(GoogleDiscoveryExtensionService, executor.googleDiscovery),
     Layer.succeed(OnePasswordExtensionService, executor.onepassword),
     Layer.succeed(GraphqlExtensionService, executor.graphql),
+    Layer.succeed(RawExtensionService, executor.raw),
+    Layer.succeed(ComputerUseExtensionService, executor.computer_use),
   );
 
   const api = HttpApiBuilder.toWebHandler(

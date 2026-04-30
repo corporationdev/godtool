@@ -58,17 +58,17 @@ const daemonStateLayer = Layer.merge(fileSystemLayer, PlatformPath.layer);
 
 const withDaemonDataDir = <A, E>(effect: Effect.Effect<A, E, FileSystem.FileSystem | PlatformPath.Path>) =>
   Effect.gen(function* () {
-    const prev = process.env.EXECUTOR_DATA_DIR;
-    const dir = mkdtempSync(join(tmpdir(), "executor-daemon-state-test-"));
-    process.env.EXECUTOR_DATA_DIR = dir;
+    const prev = process.env.GODTOOL_DATA_DIR;
+    const dir = mkdtempSync(join(tmpdir(), "godtool-daemon-state-test-"));
+    process.env.GODTOOL_DATA_DIR = dir;
 
     try {
       return yield* effect;
     } finally {
       if (prev === undefined) {
-        delete process.env.EXECUTOR_DATA_DIR;
+        delete process.env.GODTOOL_DATA_DIR;
       } else {
-        process.env.EXECUTOR_DATA_DIR = prev;
+        process.env.GODTOOL_DATA_DIR = prev;
       }
       rmSync(dir, { recursive: true, force: true });
     }
@@ -176,15 +176,15 @@ describe("daemon state", () => {
     ),
   );
 
-  it("derives scope id from EXECUTOR_SCOPE_DIR or cwd", () => {
-    const prev = process.env.EXECUTOR_SCOPE_DIR;
-    process.env.EXECUTOR_SCOPE_DIR = "/tmp/explicit-scope";
+  it("derives scope id from GODTOOL_SCOPE_DIR or cwd", () => {
+    const prev = process.env.GODTOOL_SCOPE_DIR;
+    process.env.GODTOOL_SCOPE_DIR = "/tmp/explicit-scope";
     expect(currentDaemonScopeId()).toBe("scope:/tmp/explicit-scope");
 
     if (prev === undefined) {
-      delete process.env.EXECUTOR_SCOPE_DIR;
+      delete process.env.GODTOOL_SCOPE_DIR;
     } else {
-      process.env.EXECUTOR_SCOPE_DIR = prev;
+      process.env.GODTOOL_SCOPE_DIR = prev;
     }
 
     expect(currentDaemonScopeId()).toContain("cwd:");

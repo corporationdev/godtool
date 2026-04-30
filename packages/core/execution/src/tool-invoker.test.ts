@@ -105,6 +105,26 @@ const crmPlugin = definePlugin(() => ({
   ],
 }));
 
+const imagePlugin = definePlugin(() => ({
+  id: "image-test" as const,
+  storage: () => ({}),
+  staticSources: () => [
+    {
+      id: "image",
+      kind: "in-memory",
+      name: "Image",
+      tools: [
+        {
+          name: "screenshot",
+          description: "Return an image-shaped result",
+          inputSchema: EmptyInputSchema,
+          handler: () => Effect.succeed({ data: "iVBORw0KGgo=", mimeType: "image/png" }),
+        },
+      ],
+    },
+  ],
+}));
+
 const makeSearchExecutor = () =>
   createExecutor(
     makeTestConfig({ plugins: [githubPlugin(), crmPlugin()] as const }),
@@ -197,6 +217,22 @@ describe("tool discovery", () => {
       expect(described.inputTypeScript).toBe("{ owner: string; repo: string }");
       expect(described.outputTypeScript).toBeUndefined();
       expect(described.typeScriptDefinitions).toBeUndefined();
+    }),
+  );
+
+  it.effect("preserves image-shaped tool results inside the sandbox", () =>
+    Effect.gen(function* () {
+      const executor = yield* createExecutor(
+        makeTestConfig({ plugins: [imagePlugin()] as const }),
+      );
+
+      const result = yield* createExecutionEngine({ executor, codeExecutor }).execute(
+        "return await tools.image.screenshot({});",
+        { onElicitation: acceptAll },
+      );
+
+      expect(result.error).toBeUndefined();
+      expect(result.result).toEqual({ data: "iVBORw0KGgo=", mimeType: "image/png" });
     }),
   );
 

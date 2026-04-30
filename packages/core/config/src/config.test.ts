@@ -98,7 +98,7 @@ describe("loadConfig", () => {
     withTmpDir((dir) =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
-        const path = join(dir, "executor.jsonc");
+        const path = join(dir, "godtool.jsonc");
         yield* fs.writeFileString(
           path,
           `{
@@ -125,7 +125,7 @@ describe("loadConfig", () => {
     withTmpDir((dir) =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
-        const path = join(dir, "executor.jsonc");
+        const path = join(dir, "godtool.jsonc");
         yield* fs.writeFileString(path, "{ invalid json }");
 
         const result = yield* loadConfig(path).pipe(Effect.flip);
@@ -140,7 +140,7 @@ describe("write operations", () => {
     withTmpDir((dir) =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
-        const path = join(dir, "executor.jsonc");
+        const path = join(dir, "godtool.jsonc");
 
         yield* addSourceToConfig(path, {
           kind: "openapi",
@@ -162,7 +162,7 @@ describe("write operations", () => {
   it.effect("addSourceToConfig appends to existing sources", () =>
     withTmpDir((dir) =>
       Effect.gen(function* () {
-        const path = join(dir, "executor.jsonc");
+        const path = join(dir, "godtool.jsonc");
 
         yield* addSourceToConfig(path, {
           kind: "openapi",
@@ -188,7 +188,7 @@ describe("write operations", () => {
     withTmpDir((dir) =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
-        const path = join(dir, "executor.jsonc");
+        const path = join(dir, "godtool.jsonc");
 
         yield* fs.writeFileString(
           path,
@@ -221,7 +221,7 @@ describe("write operations", () => {
   it.effect("addSourceToConfig replaces existing source with same namespace", () =>
     withTmpDir((dir) =>
       Effect.gen(function* () {
-        const path = join(dir, "executor.jsonc");
+        const path = join(dir, "godtool.jsonc");
 
         yield* addSourceToConfig(path, {
           kind: "openapi",
@@ -247,7 +247,7 @@ describe("write operations", () => {
   it.effect("removeSourceFromConfig removes by namespace", () =>
     withTmpDir((dir) =>
       Effect.gen(function* () {
-        const path = join(dir, "executor.jsonc");
+        const path = join(dir, "godtool.jsonc");
 
         yield* writeConfig(path, {
           sources: [
@@ -276,7 +276,7 @@ describe("write operations", () => {
   it.effect("addSecretToConfig and removeSecretFromConfig", () =>
     withTmpDir((dir) =>
       Effect.gen(function* () {
-        const path = join(dir, "executor.jsonc");
+        const path = join(dir, "godtool.jsonc");
 
         yield* writeConfig(path, { sources: [] });
 

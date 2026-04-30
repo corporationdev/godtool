@@ -47,6 +47,14 @@ export const GraphqlSourceConfig = Schema.Struct({
 });
 export type GraphqlSourceConfig = typeof GraphqlSourceConfig.Type;
 
+export const RawSourceConfig = Schema.Struct({
+  kind: Schema.Literal("raw"),
+  baseUrl: Schema.String,
+  namespace: Schema.optional(Schema.String),
+  headers: Schema.optional(ConfigHeaders),
+});
+export type RawSourceConfig = typeof RawSourceConfig.Type;
+
 const StringMap = Schema.Record({ key: Schema.String, value: Schema.String });
 
 export const McpAuthConfig = Schema.Union(
@@ -95,6 +103,7 @@ export type McpStdioSourceConfig = typeof McpStdioSourceConfig.Type;
 export const SourceConfig = Schema.Union(
   OpenApiSourceConfig,
   GraphqlSourceConfig,
+  RawSourceConfig,
   McpRemoteSourceConfig,
   McpStdioSourceConfig,
 );

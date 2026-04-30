@@ -22,6 +22,13 @@ const extractSourceNamespace = (path: string): string => {
   return idx === -1 ? path : path.slice(0, idx);
 };
 
+const isImageDataResult = (
+  value: Record<string, unknown>,
+): value is { readonly data: string; readonly mimeType: string } =>
+  typeof value.data === "string" &&
+  typeof value.mimeType === "string" &&
+  value.mimeType.startsWith("image/");
+
 /**
  * Bridges QuickJS `tools.someSource.someOp(args)` calls into
  * `executor.tools.invoke(toolId, args)`.
@@ -65,7 +72,13 @@ export const makeExecutorToolInvoker = (
     ) {
       return yield* Effect.fail((r as { error: unknown }).error);
     }
-    if (r !== null && typeof r === "object" && "data" in r) {
+    if (
+      !path.startsWith("workspace.") &&
+      r !== null &&
+      typeof r === "object" &&
+      "data" in r &&
+      !isImageDataResult(r as Record<string, unknown>)
+    ) {
       return (r as { data: unknown }).data;
     }
     return r;

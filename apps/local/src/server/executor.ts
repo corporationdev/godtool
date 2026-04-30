@@ -16,16 +16,8 @@ import {
 } from "./db-upgrade";
 import { migrateLegacyConnections } from "./migrate-connections";
 
-import {
-  Scope,
-  ScopeId,
-  collectSchemas,
-  createExecutor,
-} from "@executor/sdk";
-import {
-  makeSqliteAdapter,
-  makeSqliteBlobStore,
-} from "@executor/storage-file";
+import { Scope, ScopeId, collectSchemas, createExecutor } from "@executor/sdk";
+import { makeSqliteAdapter, makeSqliteBlobStore } from "@executor/storage-file";
 import { NodeFileSystem } from "@effect/platform-node";
 import { makeFileConfigSink, type ConfigFileSink } from "@executor/config";
 import * as executorSchema from "./executor-schema";
@@ -35,9 +27,13 @@ import { openApiPlugin } from "@executor/plugin-openapi";
 import { mcpPlugin } from "@executor/plugin-mcp";
 import { googleDiscoveryPlugin } from "@executor/plugin-google-discovery";
 import { graphqlPlugin } from "@executor/plugin-graphql";
+import { rawPlugin } from "@executor/plugin-raw";
+import { browserPlugin } from "@executor/plugin-browser";
+import { computerUsePlugin } from "@executor/plugin-computer-use";
 import { keychainPlugin } from "@executor/plugin-keychain";
 import { fileSecretsPlugin } from "@executor/plugin-file-secrets";
 import { onepasswordPlugin } from "@executor/plugin-onepassword";
+import { workspacePlugin } from "@executor/plugin-workspace";
 
 // In dev mode the drizzle folder sits next to the source tree. In a compiled
 // binary the files are inlined via the build-time gen module below, and we
@@ -64,7 +60,7 @@ interface ResolvedDb {
 }
 
 const resolveDbPath = (): ResolvedDb => {
-  const dataDir = process.env.EXECUTOR_DATA_DIR ?? join(homedir(), ".executor");
+  const dataDir = process.env.GODTOOL_DATA_DIR ?? join(homedir(), ".godtool");
   fs.mkdirSync(dataDir, { recursive: true });
   const dbPath = `${dataDir}/data.db`;
   // DBs written by pre-scope-refactor versions of the CLI have a schema
@@ -99,6 +95,10 @@ const createLocalPlugins = (configFile: ConfigFileSink) =>
     mcpPlugin({ dangerouslyAllowStdioMCP: true, configFile }),
     googleDiscoveryPlugin(),
     graphqlPlugin({ configFile }),
+    rawPlugin({ configFile }),
+    browserPlugin(),
+    computerUsePlugin(),
+    workspacePlugin(),
     keychainPlugin(),
     fileSecretsPlugin(),
     onepasswordPlugin(),
@@ -128,7 +128,7 @@ const createLocalExecutorLayer = () => {
       const db = drizzle(sqlite, { schema: executorSchema });
       migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
 
-      const cwd = process.env.EXECUTOR_SCOPE_DIR || process.cwd();
+      const cwd = process.env.GODTOOL_SCOPE_DIR || process.cwd();
       const scopeId = makeScopeId(cwd);
       // Reinstate pre-scope secret routing rows once migrations have
       // created the new `secret` table. INSERT OR IGNORE makes this
@@ -165,7 +165,7 @@ const createLocalExecutorLayer = () => {
         plugins,
       });
 
-      // Sync sources from executor.jsonc (idempotent — plugins upsert).
+      // Sync sources from godtool.jsonc (idempotent — plugins upsert).
       // Runs after plugins are wired so sources added here round-trip
       // back through configFile — harmless because the file already
       // contains them.

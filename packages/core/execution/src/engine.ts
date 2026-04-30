@@ -57,11 +57,219 @@ export type ResumeResponse = {
 // ---------------------------------------------------------------------------
 
 const MAX_PREVIEW_CHARS = 30_000;
+const DEBUG_LOG_FILE = "/tmp/executor-mcp-debug.log";
+
+const appendDebugLine = (file: string, line: string): void => {
+  if (typeof process === "undefined") return;
+  const getBuiltinModule = (process as unknown as {
+    getBuiltinModule?: (name: string) => { appendFileSync?: (...args: unknown[]) => void };
+  }).getBuiltinModule;
+  const fs = getBuiltinModule?.("node:fs");
+  fs?.appendFileSync?.(file, line, "utf8");
+};
+
+const debugImagesEnabled = (): boolean => {
+  if (typeof process === "undefined" || !process.env) return false;
+  if (process.env.EXECUTOR_MCP_DEBUG === "0" || process.env.EXECUTOR_MCP_DEBUG === "false") {
+    return false;
+  }
+  return (
+    process.env.EXECUTOR_MCP_DEBUG === undefined ||
+    process.env.EXECUTOR_MCP_DEBUG === "1" ||
+    process.env.EXECUTOR_MCP_DEBUG === "true" ||
+    typeof process.env.EXECUTOR_MCP_DEBUG_FILE === "string"
+  );
+};
+
+const imageDebugLog = (event: string, data: Record<string, unknown>) => {
+  if (!debugImagesEnabled()) return;
+  const file =
+    typeof process !== "undefined" && process.env?.EXECUTOR_MCP_DEBUG_FILE
+      ? process.env.EXECUTOR_MCP_DEBUG_FILE
+      : DEBUG_LOG_FILE;
+  const payload = {
+    ts: new Date().toISOString(),
+    scope: "execution",
+    event,
+    ...data,
+  };
+  try {
+    appendDebugLine(file, `${JSON.stringify(payload)}\n`);
+  } catch {
+    // Debug logging must never affect code execution.
+  }
+};
 
 const truncate = (value: string, max: number): string =>
   value.length > max
     ? `${value.slice(0, max)}\n... [truncated ${value.length - max} chars]`
     : value;
+
+export type FormattedContentImage = {
+  readonly mimeType: string;
+  readonly data: string;
+  readonly path?: string;
+};
+
+const isImageDataObject = (
+  value: Record<string, unknown>,
+): value is { readonly mimeType: string; readonly data: string } =>
+  typeof value.mimeType === "string" &&
+  value.mimeType.startsWith("image/") &&
+  typeof value.data === "string";
+
+const base64ByteLength = (value: string): number => {
+  const base64 = value.includes(",") ? (value.split(",").pop() ?? "") : value;
+  const normalized = base64.replace(/\s/g, "");
+  if (normalized.length === 0) return 0;
+  const padding = normalized.endsWith("==") ? 2 : normalized.endsWith("=") ? 1 : 0;
+  return Math.max(0, Math.floor((normalized.length * 3) / 4) - padding);
+};
+
+const imageExtension = (mimeType: string): string => {
+  switch (mimeType) {
+    case "image/jpeg":
+      return "jpg";
+    case "image/png":
+      return "png";
+    case "image/webp":
+      return "webp";
+    case "image/gif":
+      return "gif";
+    default:
+      return "img";
+  }
+};
+
+const getBuiltinModule = <T>(name: string): T | undefined => {
+  if (typeof process === "undefined") return undefined;
+  return (process as unknown as { getBuiltinModule?: (name: string) => T }).getBuiltinModule?.(
+    name,
+  );
+};
+
+const imageArtifactsDir = (): string | null => {
+  if (typeof process === "undefined" || !process.env) return null;
+  const path = getBuiltinModule<typeof import("node:path")>("node:path");
+  const os = getBuiltinModule<typeof import("node:os")>("node:os");
+  if (!path || !os) return null;
+
+  const artifactsDir = process.env.GODTOOL_ARTIFACTS_DIR;
+  if (artifactsDir && artifactsDir.trim().length > 0) {
+    return artifactsDir;
+  }
+
+  const dataDir =
+    process.env.GODTOOL_DATA_DIR && process.env.GODTOOL_DATA_DIR.trim().length > 0
+      ? process.env.GODTOOL_DATA_DIR
+      : path.join(os.homedir(), ".godtool");
+  return path.join(dataDir, "artifacts");
+};
+
+const decodeBase64Image = (data: string): Buffer | null => {
+  if (typeof Buffer === "undefined") return null;
+  const base64 = data.includes(",") ? (data.split(",").pop() ?? "") : data;
+  const normalized = base64.replace(/\s/g, "");
+  if (normalized.length === 0) return null;
+  return Buffer.from(normalized, "base64");
+};
+
+const persistImageArtifact = (
+  image: { readonly mimeType: string; readonly data: string },
+  contentIndex: number,
+): string | undefined => {
+  const fs = getBuiltinModule<typeof import("node:fs")>("node:fs");
+  const path = getBuiltinModule<typeof import("node:path")>("node:path");
+  const crypto = getBuiltinModule<typeof import("node:crypto")>("node:crypto");
+  const dir = imageArtifactsDir();
+  const bytes = decodeBase64Image(image.data);
+  if (!fs || !path || !crypto || !dir || !bytes) return undefined;
+
+  const id =
+    typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const filePath = path.join(
+    dir,
+    `image-${Date.now()}-${contentIndex}-${id}.${imageExtension(image.mimeType)}`,
+  );
+
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(filePath, bytes);
+    return filePath;
+  } catch {
+    return undefined;
+  }
+};
+
+const makeExecutionCallerId = (): string => {
+  const crypto = getBuiltinModule<typeof import("node:crypto")>("node:crypto");
+  return typeof crypto?.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+};
+
+const extractContentImages = (
+  value: unknown,
+): {
+  readonly value: unknown;
+  readonly images: readonly FormattedContentImage[];
+} => {
+  const images: FormattedContentImage[] = [];
+  const seen = new WeakSet<object>();
+
+  const walk = (current: unknown): unknown => {
+    if (Array.isArray(current)) {
+      if (seen.has(current)) return "[Circular]";
+      seen.add(current);
+      return current.map(walk);
+    }
+
+    if (typeof current !== "object" || current === null) return current;
+
+    const record = current as Record<string, unknown>;
+    if (isImageDataObject(record)) {
+      const contentIndex = images.length + 1;
+      const artifactPath = persistImageArtifact(record, contentIndex);
+      images.push({ mimeType: record.mimeType, data: record.data, path: artifactPath });
+      imageDebugLog("extract.image", {
+        contentIndex,
+        mimeType: record.mimeType,
+        base64Length: record.data.length,
+        byteLength: base64ByteLength(record.data),
+        artifactPath,
+      });
+      return Object.fromEntries(
+        Object.entries({
+          mimeType: record.mimeType,
+          byteLength: base64ByteLength(record.data),
+          contentIndex,
+          path: artifactPath,
+          fallback:
+            artifactPath === undefined
+              ? undefined
+              : "If the image is not visible, read this file from disk.",
+        }).filter(([, value]) => value !== undefined),
+      );
+    }
+
+    if (seen.has(current)) return "[Circular]";
+    seen.add(current);
+
+    const out: Record<string, unknown> = {};
+    for (const [key, nested] of Object.entries(record)) {
+      out[key] = walk(nested);
+    }
+    return out;
+  };
+
+  return { value: walk(value), images };
+};
+
+export const __testing = {
+  imageArtifactsDir,
+};
 
 export const formatExecuteResult = (
   result: ExecuteResult,
@@ -69,12 +277,23 @@ export const formatExecuteResult = (
   text: string;
   structured: Record<string, unknown>;
   isError: boolean;
+  contentImages: readonly FormattedContentImage[];
 } => {
+  const extracted = extractContentImages(result.result);
+  imageDebugLog("format.result", {
+    hasError: Boolean(result.error),
+    resultType: typeof result.result,
+    imageCount: extracted.images.length,
+    imageMimeTypes: extracted.images.map((image) => image.mimeType),
+    imageBase64Lengths: extracted.images.map((image) => image.data.length),
+    artifactPaths: extracted.images.map((image) => image.path ?? null),
+    logCount: result.logs?.length ?? 0,
+  });
   const resultText =
-    result.result != null
-      ? typeof result.result === "string"
-        ? result.result
-        : JSON.stringify(result.result, null, 2)
+    extracted.value != null
+      ? typeof extracted.value === "string"
+        ? extracted.value
+        : JSON.stringify(extracted.value, null, 2)
       : null;
 
   const logText = result.logs && result.logs.length > 0 ? result.logs.join("\n") : null;
@@ -85,6 +304,7 @@ export const formatExecuteResult = (
       text: truncate(parts.join("\n"), MAX_PREVIEW_CHARS),
       structured: { status: "error", error: result.error, logs: result.logs ?? [] },
       isError: true,
+      contentImages: [],
     };
   }
 
@@ -94,8 +314,9 @@ export const formatExecuteResult = (
   ];
   return {
     text: parts.join("\n"),
-    structured: { status: "completed", result: result.result ?? null, logs: result.logs ?? [] },
+    structured: { status: "completed", result: extracted.value ?? null, logs: result.logs ?? [] },
     isError: false,
+    contentImages: extracted.images,
   };
 };
 
@@ -345,8 +566,10 @@ export const createExecutionEngine = <
    * caller scope that returned the first pause, such as an HTTP request handler.
    */
   const startPausableExecution = Effect.fn("mcp.execute")(function* (code: string) {
+    const callerId = `execution-${makeExecutionCallerId()}`;
     yield* Effect.annotateCurrentSpan({
       "mcp.execute.mode": "pausable",
+      "mcp.execute.caller_id": callerId,
       "mcp.execute.code_length": code.length,
     });
 
@@ -379,7 +602,7 @@ export const createExecutionEngine = <
         return yield* Deferred.await(responseDeferred);
       });
 
-    const invoker = makeFullInvoker(executor, { onElicitation: elicitationHandler });
+    const invoker = makeFullInvoker(executor, { callerId, onElicitation: elicitationHandler });
     fiber = yield* Effect.forkDaemon(
       codeExecutor.execute(code, invoker).pipe(Effect.withSpan("executor.code.exec")),
     );
@@ -426,11 +649,14 @@ export const createExecutionEngine = <
     code: string,
     options: { readonly onElicitation: ElicitationHandler },
   ) {
+    const callerId = `execution-${makeExecutionCallerId()}`;
     yield* Effect.annotateCurrentSpan({
       "mcp.execute.mode": "inline",
+      "mcp.execute.caller_id": callerId,
       "mcp.execute.code_length": code.length,
     });
     const invoker = makeFullInvoker(executor, {
+      callerId,
       onElicitation: options.onElicitation,
     });
     return yield* codeExecutor
