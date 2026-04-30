@@ -1,7 +1,8 @@
 // Shared HTTP test harness for node-pool integration tests.
 //
 // Stands up the real ProtectedCloudApi against a real DbService and
-// every real plugin (openapi / mcp / graphql / workos-vault), with
+// every real plugin (openapi / mcp / google-discovery / graphql / raw /
+// workos-vault), with
 // two test-only swaps:
 //
 //   - `OrgAuthLive` is replaced with `FakeOrgAuthLive`, which reads
@@ -26,25 +27,16 @@ import {
   HttpServerRequest,
 } from "@effect/platform";
 
-import {
-  ExecutionEngineService,
-  ExecutorService,
-} from "@executor/api/server";
+import { ExecutionEngineService, ExecutorService } from "@executor/api/server";
 import { createExecutionEngine } from "@executor/execution";
 import { makeQuickJsExecutor } from "@executor/runtime-quickjs";
-import {
-  Scope,
-  ScopeId,
-  collectSchemas,
-  createExecutor,
-} from "@executor/sdk";
-import {
-  makePostgresAdapter,
-  makePostgresBlobStore,
-} from "@executor/storage-postgres";
+import { Scope, ScopeId, collectSchemas, createExecutor } from "@executor/sdk";
+import { makePostgresAdapter, makePostgresBlobStore } from "@executor/storage-postgres";
 import { openApiPlugin } from "@executor/plugin-openapi";
 import { mcpPlugin } from "@executor/plugin-mcp";
+import { googleDiscoveryPlugin } from "@executor/plugin-google-discovery";
 import { graphqlPlugin } from "@executor/plugin-graphql";
+import { rawPlugin } from "@executor/plugin-raw";
 import {
   workosVaultPlugin,
   WorkOSVaultClientError,
@@ -54,7 +46,9 @@ import {
 } from "@executor/plugin-workos-vault";
 import { OpenApiExtensionService } from "@executor/plugin-openapi/api";
 import { McpExtensionService } from "@executor/plugin-mcp/api";
+import { GoogleDiscoveryExtensionService } from "@executor/plugin-google-discovery/api";
 import { GraphqlExtensionService } from "@executor/plugin-graphql/api";
+import { RawExtensionService } from "@executor/plugin-raw/api";
 
 import { AuthContext, OrgAuth } from "../../auth/middleware";
 import {
@@ -71,8 +65,7 @@ export const TEST_USER_HEADER = "x-test-user-id";
 // Mirrors apps/cloud/src/services/executor.ts#createScopedExecutor — the
 // per-user scope id bakes in the org so the same user id in a different
 // org gets a distinct scope row.
-const userOrgScopeId = (userId: string, orgId: string) =>
-  `user-org:${userId}:${orgId}`;
+const userOrgScopeId = (userId: string, orgId: string) => `user-org:${userId}:${orgId}`;
 
 // `asOrg(orgId, …)` callers don't care which specific user they are, only
 // that the executor has a valid user-org scope. We give each org a stable
@@ -154,8 +147,7 @@ export const makeFakeVaultClient = (): WorkOSVaultClient => {
     readObjectByName: (name) =>
       Effect.try({
         try: () => read(name),
-        catch: (cause) =>
-          new WorkOSVaultClientError({ cause, operation: "read_object_by_name" }),
+        catch: (cause) => new WorkOSVaultClientError({ cause, operation: "read_object_by_name" }),
       }),
     updateObject: (opts) =>
       Effect.try({
@@ -177,17 +169,15 @@ export const makeFakeVaultClient = (): WorkOSVaultClient => {
 
 const fakeVault = makeFakeVaultClient();
 
-const createTestScopedExecutor = (
-  userId: string,
-  orgId: string,
-  orgName: string,
-) =>
+const createTestScopedExecutor = (userId: string, orgId: string, orgName: string) =>
   Effect.gen(function* () {
     const { db } = yield* DbService;
     const plugins = [
       openApiPlugin(),
       mcpPlugin({ dangerouslyAllowStdioMCP: false }),
+      googleDiscoveryPlugin(),
       graphqlPlugin(),
+      rawPlugin(),
       workosVaultPlugin({ client: fakeVault }),
     ] as const;
     const schema = collectSchemas(plugins);
@@ -254,7 +244,9 @@ const buildAppForScope = (userId: string, orgId: string, orgName: string) =>
       Layer.succeed(ExecutionEngineService, engine),
       Layer.succeed(OpenApiExtensionService, executor.openapi),
       Layer.succeed(McpExtensionService, executor.mcp),
+      Layer.succeed(GoogleDiscoveryExtensionService, executor.googleDiscovery),
       Layer.succeed(GraphqlExtensionService, executor.graphql),
+      Layer.succeed(RawExtensionService, executor.raw),
     );
     return yield* HttpApiBuilder.httpApp.pipe(
       Effect.provide(
@@ -279,17 +271,12 @@ const RouterApp = Effect.gen(function* () {
   }
   const userHeader = request.headers[TEST_USER_HEADER];
   const userId =
-    typeof userHeader === "string" && userHeader.length > 0
-      ? userHeader
-      : defaultUserFor(orgId);
+    typeof userHeader === "string" && userHeader.length > 0 ? userHeader : defaultUserFor(orgId);
   return yield* yield* buildAppForScope(userId, orgId, `Org ${orgId}`);
 });
 
 const handler = HttpApp.toWebHandler(
-  RouterApp.pipe(
-    Effect.provide(DbService.Live),
-    Effect.provide(HttpServer.layerContext),
-  ),
+  RouterApp.pipe(Effect.provide(DbService.Live), Effect.provide(HttpServer.layerContext)),
 );
 
 export const fetchForOrg = (orgId: string): typeof globalThis.fetch =>
@@ -301,10 +288,7 @@ export const fetchForOrg = (orgId: string): typeof globalThis.fetch =>
     return handler(req);
   }) as typeof globalThis.fetch;
 
-export const fetchForUser = (
-  userId: string,
-  orgId: string,
-): typeof globalThis.fetch =>
+export const fetchForUser = (userId: string, orgId: string): typeof globalThis.fetch =>
   ((input: RequestInfo | URL, init?: RequestInit) => {
     const base = input instanceof Request ? input : new Request(input, init);
     const req = new Request(base, {
@@ -324,22 +308,21 @@ export const clientLayerForOrg = (orgId: string) =>
 
 export const clientLayerForUser = (userId: string, orgId: string) =>
   FetchHttpClient.layer.pipe(
-    Layer.provide(
-      Layer.succeed(FetchHttpClient.Fetch, fetchForUser(userId, orgId)),
-    ),
+    Layer.provide(Layer.succeed(FetchHttpClient.Fetch, fetchForUser(userId, orgId))),
   );
 
 // Constructs an HttpApiClient bound to the given org, hands it to `body`,
 // and provides the org-scoped fetch layer in one step. Keeps per-test
 // Effect blocks focused on the actual assertions.
-type ApiShape = typeof ProtectedCloudApi extends HttpApi.HttpApi<
-  infer _Id,
-  infer Groups,
-  infer ApiError,
-  infer _ApiR
->
-  ? HttpApiClient.Client<Groups, ApiError, never>
-  : never;
+type ApiShape =
+  typeof ProtectedCloudApi extends HttpApi.HttpApi<
+    infer _Id,
+    infer Groups,
+    infer ApiError,
+    infer _ApiR
+  >
+    ? HttpApiClient.Client<Groups, ApiError, never>
+    : never;
 
 export const asOrg = <A, E>(
   orgId: string,
@@ -362,14 +345,11 @@ export const asUser = <A, E>(
   Effect.gen(function* () {
     const client = yield* HttpApiClient.make(ProtectedCloudApi, { baseUrl: TEST_BASE_URL });
     return yield* body(client);
-  }).pipe(
-    Effect.provide(clientLayerForUser(userId, orgId)),
-  ) as Effect.Effect<A, E>;
+  }).pipe(Effect.provide(clientLayerForUser(userId, orgId))) as Effect.Effect<A, E>;
 
 // Exposed so tests can build the same user-org scope id the harness uses
 // when writing at a specific user's scope.
-export const testUserOrgScopeId = (userId: string, orgId: string) =>
-  userOrgScopeId(userId, orgId);
+export const testUserOrgScopeId = (userId: string, orgId: string) => userOrgScopeId(userId, orgId);
 
 // Re-exports so call sites don't need a second import.
 export { ProtectedCloudApi };

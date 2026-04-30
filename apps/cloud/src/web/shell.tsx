@@ -31,7 +31,9 @@ import {
 } from "@executor/react/components/sidebar";
 import { openApiSourcePlugin } from "@executor/plugin-openapi/react";
 import { mcpSourcePlugin } from "@executor/plugin-mcp/react";
+import { googleDiscoverySourcePlugin } from "@executor/plugin-google-discovery/react";
 import { graphqlSourcePlugin } from "@executor/plugin-graphql/react";
+import { rawSourcePlugin } from "@executor/plugin-raw/react";
 import { AUTH_PATHS } from "../auth/api";
 import { organizationsAtom, switchOrganization, useAuth } from "./auth";
 import {
@@ -39,7 +41,13 @@ import {
   useCreateOrganizationForm,
 } from "./components/create-organization-form";
 
-const sourcePlugins = [openApiSourcePlugin, mcpSourcePlugin, graphqlSourcePlugin];
+const sourcePlugins = [
+  openApiSourcePlugin,
+  mcpSourcePlugin,
+  rawSourcePlugin,
+  googleDiscoverySourcePlugin,
+  graphqlSourcePlugin,
+];
 
 type DeviceStatusResponse = {
   readonly activeDeviceId: string | null;
@@ -225,7 +233,7 @@ function DeviceConnectionFooter() {
   const connected = onlineDevices.length > 0;
   const label = connected
     ? onlineDevices.length === 1
-      ? activeDevice?.name ?? "Local Mac"
+      ? (activeDevice?.name ?? "Local Mac")
       : `${onlineDevices.length} devices online`
     : failed
       ? "Connection unavailable"

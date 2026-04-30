@@ -50,6 +50,13 @@
       "when": 1777512000000,
       "tag": "0006_source_catalog",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1777541700000,
+      "tag": "0007_google_discovery_raw",
+      "breakpoints": true
     }
   ]
 }
