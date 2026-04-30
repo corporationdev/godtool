@@ -2,11 +2,13 @@ import { Effect, Layer, Option } from "effect";
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "@effect/platform";
 
 import type { PluginCtx, StorageFailure } from "@executor/sdk";
-
 import {
-  GoogleDiscoveryInvocationError,
-  GoogleDiscoveryOAuthError,
-} from "./errors";
+  invokeManagedHttp,
+  type ManagedHttpParameter,
+  type ManagedHttpRequest,
+} from "@executor/plugin-managed-auth";
+
+import { GoogleDiscoveryInvocationError, GoogleDiscoveryOAuthError } from "./errors";
 import type { GoogleDiscoveryStore } from "./binding-store";
 import {
   GoogleDiscoveryInvocationResult,
@@ -176,6 +178,47 @@ const performRequest = Effect.fn("GoogleDiscovery.invoke")(function* (input: {
   });
 });
 
+const buildManagedRequest = (input: {
+  method: string;
+  pathTemplate: string;
+  parameters: readonly GoogleDiscoveryParameter[];
+  hasBody: boolean;
+  source: GoogleDiscoveryStoredSourceData;
+  args: Record<string, unknown>;
+}): ManagedHttpRequest => {
+  const resolvedPath = replacePathParameters({
+    pathTemplate: input.pathTemplate,
+    args: input.args,
+    parameters: input.parameters,
+  });
+  const requestUrl = new URL(resolvedPath.replace(/^\//, ""), resolveBaseUrl(input.source));
+  const parameters: ManagedHttpParameter[] = [];
+
+  for (const parameter of input.parameters) {
+    if (parameter.location === "path") continue;
+    const values = stringValuesFromParameter(input.args[parameter.name], parameter.repeated);
+    if (values.length === 0) continue;
+    if (parameter.location === "query") {
+      for (const value of values) {
+        parameters.push({ type: "query", name: parameter.name, value });
+      }
+      continue;
+    }
+    parameters.push({
+      type: "header",
+      name: parameter.name,
+      value: parameter.repeated ? values.join(",") : values[0]!,
+    });
+  }
+
+  return {
+    endpoint: requestUrl.toString(),
+    method: input.method.toUpperCase() as ManagedHttpRequest["method"],
+    parameters,
+    ...(input.hasBody && input.args.body !== undefined ? { body: input.args.body } : {}),
+  };
+};
+
 // ---------------------------------------------------------------------------
 // Entry point — called from plugin.invokeTool.
 // ---------------------------------------------------------------------------
@@ -187,11 +230,11 @@ export const invokeGoogleDiscoveryTool = (input: {
   toolScope: string;
   args: unknown;
   httpClientLayer?: Layer.Layer<HttpClient.HttpClient>;
+  composioApiKey?: string;
+  proxy?: Parameters<typeof invokeManagedHttp>[0]["proxy"];
 }): Effect.Effect<
   GoogleDiscoveryInvocationResult,
-  | GoogleDiscoveryInvocationError
-  | GoogleDiscoveryOAuthError
-  | StorageFailure
+  GoogleDiscoveryInvocationError | GoogleDiscoveryOAuthError | StorageFailure
 > =>
   Effect.gen(function* () {
     const entry = yield* input.ctx.storage.getBinding(input.toolId, input.toolScope);
@@ -214,21 +257,47 @@ export const invokeGoogleDiscoveryTool = (input: {
     }
     const source = stored.config;
 
+    if (source.auth.kind === "composio") {
+      const result = yield* invokeManagedHttp({
+        config: source.auth,
+        request: buildManagedRequest({
+          method: entry.binding.method,
+          pathTemplate: entry.binding.pathTemplate,
+          parameters: entry.binding.parameters,
+          hasBody: entry.binding.hasBody,
+          source,
+          args: (input.args ?? {}) as Record<string, unknown>,
+        }),
+        composioApiKey: input.composioApiKey,
+        proxy: input.proxy,
+        connections: input.ctx.connections,
+      }).pipe(
+        Effect.mapError(
+          (error) =>
+            new GoogleDiscoveryInvocationError({
+              message: error.message,
+              statusCode: Option.none(),
+            }),
+        ),
+      );
+      return new GoogleDiscoveryInvocationResult({
+        status: result.status,
+        headers: result.headers,
+        data: result.error ? null : result.data,
+        error: result.error,
+      });
+    }
+
     const authHeader =
       source.auth.kind === "oauth2"
-        ? `Bearer ${yield* input.ctx.connections
-            .accessToken(source.auth.connectionId)
-            .pipe(
-              Effect.mapError(
-                (err) =>
-                  new GoogleDiscoveryOAuthError({
-                    message:
-                      "message" in err
-                        ? (err as { message: string }).message
-                        : String(err),
-                  }),
-              ),
-            )}`
+        ? `Bearer ${yield* input.ctx.connections.accessToken(source.auth.connectionId).pipe(
+            Effect.mapError(
+              (err) =>
+                new GoogleDiscoveryOAuthError({
+                  message: "message" in err ? (err as { message: string }).message : String(err),
+                }),
+            ),
+          )}`
         : undefined;
 
     const layer = input.httpClientLayer ?? FetchHttpClient.layer;

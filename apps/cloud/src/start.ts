@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { createMiddleware, createStart } from "@tanstack/react-start";
 import { handleApiRequest } from "./api";
+import { composioManagedAuthFetch } from "./composio-managed-auth";
 import { deviceFetch } from "./devices";
 import { mcpFetch } from "./mcp";
 
@@ -74,6 +75,16 @@ const deviceRequestMiddleware = createMiddleware({ type: "request" }).server(
   },
 );
 
+const composioManagedAuthMiddleware = createMiddleware({ type: "request" }).server(
+  async ({ pathname, request, next }) => {
+    if (pathname.startsWith("/api/managed-auth/composio/")) {
+      const response = await composioManagedAuthFetch(request);
+      if (response) return response;
+    }
+    return next();
+  },
+);
+
 // ---------------------------------------------------------------------------
 // API middleware — routes /api/* to the Effect HTTP layer
 // ---------------------------------------------------------------------------
@@ -94,6 +105,7 @@ export const startInstance = createStart(() => ({
     mcpRequestMiddleware,
     sentryTunnelMiddleware,
     deviceRequestMiddleware,
+    composioManagedAuthMiddleware,
     apiRequestMiddleware,
   ],
 }));

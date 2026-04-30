@@ -1,7 +1,7 @@
-import { Link, Outlet, useLocation } from "@tanstack/react-router";
+import { Link, Outlet, useLocation, useMatches } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import type { ComponentType } from "react";
-import { DatabaseZap, Folder, Globe, KeyRound } from "lucide-react";
+import { ArrowLeft, CreditCard, DatabaseZap, Folder, Globe, KeyRound, Settings } from "lucide-react";
 import { useAtomRefresh } from "@effect-atom/atom-react";
 import { sourcesAtom, toolsAtom } from "@executor/react/api/atoms";
 import { useScope } from "@executor/react/api/scope-context";
@@ -40,6 +40,14 @@ const sourcePlugins = [
   googleDiscoverySourcePlugin,
   graphqlSourcePlugin,
 ];
+
+const settingsNavItems = [{ to: "/settings/billing", label: "Billing", icon: CreditCard }] as const;
+
+declare module "@tanstack/react-router" {
+  interface StaticDataRouteOption {
+    shellSidebar?: "app" | "settings";
+  }
+}
 
 // ── Env ─────────────────────────────────────────────────────────────────
 
@@ -285,9 +293,62 @@ function AppSidebar(props: {
           auth={props.auth.auth}
           onSignIn={props.auth.available ? () => void props.auth.signIn() : undefined}
           onSignOut={props.auth.available ? () => void props.auth.signOut() : undefined}
+          settingsLink={
+            <Link to="/settings/billing">
+              <Settings />
+              Settings
+            </Link>
+          }
         />
       </SidebarFooter>
       <SidebarRail />
+    </Sidebar>
+  );
+}
+
+function SettingsSidebar(props: { pathname: string; auth: ReturnType<typeof useLocalAuth> }) {
+  const isActive = (to: string) => props.pathname === to || props.pathname.startsWith(to + "/");
+
+  return (
+    <Sidebar collapsible="none" className="h-svh border-r border-sidebar-border">
+      <SidebarHeader className="desktop-settings-sidebar-header min-h-[104px] px-2 pb-2 pt-14">
+        <div className="flex h-10 items-center gap-2 px-2">
+          <Link
+            to="/"
+            className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            aria-label="Back to app"
+          >
+            <ArrowLeft className="size-4" />
+          </Link>
+          <span className="font-display text-base tracking-tight text-foreground">Settings</span>
+        </div>
+      </SidebarHeader>
+
+      <ShadSidebarContent>
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {settingsNavItems.map(({ to, label, icon: Icon }) => (
+                <NavItem key={to} to={to} label={label} icon={Icon} active={isActive(to)} />
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </ShadSidebarContent>
+
+      <SidebarFooter className="group-data-[collapsible=icon]:items-center">
+        <AccountMenu
+          auth={props.auth.auth}
+          onSignIn={props.auth.available ? () => void props.auth.signIn() : undefined}
+          onSignOut={props.auth.available ? () => void props.auth.signOut() : undefined}
+          settingsLink={
+            <Link to="/settings/billing">
+              <Settings />
+              Settings
+            </Link>
+          }
+        />
+      </SidebarFooter>
     </Sidebar>
   );
 }
@@ -296,12 +357,16 @@ function AppSidebar(props: {
 
 export function Shell() {
   const location = useLocation();
+  const matches = useMatches();
   const pathname = location.pathname;
   const scopeId = useScope();
   const refreshSources = useAtomRefresh(sourcesAtom(scopeId));
   const refreshTools = useAtomRefresh(toolsAtom(scopeId));
   const auth = useLocalAuth();
   const { latestVersion, updateAvailable, channel } = useLatestVersion(VITE_APP_VERSION);
+  const shellSidebar = matches.some((match) => match.staticData.shellSidebar === "settings")
+    ? "settings"
+    : "app";
 
   useEffect(() => {
     if (!import.meta.hot) {
@@ -323,13 +388,17 @@ export function Shell() {
   return (
     <SidebarProvider>
       <CommandPalette sourcePlugins={sourcePlugins} />
-      <AppSidebar
-        pathname={pathname}
-        updateAvailable={updateAvailable}
-        latestVersion={latestVersion}
-        channel={channel}
-        auth={auth}
-      />
+      {shellSidebar === "settings" ? (
+        <SettingsSidebar pathname={pathname} auth={auth} />
+      ) : (
+        <AppSidebar
+          pathname={pathname}
+          updateAvailable={updateAvailable}
+          latestVersion={latestVersion}
+          channel={channel}
+          auth={auth}
+        />
+      )}
       <main className="flex min-h-0 flex-1 flex-col min-w-0 overflow-hidden">
         <Outlet />
       </main>

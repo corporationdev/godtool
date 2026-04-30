@@ -21,19 +21,19 @@ export const makeExecutionStack = (
   organizationName: string,
 ) =>
   Effect.gen(function* () {
-    const executor = yield* createScopedExecutor(
-      userId,
-      organizationId,
-      organizationName,
-    ).pipe(Effect.withSpan("McpSessionDO.createScopedExecutor"));
+    const executor = yield* createScopedExecutor(userId, organizationId, organizationName).pipe(
+      Effect.withSpan("McpSessionDO.createScopedExecutor"),
+    );
     const fallbackCodeExecutor = makeDynamicWorkerExecutor({ loader: env.LOADER });
+    const autumn = yield* AutumnService;
+    const allowFallback = yield* autumn.isFeatureAllowed(organizationId, "hosted-worker-fallback");
     const codeExecutor = makeDeviceFirstCodeExecutor({
       fallback: fallbackCodeExecutor,
       organizationId,
       organizationName,
       userId,
+      allowFallback,
     });
-    const autumn = yield* AutumnService;
     const engine = withExecutionUsageTracking(
       organizationId,
       createExecutionEngine({ executor, codeExecutor }),

@@ -5,6 +5,9 @@ export interface OpenApiPreset {
   readonly url: string;
   readonly icon?: string;
   readonly featured?: boolean;
+  readonly composio?: {
+    readonly app: string;
+  };
 }
 
 export const openApiPresets: readonly OpenApiPreset[] = [
@@ -15,6 +18,7 @@ export const openApiPresets: readonly OpenApiPreset[] = [
     url: "https://raw.githubusercontent.com/stripe/openapi/master/openapi/spec3.json",
     icon: "https://stripe.com/favicon.ico",
     featured: true,
+    composio: { app: "stripe" },
   },
   {
     id: "github-rest",
@@ -23,6 +27,7 @@ export const openApiPresets: readonly OpenApiPreset[] = [
     url: "https://raw.githubusercontent.com/github/rest-api-description/main/descriptions/api.github.com/api.github.com.json",
     icon: "https://github.com/favicon.ico",
     featured: true,
+    composio: { app: "github" },
   },
   {
     id: "vercel",
@@ -93,6 +98,7 @@ export const openApiPresets: readonly OpenApiPreset[] = [
     summary: "Tasks, projects, teams, and workspace management.",
     url: "https://raw.githubusercontent.com/APIs-guru/openapi-directory/main/APIs/asana.com/1.0/openapi.yaml",
     icon: "https://asana.com/favicon.ico",
+    composio: { app: "asana" },
   },
   {
     id: "twilio",
@@ -100,6 +106,7 @@ export const openApiPresets: readonly OpenApiPreset[] = [
     summary: "SMS, voice, video, and messaging APIs.",
     url: "https://raw.githubusercontent.com/twilio/twilio-oai/main/spec/json/twilio_api_v2010.json",
     icon: "https://twilio.com/favicon.ico",
+    composio: { app: "twilio" },
   },
   {
     id: "digitalocean",
@@ -135,5 +142,6 @@ export const openApiPresets: readonly OpenApiPreset[] = [
     summary: "Tracks, albums, playlists, library, and playback.",
     url: "https://raw.githubusercontent.com/sonallux/spotify-web-api/refs/heads/main/official-spotify-open-api.yml",
     icon: "https://spotify.com/favicon.ico",
+    composio: { app: "spotify" },
   },
 ];

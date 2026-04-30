@@ -1,4 +1,5 @@
 import { CheckIcon } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { Button } from "./button";
 import {
@@ -44,6 +45,7 @@ type AccountMenuProps = {
   readonly onSignOut?: () => void | Promise<void>;
   readonly onSwitchOrganization?: (organizationId: string) => void | Promise<void>;
   readonly onCreateOrganization?: () => void;
+  readonly settingsLink?: ReactNode;
 };
 
 const initialsFor = (name: string | null, email: string): string => {
@@ -223,9 +225,14 @@ export function AccountMenu(props: AccountMenuProps) {
             {user.name && <p className="truncate text-muted-foreground">{user.email}</p>}
           </div>
         </div>
+        {(props.settingsLink || props.onSignOut) && <DropdownMenuSeparator />}
+        {props.settingsLink && (
+          <DropdownMenuItem asChild className="text-xs">
+            {props.settingsLink}
+          </DropdownMenuItem>
+        )}
         {props.onSignOut && (
           <>
-            <DropdownMenuSeparator />
             <DropdownMenuItem
               className="text-xs text-destructive focus:text-destructive"
               onClick={() => void props.onSignOut?.()}

@@ -29,6 +29,7 @@ import { authorizeOrganization } from "./auth/authorize-organization";
 import { UserStoreService } from "./auth/context";
 import { WorkOSAuth, type WorkOSAuthService } from "./auth/workos";
 import { CoreSharedServices } from "./api/core-shared-services";
+import { AutumnService } from "./services/autumn";
 import { DbService } from "./services/db";
 
 // ---------------------------------------------------------------------------
@@ -122,11 +123,7 @@ const verifyJwt = (token: string) =>
 const DbLive = DbService.Live;
 const UserStoreLive = UserStoreService.Live.pipe(Layer.provide(DbLive));
 const McpAuthServices = CoreSharedServices;
-const McpOrganizationAuthServices = Layer.mergeAll(
-  DbLive,
-  UserStoreLive,
-  CoreSharedServices,
-);
+const McpOrganizationAuthServices = Layer.mergeAll(DbLive, UserStoreLive, CoreSharedServices);
 
 export const McpOrganizationAuthLive = Layer.succeed(McpOrganizationAuth, {
   authorize: (accountId, organizationId) =>
@@ -136,10 +133,7 @@ export const McpOrganizationAuthLive = Layer.succeed(McpOrganizationAuth, {
     ),
 });
 
-const withDefaultOrganization = (
-  workos: WorkOSAuthService,
-  token: VerifiedToken,
-) =>
+const withDefaultOrganization = (workos: WorkOSAuthService, token: VerifiedToken) =>
   Effect.gen(function* () {
     if (token.organizationId) return token;
 
@@ -737,7 +731,12 @@ const authorizeMcpOrganization = (
         attributes: { "mcp.auth.organization_id": organizationId },
       }),
     );
-    if (allowed) return null;
+    if (allowed) {
+      const autumn = yield* AutumnService;
+      const hasRemoteMcp = yield* autumn.isFeatureAllowed(organizationId, "remote-mcp");
+      if (hasRemoteMcp) return null;
+      return jsonRpcError(402, -32003, "Remote MCP requires the Pro plan");
+    }
 
     if (sessionId) {
       yield* clearExistingSession(request, sessionId);
@@ -837,7 +836,7 @@ export const classifyMcpPath = (pathname: string): McpRoute => {
 export const mcpApp: Effect.Effect<
   HttpServerResponse.HttpServerResponse,
   never,
-  HttpServerRequest.HttpServerRequest | McpAuth | McpOrganizationAuth
+  HttpServerRequest.HttpServerRequest | McpAuth | McpOrganizationAuth | AutumnService
 > = Effect.gen(function* () {
   const httpRequest = yield* HttpServerRequest.HttpServerRequest;
   const request = httpRequest.source as Request;
@@ -878,7 +877,9 @@ export const mcpApp: Effect.Effect<
 );
 
 const rawMcpFetch = HttpApp.toWebHandler(
-  mcpApp.pipe(Effect.provide(Layer.mergeAll(McpAuthLive, McpOrganizationAuthLive))),
+  mcpApp.pipe(
+    Effect.provide(Layer.mergeAll(McpAuthLive, McpOrganizationAuthLive, CoreSharedServices)),
+  ),
 );
 
 /**

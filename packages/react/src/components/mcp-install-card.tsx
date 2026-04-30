@@ -1,14 +1,25 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import CursorIcon from "@lobehub/icons/es/Cursor/components/Mono";
 import ClaudeIcon from "@lobehub/icons/es/Claude/components/Color";
 import OpenCodeIcon from "@lobehub/icons/es/OpenCode/components/Mono";
+import { LockIcon } from "lucide-react";
+import { Button } from "./button";
 import { CodeBlock } from "./code-block";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./tabs";
 import { CardStack, CardStackHeader, CardStackContent } from "./card-stack";
 import { cn } from "../lib/utils";
-import { useScopeInfo } from "../api/scope-context";
+import { useManagedAuthAccess } from "../plugins/managed-auth";
 
-type TransportMode = "stdio" | "http";
+type TransportMode = "local-http" | "remote-http" | "stdio";
+
+type ElectronWindow = Window & {
+  readonly electronAPI?: {
+    readonly cloudAuth?: {
+      readonly getCloudUrl?: () => Promise<string>;
+    };
+  };
+};
 
 const SUPPORTED_AGENTS = [
   { key: "cursor", label: "Cursor", Icon: CursorIcon },
@@ -16,7 +27,6 @@ const SUPPORTED_AGENTS = [
   { key: "opencode", label: "OpenCode", Icon: OpenCodeIcon },
 ] as const;
 
-const isDev = import.meta.env.DEV;
 const isLocal =
   typeof window !== "undefined" &&
   (window.location.hostname === "localhost" ||
@@ -24,32 +34,67 @@ const isLocal =
     window.location.hostname.endsWith(".localhost"));
 
 export function McpInstallCard(props: { className?: string }) {
-  const showStdio = isLocal;
-  const [mode, setMode] = useState<TransportMode>(showStdio ? "stdio" : "http");
+  const showLocalHttp = isLocal;
+  const [mode, setMode] = useState<TransportMode>(showLocalHttp ? "local-http" : "remote-http");
   const [origin, setOrigin] = useState<string | null>(null);
-  const scopeInfo = useScopeInfo();
+  const [cloudOrigin, setCloudOrigin] = useState<string | null>(null);
+  const proAccess = useManagedAuthAccess();
 
   useEffect(() => {
     setOrigin(window.location.origin);
   }, []);
 
+  useEffect(() => {
+    const electronCloudAuth = (window as ElectronWindow).electronAPI?.cloudAuth;
+    if (electronCloudAuth?.getCloudUrl) {
+      void electronCloudAuth
+        .getCloudUrl()
+        .then(setCloudOrigin)
+        .catch(() => setCloudOrigin(null));
+      return;
+    }
+    const configured = import.meta.env.VITE_PUBLIC_SITE_URL;
+    if (typeof configured === "string" && configured.length > 0) {
+      setCloudOrigin(configured);
+      return;
+    }
+    if (!isLocal) setCloudOrigin(window.location.origin);
+  }, []);
+
+  const localMcpUrl = origin ? `${origin}/mcp` : "http://localhost:3001/mcp";
+  const remoteMcpUrl = cloudOrigin ? `${cloudOrigin}/mcp` : "https://app.godtool.dev/mcp";
+  const isRemoteMode = mode === "remote-http";
+  const remoteLocked = isRemoteMode && !proAccess.loading && !proAccess.allowed;
+
   const scopeFlag = scopeInfo.dir ? ` --scope ${JSON.stringify(scopeInfo.dir)}` : "";
+  const commandUrl = isRemoteMode ? remoteMcpUrl : localMcpUrl;
 
   const command =
     mode === "stdio"
       ? isDev
         ? `npx add-mcp "bun run dev:cli mcp${scopeFlag}" --name "GOD TOOL"`
         : `npx add-mcp "executor mcp${scopeFlag}" --name "GOD TOOL"`
-      : origin
-        ? `npx add-mcp "${origin}/mcp" --transport http --name "GOD TOOL"`
-        : 'npx add-mcp "<this-server>/mcp" --transport http --name "GOD TOOL"';
+      : `npx add-mcp "${commandUrl}" --transport http --name "${
+          isRemoteMode ? "GOD TOOL Remote" : "GOD TOOL Local"
+        }"`;
 
   const subtitle =
-    mode === "stdio"
-      ? isDev
-        ? "Uses the repo-local dev CLI. Run from the repository root."
-        : "Requires the GOD TOOL CLI on your PATH."
-      : "Connect to GOD TOOL as a remote MCP server over streamable HTTP.";
+    mode === "local-http"
+      ? "Connect to this Mac over local streamable HTTP."
+      : mode === "remote-http"
+        ? "Connect to GOD TOOL from anywhere over streamable HTTP."
+        : isDev
+          ? "Uses the repo-local dev CLI. Run from the repository root."
+          : "Requires the GOD TOOL CLI on your PATH.";
+
+  const mcpUrlLabel = useMemo(() => {
+    try {
+      const url = new URL(commandUrl);
+      return `${url.host}${url.pathname}`;
+    } catch {
+      return commandUrl;
+    }
+  }, [commandUrl]);
 
   const agentLogos = (
     <div className="flex shrink-0 items-center gap-2 text-muted-foreground">
@@ -78,10 +123,13 @@ export function McpInstallCard(props: { className?: string }) {
     <CardStackHeader
       className="items-start pt-3 pb-1"
       rightSlot={
-        showStdio ? (
+        showLocalHttp ? (
           <TabsList>
-            <TabsTrigger value="http">Remote HTTP</TabsTrigger>
-            <TabsTrigger value="stdio">Standard I/O</TabsTrigger>
+            <TabsTrigger value="local-http">Local HTTP</TabsTrigger>
+            <TabsTrigger value="remote-http">
+              {!proAccess.loading && !proAccess.allowed && <LockIcon className="size-3" />}
+              Remote HTTP
+            </TabsTrigger>
           </TabsList>
         ) : undefined
       }
@@ -98,17 +146,33 @@ export function McpInstallCard(props: { className?: string }) {
       <div className="px-4 pt-1 pb-3">
         <CodeBlock code={command} lang="bash" />
       </div>
+      {remoteLocked && (
+        <div className="px-4 pb-3">
+          <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-muted/20 px-3 py-2">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+                <LockIcon className="size-3.5 text-muted-foreground" />
+                Remote MCP requires Pro
+              </div>
+              <p className="mt-0.5 truncate text-xs text-muted-foreground">{mcpUrlLabel}</p>
+            </div>
+            <Button asChild size="sm">
+              <Link to="/settings/billing">Upgrade to Pro</Link>
+            </Button>
+          </div>
+        </div>
+      )}
       <div className="flex items-center px-4 py-3">{agentLogos}</div>
     </CardStackContent>
   );
 
   return (
     <CardStack className={props.className}>
-      {showStdio ? (
+      {showLocalHttp ? (
         <Tabs value={mode} onValueChange={(v) => setMode(v as TransportMode)}>
           {header}
-          <TabsContent value="http">{body}</TabsContent>
-          <TabsContent value="stdio">{body}</TabsContent>
+          <TabsContent value="local-http">{body}</TabsContent>
+          <TabsContent value="remote-http">{body}</TabsContent>
         </Tabs>
       ) : (
         <>

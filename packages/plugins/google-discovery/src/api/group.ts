@@ -9,6 +9,7 @@ import {
   GoogleDiscoverySourceError,
 } from "../sdk/errors";
 import { GoogleDiscoveryStoredSourceSchema } from "../sdk/stored-source";
+import { ManagedAuthConfig, ManagedAuthConnectionMaterial } from "../sdk/types";
 
 export { HttpApiSchema };
 
@@ -26,6 +27,7 @@ const AuthPayload = Schema.Union(
     clientSecretSecretId: Schema.NullOr(Schema.String),
     scopes: Schema.Array(Schema.String),
   }),
+  ManagedAuthConfig,
 );
 
 const ProbePayload = Schema.Struct({
@@ -54,6 +56,7 @@ const AddSourcePayload = Schema.Struct({
   discoveryUrl: Schema.String,
   namespace: Schema.optional(Schema.String),
   auth: AuthPayload,
+  managedConnection: Schema.optional(ManagedAuthConnectionMaterial),
 });
 
 const AddSourceResponse = Schema.Struct({
@@ -168,8 +171,9 @@ export class GoogleDiscoveryGroup extends HttpApiGroup.make("googleDiscovery")
   .add(
     HttpApiEndpoint.get(
       "getSource",
-    )`/scopes/${scopeIdParam}/google-discovery/sources/${namespaceParam}`
-      .addSuccess(Schema.NullOr(GoogleDiscoveryStoredSourceSchema)),
+    )`/scopes/${scopeIdParam}/google-discovery/sources/${namespaceParam}`.addSuccess(
+      Schema.NullOr(GoogleDiscoveryStoredSourceSchema),
+    ),
   )
   // Errors declared once at the group level — every endpoint inherits.
   // `InternalError` is the shared opaque 500 translated at the HTTP edge

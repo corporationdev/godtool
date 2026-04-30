@@ -34,6 +34,11 @@ import { keychainPlugin } from "@executor/plugin-keychain";
 import { fileSecretsPlugin } from "@executor/plugin-file-secrets";
 import { onepasswordPlugin } from "@executor/plugin-onepassword";
 import { workspacePlugin } from "@executor/plugin-workspace";
+import type {
+  ManagedAuthConfig,
+  ManagedHttpRequest,
+  ManagedHttpResult,
+} from "@executor/plugin-managed-auth";
 
 // In dev mode the drizzle folder sits next to the source tree. In a compiled
 // binary the files are inlined via the build-time gen module below, and we
@@ -89,13 +94,83 @@ const makeScopeId = (cwd: string): string => {
   return `${folder}-${hash}`;
 };
 
+type DesktopSettings = {
+  readonly authBridgeToken?: string;
+  readonly cloudAppUrl?: string;
+};
+
+const readDesktopSettings = (): DesktopSettings => {
+  try {
+    const path = join(homedir(), ".godtool", "desktop-settings.json");
+    return JSON.parse(fs.readFileSync(path, "utf-8")) as DesktopSettings;
+  } catch {
+    return {};
+  }
+};
+
+const makeManagedAuthProxy = async (input: {
+  readonly config: ManagedAuthConfig;
+  readonly connectedAccountId: string;
+  readonly request: ManagedHttpRequest;
+}): Promise<ManagedHttpResult> => {
+  void input.config;
+  const settings = readDesktopSettings();
+  const bridgeUrl =
+    process.env.GODTOOL_DESKTOP_AUTH_BRIDGE_URL ?? "http://127.0.0.1:14791";
+  const bridgeToken = process.env.GODTOOL_DESKTOP_AUTH_BRIDGE_TOKEN ?? settings.authBridgeToken;
+  if (!bridgeToken) {
+    throw new Error("Sign in to cloud before using managed auth locally");
+  }
+
+  const sessionResponse = await fetch(new URL("/cloud-auth/session", bridgeUrl), {
+    headers: { authorization: `Bearer ${bridgeToken}` },
+  });
+  const sessionBody = (await sessionResponse.json().catch(() => null)) as {
+    readonly cookie?: string;
+    readonly cloudAppUrl?: string;
+    readonly error?: string;
+  } | null;
+  if (!sessionResponse.ok || !sessionBody?.cookie) {
+    throw new Error(sessionBody?.error ?? "Sign in to cloud before using managed auth locally");
+  }
+
+  const cloudAppUrl =
+    sessionBody.cloudAppUrl ??
+    process.env.GODTOOL_CLOUD_URL ??
+    settings.cloudAppUrl ??
+    "https://app.godtool.dev";
+  const proxyResponse = await fetch(new URL("/api/managed-auth/composio/proxy", cloudAppUrl), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      cookie: sessionBody.cookie,
+    },
+    body: JSON.stringify({
+      connectedAccountId: input.connectedAccountId,
+      request: input.request,
+    }),
+  });
+  const proxyBody = (await proxyResponse.json().catch(() => null)) as
+    | ManagedHttpResult
+    | { readonly error?: string }
+    | null;
+  if (!proxyResponse.ok || !proxyBody || !("status" in proxyBody)) {
+    throw new Error(
+      proxyBody && "error" in proxyBody && typeof proxyBody.error === "string"
+        ? proxyBody.error
+        : `Managed auth proxy failed with status ${proxyResponse.status}`,
+    );
+  }
+  return proxyBody;
+};
+
 const createLocalPlugins = (configFile: ConfigFileSink) =>
   [
-    openApiPlugin({ configFile }),
+    openApiPlugin({ configFile, managedAuthProxy: makeManagedAuthProxy }),
     mcpPlugin({ dangerouslyAllowStdioMCP: true, configFile }),
-    googleDiscoveryPlugin(),
-    graphqlPlugin({ configFile }),
-    rawPlugin({ configFile }),
+    googleDiscoveryPlugin({ managedAuthProxy: makeManagedAuthProxy }),
+    graphqlPlugin({ configFile, managedAuthProxy: makeManagedAuthProxy }),
+    rawPlugin({ configFile, managedAuthProxy: makeManagedAuthProxy }),
     browserPlugin(),
     computerUsePlugin(),
     workspacePlugin(),

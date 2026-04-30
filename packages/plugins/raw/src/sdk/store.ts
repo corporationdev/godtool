@@ -1,6 +1,7 @@
 import { Effect, Schema } from "effect";
 
 import { defineSchema, type StorageDeps, type StorageFailure } from "@executor/sdk";
+import { ManagedAuthConfig } from "@executor/plugin-managed-auth";
 
 import { HeaderValue } from "./types";
 
@@ -12,6 +13,7 @@ export const rawSchema = defineSchema({
       name: { type: "string", required: true },
       base_url: { type: "string", required: true },
       headers: { type: "json", required: false },
+      managed_auth: { type: "json", required: false },
       created_at: { type: "date", required: true },
       updated_at: { type: "date", required: true },
     },
@@ -26,6 +28,7 @@ export interface StoredRawSource {
   readonly name: string;
   readonly baseUrl: string;
   readonly headers: Record<string, HeaderValue>;
+  readonly managedAuth?: ManagedAuthConfig;
 }
 
 export class StoredRawSourceSchema extends Schema.Class<StoredRawSourceSchema>(
@@ -35,6 +38,7 @@ export class StoredRawSourceSchema extends Schema.Class<StoredRawSourceSchema>(
   name: Schema.String,
   baseUrl: Schema.String,
   headers: Schema.Record({ key: Schema.String, value: HeaderValue }),
+  managedAuth: Schema.optional(ManagedAuthConfig),
 }) {}
 
 const decodeHeaders = (value: unknown): Record<string, HeaderValue> => {
@@ -44,9 +48,7 @@ const decodeHeaders = (value: unknown): Record<string, HeaderValue> => {
 };
 
 export interface RawStore {
-  readonly upsertSource: (
-    input: StoredRawSource,
-  ) => Effect.Effect<void, StorageFailure>;
+  readonly upsertSource: (input: StoredRawSource) => Effect.Effect<void, StorageFailure>;
   readonly updateSourceMeta: (
     namespace: string,
     scope: string,
@@ -54,27 +56,29 @@ export interface RawStore {
       readonly name?: string;
       readonly baseUrl?: string;
       readonly headers?: Record<string, HeaderValue>;
+      readonly managedAuth?: ManagedAuthConfig | null;
     },
   ) => Effect.Effect<void, StorageFailure>;
   readonly getSource: (
     namespace: string,
     scope: string,
   ) => Effect.Effect<StoredRawSource | null, StorageFailure>;
-  readonly removeSource: (
-    namespace: string,
-    scope: string,
-  ) => Effect.Effect<void, StorageFailure>;
+  readonly removeSource: (namespace: string, scope: string) => Effect.Effect<void, StorageFailure>;
 }
 
-export const makeDefaultRawStore = ({
-  adapter: db,
-}: StorageDeps<RawSchema>): RawStore => {
+export const makeDefaultRawStore = ({ adapter: db }: StorageDeps<RawSchema>): RawStore => {
   const rowToSource = (row: Record<string, unknown>): StoredRawSource => ({
     namespace: row.id as string,
     scope: row.scope_id as string,
     name: row.name as string,
     baseUrl: row.base_url as string,
     headers: decodeHeaders(row.headers),
+    managedAuth:
+      row.managed_auth == null
+        ? undefined
+        : typeof row.managed_auth === "string"
+          ? (JSON.parse(row.managed_auth) as ManagedAuthConfig)
+          : (row.managed_auth as ManagedAuthConfig),
   });
 
   return {
@@ -95,6 +99,7 @@ export const makeDefaultRawStore = ({
             name: input.name,
             base_url: input.baseUrl,
             headers: input.headers as unknown as Record<string, unknown>,
+            managed_auth: input.managedAuth as unknown as Record<string, unknown> | undefined,
             created_at: new Date(),
             updated_at: new Date(),
           },
@@ -110,6 +115,7 @@ export const makeDefaultRawStore = ({
         if (patch.name !== undefined) update.name = patch.name;
         if (patch.baseUrl !== undefined) update.base_url = patch.baseUrl;
         if (patch.headers !== undefined) update.headers = patch.headers;
+        if (patch.managedAuth !== undefined) update.managed_auth = patch.managedAuth ?? undefined;
         yield* db.update({
           model: "raw_source",
           where: [

@@ -2,6 +2,7 @@ import { Effect, Layer, Option } from "effect";
 import { HttpClient, HttpClientRequest } from "@effect/platform";
 
 import type { SecretOwnedByConnectionError, StorageFailure } from "@executor/sdk";
+import type { ManagedHttpParameter, ManagedHttpRequest } from "@executor/plugin-managed-auth";
 
 import { OpenApiInvocationError } from "./errors";
 import {
@@ -191,9 +192,7 @@ const isXmlContentType = (ct: string | null | undefined): boolean => {
   const normalized = normalizeContentType(ct);
   if (!normalized) return false;
   return (
-    normalized === "application/xml" ||
-    normalized === "text/xml" ||
-    normalized.endsWith("+xml")
+    normalized === "application/xml" || normalized === "text/xml" || normalized.endsWith("+xml")
   );
 };
 
@@ -291,8 +290,7 @@ const serializeFormUrlEncoded = (
           parts.push(`${encKey}=${encodeFormValue(v, allowReserved)}`);
         }
       } else {
-        const sep =
-          style === "spaceDelimited" ? " " : style === "pipeDelimited" ? "|" : ",";
+        const sep = style === "spaceDelimited" ? " " : style === "pipeDelimited" ? "|" : ",";
         parts.push(
           `${encKey}=${encodeFormValue(
             raw.map((v) => (typeof v === "object" ? JSON.stringify(v) : String(v))).join(sep),
@@ -313,18 +311,13 @@ const serializeFormUrlEncoded = (
           // `%5B` / `%5D`. Matches swagger-client's behaviour and remains
           // accepted by common server-side parsers (qs, Rails, etc.).
           parts.push(
-            `${encodeURIComponent(`${key}[${subkey}]`)}=${encodeFormValue(
-              subval,
-              allowReserved,
-            )}`,
+            `${encodeURIComponent(`${key}[${subkey}]`)}=${encodeFormValue(subval, allowReserved)}`,
           );
         }
       } else if (explode) {
         // form + explode=true on object: sub-keys become top-level fields.
         for (const [subkey, subval] of entries) {
-          parts.push(
-            `${encodeURIComponent(subkey)}=${encodeFormValue(subval, allowReserved)}`,
-          );
+          parts.push(`${encodeURIComponent(subkey)}=${encodeFormValue(subval, allowReserved)}`);
         }
       } else {
         // form + explode=false on object: flatten to csv key,val,key,val.
@@ -369,8 +362,7 @@ const coerceFormDataRecord = (
     // emits `Content-Type: <partType>` on this part. JSON types get the
     // value JSON-stringified first so the blob body is valid JSON.
     if (partType) {
-      const isJson =
-        partType.startsWith("application/json") || partType.includes("+json");
+      const isJson = partType.startsWith("application/json") || partType.includes("+json");
       const serialized =
         typeof raw === "string"
           ? raw
@@ -452,10 +444,7 @@ const applyRequestBody = (
     if (typeof bodyValue === "object" && bodyValue !== null && !Array.isArray(bodyValue)) {
       // Serialize ourselves so OAS3 encoding (style/explode/deepObject)
       // is honored. bodyUrlParams doesn't know about per-field style.
-      const serialized = serializeFormUrlEncoded(
-        bodyValue as Record<string, unknown>,
-        encoding,
-      );
+      const serialized = serializeFormUrlEncoded(bodyValue as Record<string, unknown>, encoding);
       return HttpClientRequest.bodyText(request, serialized, contentType);
     }
     // Non-object body — fall back to platform helper (handles URLSearchParams).
@@ -511,6 +500,85 @@ const applyRequestBody = (
   return HttpClientRequest.bodyText(request, JSON.stringify(bodyValue), contentType);
 };
 
+export const buildManagedHttpRequest = Effect.fn("OpenApi.buildManagedHttpRequest")(function* (
+  operation: OperationBinding,
+  args: Record<string, unknown>,
+  baseUrl: string,
+  resolvedHeaders: Record<string, string>,
+) {
+  const resolvedPath = yield* resolvePath(operation.pathTemplate, args, operation.parameters);
+  const endpoint = new URL(
+    resolvedPath.replace(/^\//, ""),
+    baseUrl || "https://placeholder.invalid/",
+  ).toString();
+  const parameters: ManagedHttpParameter[] = [];
+
+  for (const [name, value] of Object.entries(resolvedHeaders)) {
+    parameters.push({ type: "header", name, value });
+  }
+
+  for (const param of operation.parameters) {
+    if (param.location !== "query" && param.location !== "header") continue;
+    const value = readParamValue(args, param);
+    if (value === undefined || value === null) continue;
+    parameters.push({
+      type: param.location,
+      name: param.name,
+      value: String(value),
+    });
+  }
+
+  const bodyValue = args.body ?? args.input;
+  let body: unknown | undefined;
+  if (Option.isSome(operation.requestBody) && bodyValue !== undefined) {
+    const rb = operation.requestBody.value;
+    const contentsOpt = Option.getOrUndefined(rb.contents);
+    const requestedCt = typeof args.contentType === "string" ? args.contentType : undefined;
+    const selected =
+      contentsOpt && requestedCt
+        ? contentsOpt.find((content) => content.contentType === requestedCt)
+        : undefined;
+    const chosenCt = selected?.contentType ?? rb.contentType;
+    if (isMultipartFormData(chosenCt)) {
+      return yield* new OpenApiInvocationError({
+        message: "Managed auth does not support multipart OpenAPI request bodies yet",
+        statusCode: Option.none(),
+      });
+    }
+    parameters.push({ type: "header", name: "content-type", value: chosenCt });
+    if (isFormUrlEncoded(chosenCt)) {
+      const encoding = selected
+        ? Option.getOrUndefined(selected.encoding)
+        : contentsOpt && contentsOpt[0]
+          ? Option.getOrUndefined(contentsOpt[0].encoding)
+          : undefined;
+      body =
+        typeof bodyValue === "string"
+          ? bodyValue
+          : typeof bodyValue === "object" && bodyValue !== null && !Array.isArray(bodyValue)
+            ? serializeFormUrlEncoded(bodyValue as Record<string, unknown>, encoding)
+            : String(bodyValue);
+    } else {
+      body = bodyValue;
+    }
+  }
+
+  const method = operation.method.toUpperCase();
+  if (method === "OPTIONS" || method === "TRACE") {
+    return yield* new OpenApiInvocationError({
+      message: `Managed auth does not support ${method} requests`,
+      statusCode: Option.none(),
+    });
+  }
+
+  return {
+    endpoint,
+    method: method as ManagedHttpRequest["method"],
+    parameters,
+    ...(body !== undefined ? { body } : {}),
+  };
+});
+
 // ---------------------------------------------------------------------------
 // Public API — invoke a single operation
 // ---------------------------------------------------------------------------
@@ -558,8 +626,7 @@ export const invoke = Effect.fn("OpenApi.invoke")(function* (
       // multiple, the caller can override via `args.contentType`; otherwise
       // we use the first-declared (spec author's preferred ordering).
       const contentsOpt = Option.getOrUndefined(rb.contents);
-      const requestedCt =
-        typeof args.contentType === "string" ? args.contentType : undefined;
+      const requestedCt = typeof args.contentType === "string" ? args.contentType : undefined;
       const selected: MediaBinding | undefined =
         contentsOpt && requestedCt
           ? contentsOpt.find((c) => c.contentType === requestedCt)

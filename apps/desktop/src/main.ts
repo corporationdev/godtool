@@ -221,6 +221,8 @@ interface Settings {
   windowBounds?: { x: number; y: number; width: number; height: number };
   deviceId?: string;
   deviceName?: string;
+  authBridgeToken?: string;
+  cloudAppUrl?: string;
 }
 
 type CloudAuthUser = {
@@ -242,6 +244,22 @@ type CloudAuthState =
       readonly user: CloudAuthUser;
       readonly organization: CloudAuthOrganization | null;
     };
+
+type ManagedAuthConnectResult = {
+  readonly ok: true;
+  readonly managedAuth: {
+    readonly kind: "composio";
+    readonly app: string;
+    readonly authConfigId: string | null;
+    readonly connectionId: string;
+  };
+  readonly managedConnection: {
+    readonly connectionId: string;
+    readonly provider: string;
+    readonly identityLabel: string | null;
+    readonly connectedAccountId: string;
+  };
+};
 
 type WorkspaceFileNode = {
   readonly type: "file" | "directory";
@@ -561,7 +579,22 @@ const loadSettings = (): Settings => {
 
 const saveSettings = (settings: Settings): void => {
   mkdirSync(SETTINGS_DIR, { recursive: true });
-  writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2));
+  writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2), { mode: 0o600 });
+  try {
+    chmodSync(SETTINGS_PATH, 0o600);
+  } catch {}
+};
+
+const ensureAuthBridgeSettings = (): string => {
+  const authBridgeToken = settings.authBridgeToken ?? randomUUID();
+  if (settings.authBridgeToken !== authBridgeToken) {
+    settings = { ...settings, authBridgeToken };
+  }
+  if (settings.cloudAppUrl !== CLOUD_APP_URL) {
+    settings = { ...settings, cloudAppUrl: CLOUD_APP_URL };
+  }
+  saveSettings(settings);
+  return authBridgeToken;
 };
 
 // ---------------------------------------------------------------------------
@@ -687,6 +720,9 @@ const startServer = async (scopePath: string, port: number): Promise<void> => {
       GODTOOL_BROWSER_HOST_URL: `http://127.0.0.1:${BROWSER_HOST_PORT}`,
       GODTOOL_AGENT_BROWSER_PATH: resolveAgentBrowserPath(),
       GODTOOL_COMPUTER_USE_HOST_URL: `http://127.0.0.1:${COMPUTER_USE_HOST_PORT}`,
+      GODTOOL_CLOUD_URL: CLOUD_APP_URL,
+      GODTOOL_DESKTOP_AUTH_BRIDGE_URL: `http://127.0.0.1:${DESKTOP_AUTH_CALLBACK_PORT}`,
+      GODTOOL_DESKTOP_AUTH_BRIDGE_TOKEN: ensureAuthBridgeSettings(),
     },
   });
 
@@ -787,6 +823,18 @@ const createWindow = (): BrowserWindow => {
         height: 44px !important;
         min-height: 44px !important;
         padding: 0 !important;
+      }
+
+      /* Settings has a real header, so place it fully below the macOS traffic lights. */
+      [data-slot="sidebar-inner"] > [data-slot="sidebar-header"].desktop-settings-sidebar-header {
+        height: 104px !important;
+        min-height: 104px !important;
+        padding: 56px 8px 8px !important;
+      }
+
+      /* Any cloud/settings shell rendered inside Electron must clear the macOS traffic lights. */
+      [data-slot="sidebar-inner"] > [data-slot="sidebar-header"].desktop-titlebar-safe {
+        padding-top: 46px !important;
       }
 
       /* Pin the desktop sidebar toggle next to the macOS traffic lights. */
@@ -1028,6 +1076,93 @@ const fetchCloudAuthState = async (): Promise<CloudAuthState> => {
   };
 };
 
+const pendingManagedAuth = new Map<
+  string,
+  {
+    readonly resolve: (result: ManagedAuthConnectResult) => void;
+    readonly reject: (error: unknown) => void;
+    readonly timeout: ReturnType<typeof setTimeout>;
+  }
+>();
+
+const startManagedAuthConnect = async (input: unknown): Promise<ManagedAuthConnectResult> => {
+  const cookie = await getCloudCookieHeader();
+  if (!cookie) throw new Error("Sign in to use managed auth");
+  await startDesktopAuthCallbackServer();
+
+  const channel = `godtool:desktop-composio:${randomUUID()}`;
+  const desktopCallbackUrl = `http://127.0.0.1:${DESKTOP_AUTH_CALLBACK_PORT}/managed-auth/callback?channel=${encodeURIComponent(channel)}`;
+
+  const response = await fetch(cloudUrl("/api/managed-auth/composio/start"), {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      cookie,
+    },
+    body: JSON.stringify({ ...(input && typeof input === "object" ? input : {}), channel, desktopCallbackUrl }),
+  });
+  const data = (await response.json().catch(() => null)) as {
+    readonly redirectUrl?: string;
+    readonly error?: string;
+  } | null;
+  if (!response.ok || !data?.redirectUrl) {
+    if (response.status === 401 || response.status === 403) {
+      throw new Error("Sign in to use managed auth");
+    }
+    if (response.status === 402) {
+      throw new Error("Upgrade to Pro to use managed auth");
+    }
+    throw new Error(data?.error ?? `Managed auth request failed: ${response.status}`);
+  }
+
+  const redirectUrl = data.redirectUrl;
+  return await new Promise<ManagedAuthConnectResult>((resolve, reject) => {
+    const timeout = setTimeout(
+      () => {
+        pendingManagedAuth.delete(channel);
+        reject(new Error("Managed auth timed out"));
+      },
+      5 * 60 * 1000,
+    );
+
+    pendingManagedAuth.set(channel, { resolve, reject, timeout });
+    shell.openExternal(redirectUrl).catch((error) => {
+      pendingManagedAuth.delete(channel);
+      clearTimeout(timeout);
+      reject(error);
+    });
+  });
+};
+
+const fetchCloudBillingRoute = async (route: string, body: unknown): Promise<unknown> => {
+  const cookie = await getCloudCookieHeader();
+  if (!cookie) throw new Error("Sign in to manage billing");
+
+  const response = await fetch(cloudUrl(`/api/autumn/${route}`), {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      cookie,
+    },
+    body: JSON.stringify(body ?? {}),
+  });
+
+  if (response.status === 204) return null;
+
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    const message =
+      data && typeof data === "object" && "message" in data && typeof data.message === "string"
+        ? data.message
+        : `Cloud billing request failed: ${response.status}`;
+    throw new Error(message);
+  }
+
+  return data;
+};
+
 const pendingDesktopAuth = new Map<
   string,
   {
@@ -1123,6 +1258,79 @@ const startDesktopAuthCallbackServer = async (): Promise<void> => {
 
   desktopAuthCallbackServer = createServer((request, response) => {
     const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "127.0.0.1"}`);
+
+    if (url.pathname === "/cloud-auth/session" && request.method === "GET") {
+      const expected = ensureAuthBridgeSettings();
+      const header = request.headers.authorization ?? "";
+      const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length).trim() : "";
+      if (!token || token !== expected) {
+        response.writeHead(401, { "content-type": "application/json", "cache-control": "no-store" });
+        response.end(JSON.stringify({ error: "unauthorized" }));
+        return;
+      }
+
+      void getCloudCookieHeader()
+        .then((cookie) => {
+          if (!cookie) {
+            response.writeHead(401, {
+              "content-type": "application/json",
+              "cache-control": "no-store",
+            });
+            response.end(JSON.stringify({ error: "not_signed_in" }));
+            return;
+          }
+          response.writeHead(200, {
+            "content-type": "application/json",
+            "cache-control": "no-store",
+          });
+          response.end(JSON.stringify({ cookie, cloudAppUrl: CLOUD_APP_URL }));
+        })
+        .catch((error) => {
+          response.writeHead(500, {
+            "content-type": "application/json",
+            "cache-control": "no-store",
+          });
+          response.end(
+            JSON.stringify({
+              error: error instanceof Error ? error.message : "failed_to_read_session",
+            }),
+          );
+        });
+      return;
+    }
+
+    if (url.pathname === "/managed-auth/callback" && request.method === "POST") {
+      let body = "";
+      request.on("data", (chunk: Buffer) => {
+        body += chunk.toString("utf-8");
+        if (body.length > 1024 * 1024) request.destroy();
+      });
+      request.on("end", () => {
+        const channel = url.searchParams.get("channel");
+        const pending = channel ? pendingManagedAuth.get(channel) : null;
+        if (!channel || !pending) {
+          response.writeHead(400, { "content-type": "text/html", "cache-control": "no-store" });
+          response.end(desktopAuthCallbackHTML("Managed auth failed"));
+          return;
+        }
+
+        pendingManagedAuth.delete(channel);
+        clearTimeout(pending.timeout);
+        try {
+          const form = new URLSearchParams(body);
+          const payload = JSON.parse(form.get("payload") ?? "null") as ManagedAuthConnectResult;
+          if (!payload || payload.ok !== true) throw new Error("Managed auth failed");
+          pending.resolve(payload);
+          response.writeHead(200, { "content-type": "text/html", "cache-control": "no-store" });
+          response.end(desktopAuthCallbackHTML("Managed auth connected"));
+        } catch (error) {
+          pending.reject(error);
+          response.writeHead(400, { "content-type": "text/html", "cache-control": "no-store" });
+          response.end(desktopAuthCallbackHTML("Managed auth failed"));
+        }
+      });
+      return;
+    }
 
     if (url.pathname !== "/auth/callback") {
       response.writeHead(404, { "content-type": "text/plain" });
@@ -1421,6 +1629,14 @@ const syncDeviceConnection = (authState: CloudAuthState): void => {
 
 const setupIPC = (): void => {
   ipcMain.handle("get-current-scope", () => currentScope);
+  ipcMain.handle("system:open-external", async (_event, url: unknown) => {
+    if (typeof url !== "string") throw new Error("Invalid URL");
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+      throw new Error("Unsupported URL protocol");
+    }
+    await shell.openExternal(parsed.toString());
+  });
   ipcMain.handle("cloud-auth:me", async () => {
     const authState = await fetchCloudAuthState();
     syncDeviceConnection(authState);
@@ -1434,6 +1650,22 @@ const setupIPC = (): void => {
   ipcMain.handle("cloud-auth:sign-out", () => signOutCloud());
   ipcMain.handle("cloud-auth:get-cloud-url", () => CLOUD_APP_URL);
   ipcMain.handle("cloud-auth:get-device-id", () => ensureDeviceIdentity().deviceId);
+  ipcMain.handle("cloud-auth:start-managed-auth-connect", (_event, input: unknown) =>
+    startManagedAuthConnect(input),
+  );
+  ipcMain.handle("cloud-billing:get-customer", () =>
+    fetchCloudBillingRoute("getOrCreateCustomer", {}),
+  );
+  ipcMain.handle("cloud-billing:list-plans", async () => {
+    const response = (await fetchCloudBillingRoute("listPlans", {})) as { readonly list?: unknown };
+    return Array.isArray(response?.list) ? response.list : [];
+  });
+  ipcMain.handle("cloud-billing:attach", (_event, input: unknown) =>
+    fetchCloudBillingRoute("attach", input),
+  );
+  ipcMain.handle("cloud-billing:open-customer-portal", (_event, input: unknown) =>
+    fetchCloudBillingRoute("openCustomerPortal", input),
+  );
 
   ipcMain.handle("workspace-files:list", async () => {
     mkdirSync(DEFAULT_WORKSPACE_DIR, { recursive: true });
@@ -1792,11 +2024,13 @@ app.whenReady().then(async () => {
   installCli();
 
   settings = loadSettings();
+  ensureAuthBridgeSettings();
   setupWorkspaceFileProtocol();
   setupIPC();
   buildMenu();
 
   mainWindow = createWindow();
+  await startDesktopAuthCallbackServer();
   await startBrowserHost();
   await startComputerUseHost();
 

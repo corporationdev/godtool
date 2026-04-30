@@ -257,7 +257,7 @@ function OrgPage() {
               <p className="text-sm text-muted-foreground">
                 Domain verification is available on the Professional plan.
               </p>
-              <Link to="/billing/plans">
+              <Link to="/settings/billing/plans">
                 <Button size="sm" variant="outline">
                   Upgrade
                 </Button>
@@ -702,4 +702,3 @@ function InviteDialog(props: {
     </Dialog>
   );
 }
-

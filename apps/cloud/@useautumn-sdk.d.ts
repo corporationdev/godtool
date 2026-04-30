@@ -6,9 +6,12 @@ import type {} from "@useautumn/sdk";
 declare module "@useautumn/sdk" {
   // Features
   export const seats: Feature;
+  export const managedAuth: Feature;
+  export const remoteMcp: Feature;
+  export const hostedWorkerFallback: Feature;
 
   // Plans
-  export const professional: Plan;
+  export const pro: Plan;
 
   // Base types
   export type Feature = import("./autumn.config").Feature;

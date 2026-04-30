@@ -29,6 +29,7 @@ import {
 import { organizations } from "./services/schema";
 import { parseTestBearer } from "./test-bearer";
 import { DoTelemetryLive } from "./services/telemetry";
+import { AutumnService } from "./services/autumn";
 
 export { DeviceSessionDO } from "./device-session";
 export { McpSessionDO } from "./mcp-session";
@@ -43,8 +44,7 @@ const TestMcpAuthLive = Layer.succeed(McpAuth, {
 });
 
 const TestMcpOrganizationAuthLive = Layer.succeed(McpOrganizationAuth, {
-  authorize: (_accountId, organizationId) =>
-    Effect.succeed(!organizationId.startsWith("revoked_")),
+  authorize: (_accountId, organizationId) => Effect.succeed(!organizationId.startsWith("revoked_")),
 });
 
 // ---------------------------------------------------------------------------
@@ -101,13 +101,22 @@ const handleSeedOrg = async (
 const testMcpFetch = HttpApp.toWebHandler(
   mcpApp.pipe(
     Effect.provide(
-      Layer.mergeAll(TestMcpAuthLive, TestMcpOrganizationAuthLive, DoTelemetryLive),
+      Layer.mergeAll(
+        TestMcpAuthLive,
+        TestMcpOrganizationAuthLive,
+        DoTelemetryLive,
+        AutumnService.Default,
+      ),
     ),
   ),
 );
 
 const realAuthMcpFetch = HttpApp.toWebHandler(
-  mcpApp.pipe(Effect.provide(Layer.mergeAll(McpAuthLive, McpOrganizationAuthLive, DoTelemetryLive))),
+  mcpApp.pipe(
+    Effect.provide(
+      Layer.mergeAll(McpAuthLive, McpOrganizationAuthLive, DoTelemetryLive, AutumnService.Default),
+    ),
+  ),
 );
 
 export default {

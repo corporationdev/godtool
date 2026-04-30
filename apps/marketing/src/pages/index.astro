@@ -14,8 +14,8 @@ import Layout from '../layouts/Layout.astro'
         <a href="#integrations" class="hidden text-[13px] text-ink-muted transition-colors hover:text-ink sm:block">Integrations</a>
         <a href="#computer" class="hidden text-[13px] text-ink-muted transition-colors hover:text-ink sm:block">Computer use</a>
         <a href="https://github.com/RhysSullivan/executor" class="hidden text-[13px] text-ink-muted transition-colors hover:text-ink sm:block">GitHub</a>
-        <a href="#try" class="rounded-md bg-teal px-4 py-1.5 text-[13px] font-medium text-surface transition-colors hover:bg-teal-dim">
-          Get started
+        <a href="/setup" class="rounded-md bg-teal px-4 py-1.5 text-[13px] font-medium text-surface transition-colors hover:bg-teal-dim">
+          Download for free
         </a>
       </div>
     </div>
@@ -33,11 +33,11 @@ import Layout from '../layouts/Layout.astro'
           Give every agent the same <span class="italic text-teal">interface to the world.</span>
         </h1>
         <p class="rise-d2 mx-auto max-w-[720px] text-[17px] leading-[1.7] text-ink-muted">
-          One setup for connected accounts, logged-in browsers, persistent files, and Mac computer-use. Works from Claude, Codex, Cursor, and any MCP client.
+          One setup for connected accounts, logged-in browsers, persistent files, and Mac computer-use. Works from Claude Code, Codex, Cursor, and any MCP client.
         </p>
         <div class="rise-d3 mt-9 flex flex-wrap items-center justify-center gap-4">
-          <a href="#try" class="inline-flex items-center gap-2 rounded-md bg-teal px-5 py-2.5 text-[14px] font-medium text-surface transition-colors hover:bg-teal-dim">
-            Try the future of tool calling
+          <a href="/setup" class="inline-flex items-center gap-2 rounded-md bg-teal px-5 py-2.5 text-[14px] font-medium text-surface transition-colors hover:bg-teal-dim">
+            Download for free
             <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5h6m0 0v6m0-6-9 9" /></svg>
           </a>
           <a href="https://github.com/RhysSullivan/executor" class="inline-flex items-center gap-2 rounded-md border border-rule px-5 py-2.5 text-[14px] text-ink-muted transition-colors hover:border-ink-faint hover:text-ink">
@@ -46,115 +46,106 @@ import Layout from '../layouts/Layout.astro'
         </div>
       </div>
 
-      <div class="rise-d4 grid gap-4 lg:grid-cols-[0.72fr_1.4fr_0.72fr]">
-        <div class="hidden flex-col gap-3 rounded-xl border border-rule bg-surface-raised p-4 lg:flex">
-          <div class="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">Agents</div>
-          <div class="rounded-lg border border-rule bg-surface p-3">
-            <div class="text-[13px] font-medium text-ink">Claude Code</div>
-            <div class="mt-1 text-[11px] text-ink-faint">MCP client</div>
-          </div>
-          <div class="rounded-lg border border-rule bg-surface p-3">
-            <div class="text-[13px] font-medium text-ink">Codex</div>
-            <div class="mt-1 text-[11px] text-ink-faint">MCP client</div>
-          </div>
-          <div class="rounded-lg border border-rule bg-surface p-3">
-            <div class="text-[13px] font-medium text-ink">Cursor</div>
-            <div class="mt-1 text-[11px] text-ink-faint">MCP client</div>
-          </div>
-          <div class="rounded-lg border border-teal/20 bg-teal/[0.05] p-3">
-            <div class="text-[13px] font-medium text-teal">Phone agent</div>
-            <div class="mt-1 text-[11px] text-teal/60">same endpoint</div>
-          </div>
-        </div>
-
-        <div class="overflow-hidden rounded-xl border border-rule bg-surface-raised shadow-2xl shadow-black/10">
-          <div class="flex items-center justify-between border-b border-rule px-4 py-3">
-            <div class="flex items-center gap-2">
-              <span class="h-2.5 w-2.5 rounded-full bg-red-400"></span>
-              <span class="h-2.5 w-2.5 rounded-full bg-amber-300"></span>
-              <span class="h-2.5 w-2.5 rounded-full bg-emerald-400"></span>
+      <div class="rise-d4 overflow-hidden rounded-2xl border border-rule bg-surface-raised p-4 shadow-2xl shadow-black/10 sm:p-6 lg:p-8">
+        <div class="grid gap-6 lg:grid-cols-[220px_72px_minmax(220px,1fr)_72px_280px] lg:items-center">
+          <div class="grid gap-3">
+            <div class="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">Agent clients</div>
+            {[
+              { name: 'Claude Code', detail: 'MCP client', icon: 'https://www.google.com/s2/favicons?domain=claude.ai&sz=64' },
+              { name: 'Codex', detail: 'MCP client', icon: 'https://www.google.com/s2/favicons?domain=openai.com&sz=64' },
+              { name: 'Cursor', detail: 'MCP client', icon: 'https://www.google.com/s2/favicons?domain=cursor.com&sz=64' },
+            ].map((agent) => (
+              <div class="flex min-h-[76px] items-center gap-3 rounded-lg border border-rule bg-surface px-3 py-3">
+                <img src={agent.icon} alt="" class="h-8 w-8 rounded-md bg-white p-1" loading="lazy" />
+                <div class="min-w-0">
+                  <div class="truncate text-[13px] font-medium text-ink">{agent.name}</div>
+                  <div class="mt-0.5 text-[11px] text-ink-faint">{agent.detail}</div>
+                </div>
+              </div>
+            ))}
+            <div class="flex min-h-[76px] items-center gap-3 rounded-lg border border-rule bg-surface px-3 py-3">
+              <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-teal/20 bg-teal/[0.07] font-mono text-[10px] text-teal">MCP</span>
+              <div class="min-w-0">
+                <div class="truncate text-[13px] font-medium text-ink">Any MCP client</div>
+                <div class="mt-0.5 text-[11px] text-ink-faint">same endpoint</div>
+              </div>
             </div>
-            <div class="font-mono text-[11px] text-ink-faint">GOD TOOL MCP</div>
           </div>
 
-          <div class="grid min-h-[390px] md:grid-cols-[190px_1fr]">
-            <aside class="hidden border-r border-rule bg-sidebar p-3 md:block">
-              <div class="mb-3 px-2 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">Sources</div>
-              {['GitHub', 'Slack', 'Google Calendar', 'Linear', 'Stripe'].map((name, index) => (
-                <div class={`mb-1 flex items-center gap-2 rounded-md px-2 py-2 text-[12px] ${index === 0 ? 'bg-sidebar-active text-ink' : 'text-ink-muted'}`}>
-                  <span class="flex h-5 w-5 items-center justify-center rounded border border-rule bg-surface text-[10px] text-teal">{name[0]}</span>
-                  <span class="truncate">{name}</span>
-                </div>
-              ))}
-            </aside>
-
-            <main class="flex min-w-0 flex-col">
-              <div class="border-b border-rule px-4 py-3">
-                <div class="flex items-center justify-between gap-3">
-                  <div>
-                    <div class="text-[14px] font-medium text-ink">Shared action catalog</div>
-                    <div class="mt-1 text-[12px] text-ink-faint">482 typed actions available to every agent</div>
-                  </div>
-                  <span class="rounded-md border border-teal/20 bg-teal/[0.07] px-2 py-1 font-mono text-[10px] text-teal">online</span>
-                </div>
+          <div class="hidden gap-3 pt-[34px] lg:grid">
+            {Array.from({ length: 4 }).map(() => (
+              <div class="flex min-h-[76px] items-center text-teal/45">
+                <span class="h-px flex-1 bg-gradient-to-r from-transparent via-teal/50 to-teal/70"></span>
+                <svg class="ml-1 h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="m9 6 6 6-6 6" /></svg>
               </div>
-
-              <div class="grid gap-px bg-rule text-[12px]">
-                <div class="grid grid-cols-[1fr_auto] gap-3 bg-surface-raised px-4 py-3">
-                  <div class="min-w-0">
-                    <div class="truncate font-mono text-[12px] text-ink">issues.create</div>
-                    <div class="mt-0.5 truncate text-[12px] text-ink-faint">Create a GitHub issue</div>
-                  </div>
-                  <span class="self-center rounded bg-amber-300/[0.06] px-2 py-1 font-mono text-[10px] text-amber-300/70">write</span>
-                </div>
-                <div class="grid grid-cols-[1fr_auto] gap-3 bg-surface-raised px-4 py-3">
-                  <div class="min-w-0">
-                    <div class="truncate font-mono text-[12px] text-ink">chat.postMessage</div>
-                    <div class="mt-0.5 truncate text-[12px] text-ink-faint">Send a Slack message</div>
-                  </div>
-                  <span class="self-center rounded bg-amber-300/[0.06] px-2 py-1 font-mono text-[10px] text-amber-300/70">write</span>
-                </div>
-                <div class="grid grid-cols-[1fr_auto] gap-3 bg-surface-raised px-4 py-3">
-                  <div class="min-w-0">
-                    <div class="truncate font-mono text-[12px] text-ink">events.list</div>
-                    <div class="mt-0.5 truncate text-[12px] text-ink-faint">Read calendar events</div>
-                  </div>
-                  <span class="self-center rounded bg-teal/[0.06] px-2 py-1 font-mono text-[10px] text-teal/70">read</span>
-                </div>
-                <div class="grid grid-cols-[1fr_auto] gap-3 bg-surface-raised px-4 py-3">
-                  <div class="min-w-0">
-                    <div class="truncate font-mono text-[12px] text-ink">browser.open</div>
-                    <div class="mt-0.5 truncate text-[12px] text-ink-faint">Start an embedded browser</div>
-                  </div>
-                  <span class="self-center rounded bg-blue-400/[0.08] px-2 py-1 font-mono text-[10px] text-blue-300/75">local</span>
-                </div>
-                <div class="grid grid-cols-[1fr_auto] gap-3 bg-surface-raised px-4 py-3">
-                  <div class="min-w-0">
-                    <div class="truncate font-mono text-[12px] text-ink">computer.click</div>
-                    <div class="mt-0.5 truncate text-[12px] text-ink-faint">Click on your Mac</div>
-                  </div>
-                  <span class="self-center rounded bg-blue-400/[0.08] px-2 py-1 font-mono text-[10px] text-blue-300/75">local</span>
-                </div>
-                <div class="grid grid-cols-[1fr_auto] gap-3 bg-surface-raised px-4 py-3">
-                  <div class="min-w-0">
-                    <div class="truncate font-mono text-[12px] text-ink">workspace.writeFile</div>
-                    <div class="mt-0.5 truncate text-[12px] text-ink-faint">Save shared context</div>
-                  </div>
-                  <span class="self-center rounded bg-amber-300/[0.06] px-2 py-1 font-mono text-[10px] text-amber-300/70">write</span>
-                </div>
-              </div>
-            </main>
+            ))}
           </div>
-        </div>
 
-        <div class="hidden flex-col gap-3 rounded-xl border border-rule bg-surface-raised p-4 lg:flex">
-          <div class="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">Capabilities</div>
-          {['Integrations', 'Embedded browsers', 'Mac computer-use', 'Shared memory', 'TypeScript tools'].map((name) => (
-            <div class="rounded-lg border border-rule bg-surface p-3 text-[13px] text-ink-muted">{name}</div>
-          ))}
-          <div class="mt-auto rounded-lg border border-teal/20 bg-teal/[0.05] p-3">
-            <div class="text-[13px] font-medium text-teal">One setup</div>
-            <div class="mt-1 text-[11px] leading-5 text-teal/60">Every MCP client gets the same interface.</div>
+          <div class="relative">
+            <div class="absolute inset-0 rounded-[2rem] bg-teal/10 blur-3xl"></div>
+            <div class="relative flex min-h-[260px] flex-col items-center justify-center rounded-2xl border border-teal/25 bg-surface px-6 py-8 text-center">
+              <span class="flex h-16 w-16 items-center justify-center rounded-2xl border border-teal/20 bg-ink p-3 shadow-lg shadow-black/20" aria-hidden="true">
+                <span
+                  class="h-full w-full bg-surface"
+                  style="-webkit-mask: url('/favicon.svg') center / contain no-repeat; mask: url('/favicon.svg') center / contain no-repeat;"
+                ></span>
+              </span>
+              <div class="mt-5 font-display text-[28px] font-semibold tracking-tight text-ink">GOD TOOL</div>
+              <div class="mt-2 font-mono text-[11px] uppercase tracking-[0.18em] text-teal">Shared execution layer</div>
+              <div class="mt-5 h-px w-28 bg-gradient-to-r from-transparent via-teal/60 to-transparent"></div>
+              <div class="mt-5 max-w-[220px] text-[12px] leading-5 text-ink-faint">
+                One interface every agent can call.
+              </div>
+            </div>
+          </div>
+
+          <div class="hidden gap-3 pt-[34px] lg:grid">
+            {Array.from({ length: 4 }).map(() => (
+              <div class="flex min-h-[76px] items-center text-teal/45">
+                <span class="h-px flex-1 bg-gradient-to-r from-teal/70 via-teal/50 to-transparent"></span>
+                <svg class="ml-1 h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="m9 6 6 6-6 6" /></svg>
+              </div>
+            ))}
+          </div>
+
+          <div class="grid gap-3">
+            <div class="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">The world</div>
+            <div class="flex min-h-[76px] items-center gap-3 rounded-lg border border-rule bg-surface p-3">
+              <div class="relative h-9 w-[70px] shrink-0">
+                <img src="/logos/github.svg" alt="" class="absolute left-0 top-1 h-8 w-8 rounded-md bg-white p-1" loading="lazy" />
+                <img src="/logos/slack.svg" alt="" class="absolute left-5 top-0 h-8 w-8 rounded-md bg-white p-1" loading="lazy" />
+                <img src="/logos/gmail.svg" alt="" class="absolute left-10 top-1 h-8 w-8 rounded-md bg-white p-1" loading="lazy" />
+              </div>
+              <div class="min-w-0">
+                <div class="truncate text-[13px] font-medium text-ink">Connected accounts</div>
+                <div class="mt-0.5 truncate text-[11px] text-ink-faint">GitHub, Slack, Gmail, and more</div>
+              </div>
+            </div>
+            <div class="flex min-h-[76px] items-center gap-3 rounded-lg border border-rule bg-surface p-3">
+              <img src="https://www.google.com/s2/favicons?domain=google.com/chrome&sz=64" alt="" class="h-8 w-8 rounded-md bg-white p-1" loading="lazy" />
+              <div class="min-w-0">
+                <div class="truncate text-[13px] font-medium text-ink">Logged-in browsers</div>
+                <div class="mt-0.5 text-[11px] text-ink-faint">persistent sessions</div>
+              </div>
+            </div>
+            <div class="flex min-h-[76px] items-center gap-3 rounded-lg border border-rule bg-surface p-3">
+              <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-rule bg-surface-raised text-teal">
+                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d="M4 5.5h16v10.25H4zM9 19h6m-3-3.25V19" /></svg>
+              </span>
+              <div class="min-w-0">
+                <div class="truncate text-[13px] font-medium text-ink">Mac computer-use</div>
+                <div class="mt-0.5 text-[11px] text-ink-faint">act on your machine</div>
+              </div>
+            </div>
+            <div class="flex min-h-[76px] items-center gap-3 rounded-lg border border-rule bg-surface p-3">
+              <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-rule bg-surface-raised text-teal">
+                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 7.5h6l1.5 2h9v8.25a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5z" /><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 7.5V6a1.5 1.5 0 0 1 1.5-1.5h4.5l1.5 2h7.5a1.5 1.5 0 0 1 1.5 1.5v1.5" /></svg>
+              </span>
+              <div class="min-w-0">
+                <div class="truncate text-[13px] font-medium text-ink">Persistent files</div>
+                <div class="mt-0.5 text-[11px] text-ink-faint">shared agent context</div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -163,14 +154,14 @@ import Layout from '../layouts/Layout.astro'
 
   <section id="integrations" class="relative py-28 sm:py-36">
     <div class="mx-auto max-w-[1200px] px-6 sm:px-10">
-      <div class="reveal mb-12 grid gap-8 lg:grid-cols-[0.8fr_1.2fr] lg:items-end">
+      <div class="reveal mb-12 grid gap-8 lg:grid-cols-[0.95fr_1.05fr] lg:items-end">
         <div>
           <span class="mb-4 block font-mono text-[11px] uppercase tracking-[0.2em] text-ink-faint">Integrations</span>
-          <h2 class="font-display text-[clamp(2rem,4.8vw,4rem)] leading-[1.02] tracking-tight text-ink">
+          <h2 class="max-w-[640px] font-display text-[clamp(2.5rem,4.2vw,4.1rem)] leading-[1] tracking-tight text-ink">
             Connect once.<br /><span class="italic text-teal">Use everywhere.</span>
           </h2>
         </div>
-        <p class="max-w-2xl text-[15px] leading-7 text-ink-muted">
+        <p class="max-w-2xl pb-2 text-[15px] leading-7 text-ink-muted">
           Add OpenAPI, GraphQL, Google Discovery, MCP, and local tools in one place. Every connected agent gets the same catalog, credentials, and policies. Cloud integrations stay available even when your Mac is closed.
         </p>
       </div>
@@ -262,103 +253,106 @@ import Layout from '../layouts/Layout.astro'
   </section>
 
   <section id="computer" class="relative border-y border-rule py-28 sm:py-36">
-    <div class="mx-auto grid max-w-[1200px] gap-12 px-6 sm:px-10 lg:grid-cols-[0.78fr_1.22fr] lg:items-center">
-      <div class="reveal">
+    <div class="mx-auto max-w-[1200px] px-6 sm:px-10">
+      <div class="reveal mb-12 max-w-3xl">
         <span class="mb-4 block font-mono text-[11px] uppercase tracking-[0.2em] text-ink-faint">Computer + browser use</span>
-        <h2 class="font-display text-[clamp(2rem,4.5vw,3.5rem)] leading-[1.05] tracking-tight text-ink">
-          Give every agent <span class="italic text-teal">hands.</span>
+        <h2 class="font-display text-[clamp(2.4rem,4.7vw,4.25rem)] leading-[1] tracking-tight text-ink">
+          Use websites and native apps <span class="italic text-teal">from one controlled layer.</span>
         </h2>
-        <div class="mt-7 grid gap-3">
-          <div class="rounded-lg border border-rule bg-surface-raised p-4">
-            <div class="text-[14px] font-medium text-ink">Some agents browse. Some click. Some do neither.</div>
-            <p class="mt-2 text-[13px] leading-6 text-ink-muted">GOD TOOL makes browser sessions and Mac computer-use part of the shared interface.</p>
-          </div>
-          <div class="rounded-lg border border-rule bg-surface-raised p-4">
-            <div class="text-[14px] font-medium text-ink">Keep browser work inside the app.</div>
-            <p class="mt-2 text-[13px] leading-6 text-ink-muted">Run multiple Chromium sessions without covering your screen in windows.</p>
-          </div>
-          <div class="rounded-lg border border-teal/20 bg-teal/[0.05] p-4">
-            <div class="text-[14px] font-medium text-teal">Save the skill once.</div>
-            <p class="mt-2 text-[13px] leading-6 text-teal/70">Your computer-use routines live in GOD TOOL, not inside one model provider.</p>
-          </div>
-        </div>
+        <p class="mt-6 max-w-2xl text-[15px] leading-7 text-ink-muted">
+          GOD TOOL keeps logged-in browsers contained, runs Mac computer-use in the background, and lets useful routines become repeatable workflows.
+        </p>
       </div>
 
-      <div class="reveal overflow-hidden rounded-xl border border-rule bg-surface-raised">
-        <div class="flex items-center justify-between border-b border-rule px-4 py-3">
-          <div class="flex items-center gap-2">
-            <span class="h-2.5 w-2.5 rounded-full bg-red-400"></span>
-            <span class="h-2.5 w-2.5 rounded-full bg-amber-300"></span>
-            <span class="h-2.5 w-2.5 rounded-full bg-emerald-400"></span>
+      <div class="grid gap-4 lg:grid-cols-3">
+        <div class="reveal flex min-h-[320px] flex-col rounded-xl border border-rule bg-surface-raised p-5">
+          <div class="mb-6 flex items-center justify-between">
+            <span class="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">Browser use</span>
+            <span class="rounded bg-teal/[0.08] px-2 py-1 font-mono text-[10px] text-teal">persistent auth</span>
           </div>
-          <div class="font-mono text-[11px] text-ink-faint">Browsers</div>
+          <div class="flex h-[210px] flex-col justify-center rounded-xl border border-rule bg-surface p-4">
+            <div class="grid grid-cols-2 gap-2">
+              {[
+                ['/logos/linkedin.svg', 'LinkedIn', 'profiles'],
+                ['/logos/x.svg', 'X.com', 'posts'],
+                ['/logos/instagram.svg', 'Instagram', 'media'],
+                ['/logos/reddit.svg', 'Reddit', 'threads'],
+              ].map(([icon, name, detail]) => (
+                <div class="flex items-center gap-3 rounded-lg border border-rule bg-surface-raised px-3 py-2">
+                  <img src={icon} alt="" class="h-8 w-8 shrink-0 rounded-lg object-contain" loading="lazy" />
+                  <div class="min-w-0">
+                    <div class="truncate text-[13px] font-medium text-ink">{name}</div>
+                    <div class="mt-0.5 font-mono text-[10px] text-ink-faint">{detail}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div class="mt-auto pt-8">
+            <h3 class="text-[17px] font-medium text-ink">Use sites that do not fit an API.</h3>
+            <p class="mt-3 text-[13px] leading-6 text-ink-muted">
+              Keep logged-in browser sessions inside GOD TOOL for web apps where clicking is the interface.
+            </p>
+          </div>
         </div>
 
-        <div class="grid min-h-[420px] md:grid-cols-[220px_1fr]">
-          <aside class="border-b border-rule bg-sidebar p-3 md:border-b-0 md:border-r">
-            <div class="mb-3 flex items-center justify-between">
-              <span class="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">Sessions</span>
-              <span class="rounded bg-teal/[0.08] px-2 py-1 font-mono text-[10px] text-teal">3 active</span>
+        <div class="reveal flex min-h-[320px] flex-col rounded-xl border border-rule bg-surface-raised p-5">
+          <div class="mb-6 flex items-center justify-between">
+            <span class="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">Mac computer-use</span>
+            <span class="rounded bg-teal/[0.08] px-2 py-1 font-mono text-[10px] text-teal">background</span>
+          </div>
+          <div class="flex h-[210px] flex-col justify-center rounded-xl border border-rule bg-surface p-4">
+            <div class="grid grid-cols-2 gap-2">
+              {[
+                ['DaVinci Resolve', 'trim timeline', '/logos/apps/davinci-resolve.png'],
+                ['Messages', 'send reply', '/logos/apps/messages.png'],
+                ['Notes', 'update note', '/logos/apps/notes.png'],
+                ['Figma', 'edit design', '/logos/apps/figma.svg'],
+              ].map(([name, detail, icon]) => (
+                <div class="flex items-center gap-3 rounded-lg border border-rule bg-surface-raised px-3 py-2">
+                  <img src={icon} alt="" class="h-8 w-8 shrink-0 rounded-lg object-contain" loading="lazy" />
+                  <div class="min-w-0">
+                    <div class="truncate text-[13px] font-medium text-ink">{name}</div>
+                    <div class="mt-0.5 font-mono text-[10px] text-ink-faint">{detail}</div>
+                  </div>
+                </div>
+              ))}
             </div>
-            {[
-              ['Research', 'docs.stripe.com'],
-              ['Logged-in app', 'linear.app'],
-              ['Checkout flow', 'localhost:3000'],
-            ].map(([name, url], index) => (
-              <div class={`mb-1 rounded-md border px-3 py-2 ${index === 0 ? 'border-teal/20 bg-teal/[0.07]' : 'border-transparent bg-surface/40'}`}>
-                <div class="truncate text-[12px] font-medium text-ink">{name}</div>
-                <div class="mt-1 truncate font-mono text-[10px] text-ink-faint">{url}</div>
-              </div>
-            ))}
-            <div class="mt-5 rounded-lg border border-rule bg-surface p-3">
-              <div class="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-faint">Mac computer-use</div>
-              <div class="mt-3 space-y-2 font-mono text-[11px] text-ink-muted">
-                <div>click(button)</div>
-                <div>type(text)</div>
-                <div>read_screen()</div>
-              </div>
-            </div>
-          </aside>
+          </div>
+          <div class="mt-auto pt-8">
+            <h3 class="text-[17px] font-medium text-ink">Run GUI-only Mac workflows.</h3>
+            <p class="mt-3 text-[13px] leading-6 text-ink-muted">
+              Agents can read screens, click controls, and type into desktop apps while you keep working.
+            </p>
+          </div>
+        </div>
 
-          <main class="flex min-w-0 flex-col">
-            <div class="flex items-center gap-2 border-b border-rule px-3 py-2">
-              <button class="rounded border border-rule px-2 py-1 text-[11px] text-ink-faint">back</button>
-              <button class="rounded border border-rule px-2 py-1 text-[11px] text-ink-faint">reload</button>
-              <div class="min-w-0 flex-1 rounded-md border border-rule bg-surface px-3 py-1.5 font-mono text-[11px] text-ink-muted">https://docs.stripe.com/api/payment_intents</div>
+        <div class="reveal flex min-h-[320px] flex-col rounded-xl border border-rule bg-surface-raised p-5">
+          <div class="mb-6 flex items-center justify-between">
+            <span class="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">Workflows</span>
+            <span class="rounded bg-teal/[0.08] px-2 py-1 font-mono text-[10px] text-teal">reusable</span>
+          </div>
+          <div class="flex h-[210px] flex-col justify-center rounded-xl border border-rule bg-surface p-4">
+            <div class="grid gap-2">
+              {[
+                'Open logged-in browser',
+                'Read profile',
+                'Check company site',
+                'Save notes',
+              ].map((step, index) => (
+                <div class="flex items-center gap-2 rounded-lg border border-rule bg-surface-raised px-3 py-2">
+                  <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-teal/[0.08] font-mono text-[10px] text-teal">{index + 1}</span>
+                  <span class="truncate text-[12px] text-ink-muted">{step}</span>
+                </div>
+              ))}
             </div>
-            <div class="grid flex-1 md:grid-cols-[1fr_210px]">
-              <div class="bg-black p-5 text-white">
-                <div class="mb-5 flex items-center justify-between border-b border-white/10 pb-3">
-                  <div class="text-lg font-semibold">Stripe Docs</div>
-                  <div class="rounded bg-white/10 px-2 py-1 text-xs">API</div>
-                </div>
-                <div class="mb-4 h-8 w-2/3 rounded bg-white/14"></div>
-                <div class="space-y-2">
-                  <div class="h-3 rounded bg-white/18"></div>
-                  <div class="h-3 w-11/12 rounded bg-white/14"></div>
-                  <div class="h-3 w-8/12 rounded bg-white/14"></div>
-                </div>
-                <div class="mt-8 rounded-lg border border-white/10 bg-white/[0.06] p-4 font-mono text-xs text-emerald-200">
-                  POST /v1/payment_intents<br />
-                  amount: 2000<br />
-                  currency: usd
-                </div>
-              </div>
-              <div class="border-t border-rule bg-surface p-4 md:border-l md:border-t-0">
-                <div class="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">Agent actions</div>
-                <div class="mt-4 space-y-3">
-                  {[
-                    'open browser session',
-                    'search payment intents',
-                    'read API parameters',
-                    'save notes to workspace',
-                  ].map((step) => (
-                    <div class="rounded-md border border-rule bg-surface-raised px-3 py-2 font-mono text-[11px] text-ink-muted">{step}</div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </main>
+          </div>
+          <div class="mt-auto pt-8">
+            <h3 class="text-[17px] font-medium text-ink">Save the workflow once.</h3>
+            <p class="mt-3 text-[13px] leading-6 text-ink-muted">
+              Turn browser and computer-use steps into repeatable routines your team can run again later.
+            </p>
+          </div>
         </div>
       </div>
     </div>
@@ -417,14 +411,14 @@ import Layout from '../layouts/Layout.astro'
           Use the same capabilities <span class="italic text-teal">from any client.</span>
         </h2>
         <p class="mt-6 text-[15px] leading-7 text-ink-muted">
-          Connect something on your desktop once. The same interface is available to any MCP client: desktop agents, scripts, cloud clients, or an MCP client on your phone.
+          Connect something on your desktop once. The same interface is available to Claude Code, Codex, Cursor, scripts, custom agents, and any MCP client.
         </p>
       </div>
 
       <div class="reveal rounded-xl border border-rule bg-surface-raised p-6 sm:p-8">
         <div class="grid gap-4 md:grid-cols-[1fr_auto_1fr] md:items-center">
           <div class="grid gap-3">
-            {['Claude', 'Codex', 'Cursor', 'Phone MCP'].map((name) => (
+            {['Claude Code', 'Codex', 'Cursor', 'Any MCP client'].map((name) => (
               <div class="rounded-lg border border-rule bg-surface px-4 py-3 text-[13px] text-ink-muted">{name}</div>
             ))}
           </div>
@@ -482,8 +476,8 @@ for (const issue of issues.filter(isStale)) &#123;
           Give every agent the same integrations, browsers, computer use, and persistent context.
         </p>
         <div class="flex flex-wrap items-center justify-center gap-4">
-          <a href="https://github.com/RhysSullivan/executor" class="inline-flex items-center gap-2 rounded-md bg-teal px-6 py-3 text-[14px] font-medium text-surface transition-colors hover:bg-teal-dim">
-            View on GitHub
+          <a href="/setup" class="inline-flex items-center gap-2 rounded-md bg-teal px-6 py-3 text-[14px] font-medium text-surface transition-colors hover:bg-teal-dim">
+            Download for free
           </a>
         </div>
       </div>

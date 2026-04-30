@@ -2,11 +2,7 @@ import { env } from "cloudflare:workers";
 import { Data, Effect } from "effect";
 import type * as Cause from "effect/Cause";
 
-import type {
-  CodeExecutor,
-  ExecuteResult,
-  SandboxToolInvoker,
-} from "@executor/execution";
+import type { CodeExecutor, ExecuteResult, SandboxToolInvoker } from "@executor/execution";
 
 type DeviceSessionBinding = DurableObjectNamespace<import("../device-session").DeviceSessionDO>;
 
@@ -34,6 +30,7 @@ type DeviceCodeExecutorOptions<E extends Cause.YieldableError> = {
   readonly organizationId: string;
   readonly organizationName: string;
   readonly userId: string;
+  readonly allowFallback: boolean;
 };
 
 const deviceSessionNamespace = (): DeviceSessionBinding | null =>
@@ -112,8 +109,19 @@ export const makeDeviceFirstCodeExecutor = <E extends Cause.YieldableError>(
       const deviceResult = yield* executeOnDevice(options, code);
       if (deviceResult) return deviceResult;
 
-      return yield* options.fallback.execute(code, toolInvoker).pipe(
-        Effect.mapError((error) => new DeviceExecutionError({ message: renderErrorMessage(error) })),
-      );
+      if (!options.allowFallback) {
+        return yield* new DeviceExecutionError({
+          message: "Hosted worker fallback requires the Pro plan",
+          status: 402,
+        });
+      }
+
+      return yield* options.fallback
+        .execute(code, toolInvoker)
+        .pipe(
+          Effect.mapError(
+            (error) => new DeviceExecutionError({ message: renderErrorMessage(error) }),
+          ),
+        );
     }),
 });

@@ -28,6 +28,12 @@ import {
   useSourceIdentity,
 } from "@executor/react/plugins/source-identity";
 import { useSecretPickerSecrets } from "@executor/react/plugins/use-secret-picker-secrets";
+import {
+  isDesktopManagedAuth,
+  startManagedAuthConnect,
+  useManagedAuthAccess,
+  type ManagedAuthConnectResult,
+} from "@executor/react/plugins/managed-auth";
 import { Button } from "@executor/react/components/button";
 import { CopyButton } from "@executor/react/components/copy-button";
 import {
@@ -70,6 +76,7 @@ import {
   type ServerInfo,
   type ServerVariable,
 } from "../sdk/types";
+import { openApiPresets } from "../sdk/presets";
 
 export const OPENAPI_OAUTH_CHANNEL = "executor:openapi-oauth-result";
 export const OPENAPI_OAUTH_POPUP_NAME = "openapi-oauth";
@@ -116,6 +123,7 @@ export function resolveOAuthUrl(url: string, baseUrl: string): string {
 type StrategySelection =
   | { readonly kind: "none" }
   | { readonly kind: "custom" }
+  | { readonly kind: "managed" }
   | { readonly kind: "header"; readonly presetIndex: number }
   | { readonly kind: "oauth2"; readonly presetIndex: number };
 
@@ -125,6 +133,8 @@ const serializeStrategy = (s: StrategySelection): string => {
       return "none";
     case "custom":
       return "custom";
+    case "managed":
+      return "managed";
     case "header":
       return `header:${s.presetIndex}`;
     case "oauth2":
@@ -135,6 +145,7 @@ const serializeStrategy = (s: StrategySelection): string => {
 const parseStrategy = (value: string): StrategySelection => {
   if (value === "none") return { kind: "none" };
   if (value === "custom") return { kind: "custom" };
+  if (value === "managed") return { kind: "managed" };
   if (value.startsWith("header:")) {
     return { kind: "header", presetIndex: Number(value.slice("header:".length)) };
   }
@@ -170,6 +181,57 @@ function entriesFromSpecPreset(preset: HeaderPreset): HeaderState[] {
   });
 }
 
+const goToBilling = () => {
+  window.location.href = "/settings/billing";
+};
+
+const OPENAPI_COMPOSIO_HOSTS: ReadonlyArray<readonly [string, string]> = [
+  ["api.github.com", "github"],
+  ["github.com", "github"],
+  ["api.stripe.com", "stripe"],
+  ["stripe.com", "stripe"],
+  ["app.asana.com", "asana"],
+  ["asana.com", "asana"],
+  ["api.twilio.com", "twilio"],
+  ["twilio.com", "twilio"],
+  ["api.spotify.com", "spotify"],
+  ["spotify.com", "spotify"],
+];
+
+function hostnameOf(value: string): string | null {
+  try {
+    return new URL(value).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function managedAuthAppFromOpenApi(input: {
+  readonly presetApp?: string;
+  readonly title?: string;
+  readonly specUrl: string;
+  readonly baseUrl: string;
+}): string | null {
+  if (input.presetApp) return input.presetApp;
+
+  for (const value of [input.baseUrl, input.specUrl]) {
+    const hostname = hostnameOf(value);
+    if (!hostname) continue;
+    const match = OPENAPI_COMPOSIO_HOSTS.find(
+      ([host]) => hostname === host || hostname.endsWith(`.${host}`),
+    );
+    if (match) return match[1];
+  }
+
+  const title = (input.title ?? "").toLowerCase();
+  if (title.includes("github")) return "github";
+  if (title.includes("stripe")) return "stripe";
+  if (title.includes("asana")) return "asana";
+  if (title.includes("twilio")) return "twilio";
+  if (title.includes("spotify")) return "spotify";
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Main component — single progressive form
 // ---------------------------------------------------------------------------
@@ -178,10 +240,14 @@ export default function AddOpenApiSource(props: {
   onComplete: (sourceId?: string) => void;
   onCancel: () => void;
   initialUrl?: string;
+  initialPreset?: string;
   initialNamespace?: string;
 }) {
+  const resolvedPreset = props.initialPreset
+    ? (openApiPresets.find((preset) => preset.id === props.initialPreset) ?? null)
+    : null;
   // Spec input
-  const [specUrl, setSpecUrl] = useState(props.initialUrl ?? "");
+  const [specUrl, setSpecUrl] = useState(props.initialUrl ?? resolvedPreset?.url ?? "");
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
 
@@ -209,6 +275,8 @@ export default function AddOpenApiSource(props: {
     readonly fingerprint: string;
     readonly auth: OAuth2Auth;
   } | null>(null);
+  const [managedAuth, setManagedAuth] = useState<ManagedAuthConnectResult | null>(null);
+  const [startingManagedAuth, setStartingManagedAuth] = useState(false);
   const [startingOAuth, setStartingOAuth] = useState(false);
   const [oauth2Error, setOauth2Error] = useState<string | null>(null);
   const oauthCleanup = useRef<(() => void) | null>(null);
@@ -225,6 +293,7 @@ export default function AddOpenApiSource(props: {
   const doSetBinding = useAtomSet(setOpenApiSourceBinding, { mode: "promise" });
   const { beginAdd } = usePendingSources();
   const secretList = useSecretPickerSecrets();
+  const managedAuthAccess = useManagedAuthAccess();
 
   // Keep the latest handleAnalyze in a ref so the debounced effect doesn't
   // need it as a dependency (it closes over fresh state).
@@ -335,8 +404,21 @@ export default function AddOpenApiSource(props: {
         })
       : null;
   const hasHeaders = Object.keys(configuredHeaders).length > 0;
+  const previewTitle = preview ? Option.getOrElse(preview.title, () => "") : "";
+  const managedAuthApp = managedAuthAppFromOpenApi({
+    presetApp: resolvedPreset?.composio?.app,
+    title: previewTitle,
+    specUrl,
+    baseUrl: resolvedBaseUrl,
+  });
+  const managedProviderLabel = managedAuthApp
+    ? managedAuthApp.charAt(0).toUpperCase() + managedAuthApp.slice(1)
+    : "this API";
 
-  const canAdd = preview !== null && resolvedBaseUrl.length > 0;
+  const canAdd =
+    preview !== null &&
+    resolvedBaseUrl.length > 0 &&
+    (strategy.kind !== "managed" || managedAuth !== null);
 
   // ---- Handlers ----
 
@@ -395,6 +477,9 @@ export default function AddOpenApiSource(props: {
         setCustomHeaders(userHeaders.length > 0 ? userHeaders : []);
         return;
       }
+      case "managed":
+        setCustomHeaders([]);
+        return;
       case "header": {
         const preset = preview?.headerPresets[next.presetIndex];
         if (!preset) return;
@@ -412,6 +497,31 @@ export default function AddOpenApiSource(props: {
       }
     }
   };
+
+  useEffect(() => {
+    if (strategy.kind === "managed" && !managedAuthApp) {
+      setStrategy({ kind: "none" });
+    }
+    setManagedAuth(null);
+  }, [managedAuthApp, strategy.kind]);
+
+  const handleConnectManagedAuth = useCallback(async () => {
+    if (!managedAuthApp) return;
+    setStartingManagedAuth(true);
+    setAddError(null);
+    try {
+      const result = await startManagedAuthConnect({
+        app: managedAuthApp,
+        provider: "openapi-composio",
+        placement: isDesktopManagedAuth() ? "local" : "cloud",
+      });
+      setManagedAuth(result);
+    } catch (error) {
+      setAddError(error instanceof Error ? error.message : "Failed to connect managed auth");
+    } finally {
+      setStartingManagedAuth(false);
+    }
+  }, [managedAuthApp]);
 
   const handleHeadersChange = (next: HeaderState[]) => {
     setCustomHeaders(next);
@@ -596,6 +706,12 @@ export default function AddOpenApiSource(props: {
           baseUrl: resolvedBaseUrl || undefined,
           ...(hasHeaders ? { headers: configuredHeaders } : {}),
           ...(configuredOAuth2 ? { oauth2: configuredOAuth2 } : {}),
+          ...(managedAuth
+            ? {
+                managedAuth: managedAuth.managedAuth,
+                managedConnection: managedAuth.managedConnection,
+              }
+            : {}),
         },
         reactivityKeys: addSpecWriteKeys,
       });
@@ -708,6 +824,7 @@ export default function AddOpenApiSource(props: {
                     setStrategy({ kind: "none" });
                     setOauth2AuthState(null);
                     setOauth2Error(null);
+                    setManagedAuth(null);
                   }
                 }}
                 placeholder="https://api.example.com/openapi.json"
@@ -903,12 +1020,29 @@ export default function AddOpenApiSource(props: {
 
           <section className="space-y-2.5">
             <FieldLabel>Authentication</FieldLabel>
-            {(preview.headerPresets.length > 0 || oauth2Presets.length > 0) && (
+            {(managedAuthApp || preview.headerPresets.length > 0 || oauth2Presets.length > 0) && (
               <RadioGroup
                 value={serializeStrategy(strategy)}
                 onValueChange={(value) => selectStrategy(parseStrategy(value))}
                 className="gap-1.5"
               >
+                {managedAuthApp && (
+                  <Label
+                    className={`flex items-start gap-2.5 rounded-lg border px-3 py-2 cursor-pointer transition-colors ${
+                      strategy.kind === "managed"
+                        ? "border-primary/50 bg-primary/[0.03]"
+                        : "border-border hover:bg-accent/50"
+                    }`}
+                  >
+                    <RadioGroupItem value="managed" className="mt-0.5" />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-xs font-medium text-foreground">Managed OAuth</div>
+                      <div className="mt-0.5 text-[10px] text-muted-foreground">
+                        GOD TOOL manages {managedProviderLabel} OAuth through Composio
+                      </div>
+                    </div>
+                  </Label>
+                )}
                 {preview.headerPresets.map((preset, i) => {
                   const selected = strategy.kind === "header" && strategy.presetIndex === i;
                   return (
@@ -977,8 +1111,49 @@ export default function AddOpenApiSource(props: {
               </RadioGroup>
             )}
 
+            {strategy.kind === "managed" && managedAuthApp && (
+              <CardStack>
+                <CardStackContent className="border-t-0">
+                  <CardStackEntry className="items-center justify-between gap-4">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground">
+                        {managedAuth ? "Connected with managed auth" : "Let GOD TOOL manage OAuth"}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {isDesktopManagedAuth()
+                          ? "This local source uses your cloud sign-in without storing OAuth secrets on this Mac."
+                          : "Credentials are stored in Composio for this cloud source."}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant={managedAuth ? "outline" : "default"}
+                      onClick={
+                        managedAuth || managedAuthAccess.allowed
+                          ? handleConnectManagedAuth
+                          : goToBilling
+                      }
+                      disabled={managedAuthAccess.loading || startingManagedAuth || adding}
+                    >
+                      {managedAuthAccess.loading
+                        ? "Checking..."
+                        : startingManagedAuth
+                          ? "Connecting..."
+                          : managedAuth
+                            ? "Reconnect"
+                            : managedAuthAccess.allowed
+                              ? "Connect"
+                              : "Upgrade to Pro"}
+                    </Button>
+                  </CardStackEntry>
+                </CardStackContent>
+              </CardStack>
+            )}
+
             {/* Header-based auth input */}
-            {strategy.kind !== "none" && strategy.kind !== "oauth2" && (
+            {strategy.kind !== "none" &&
+              strategy.kind !== "oauth2" &&
+              strategy.kind !== "managed" && (
               <HeadersList
                 headers={customHeaders}
                 onHeadersChange={handleHeadersChange}
