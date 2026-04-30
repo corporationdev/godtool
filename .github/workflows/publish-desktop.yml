@@ -30,14 +30,6 @@ jobs:
             arch: x64
             platform: mac
             cli-asset: executor-darwin-x64.zip
-          - os: ubuntu-latest
-            arch: x64
-            platform: linux
-            cli-asset: executor-linux-x64.tar.gz
-          - os: windows-latest
-            arch: x64
-            platform: win
-            cli-asset: executor-windows-x64.zip
 
     runs-on: ${{ matrix.os }}
 
@@ -64,8 +56,7 @@ jobs:
         run: bun run build
         working-directory: apps/web
 
-      - name: Download and extract CLI sidecar (unix)
-        if: matrix.platform != 'win'
+      - name: Download and extract CLI sidecar
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -83,20 +74,6 @@ jobs:
             cp emscripten-module.wasm "${{ github.workspace }}/apps/desktop/resources/"
           fi
 
-      - name: Download and extract CLI sidecar (windows)
-        if: matrix.platform == 'win'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path "apps/desktop/resources"
-          gh release download "${{ inputs.tag }}" --repo "${{ github.repository }}" --pattern "${{ matrix.cli-asset }}" --dir "$env:TEMP/cli-download"
-          Expand-Archive -Path "$env:TEMP/cli-download/${{ matrix.cli-asset }}" -DestinationPath "$env:TEMP/cli-extract" -Force
-          Copy-Item "$env:TEMP/cli-extract/executor.exe" "apps/desktop/resources/executor.exe"
-          if (Test-Path "$env:TEMP/cli-extract/emscripten-module.wasm") {
-            Copy-Item "$env:TEMP/cli-extract/emscripten-module.wasm" "apps/desktop/resources/"
-          }
-
       - name: Build desktop app (TypeScript)
         run: bunx tsc -p tsconfig.json
         working-directory: apps/desktop
@@ -111,9 +88,7 @@ jobs:
           name: desktop-${{ matrix.platform }}-${{ matrix.arch }}
           path: |
             apps/desktop/dist/*.dmg
-            apps/desktop/dist/*.exe
-            apps/desktop/dist/*.AppImage
-            apps/desktop/dist/*.deb
+            apps/desktop/dist/*-mac.zip
           if-no-files-found: warn
 
   release:
@@ -131,7 +106,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          find artifacts -type f \( -name "*.dmg" -o -name "*.exe" -o -name "*.AppImage" -o -name "*.deb" \) | while read file; do
+          find artifacts -type f \( -name "*.dmg" -o -name "*-mac.zip" \) | while read file; do
             echo "Uploading: $file"
             gh release upload "${{ inputs.tag }}" "$file" --repo "${{ github.repository }}" --clobber || true
           done
