@@ -6,6 +6,7 @@ import {
   startManagedAuthConnect,
   isDesktopManagedAuth,
   useManagedAuthAccess,
+  managedAuthCtaLabel,
   type ManagedAuthConnectResult,
 } from "@executor/react/plugins/managed-auth";
 
@@ -17,7 +18,12 @@ import { SecretPicker, type SecretPickerSecret } from "@executor/react/plugins/s
 import { SecretId } from "@executor/sdk";
 import { Badge } from "@executor/react/components/badge";
 import { Button } from "@executor/react/components/button";
-import { CardStackEntryField } from "@executor/react/components/card-stack";
+import {
+  CardStack,
+  CardStackContent,
+  CardStackEntry,
+  CardStackEntryField,
+} from "@executor/react/components/card-stack";
 import {
   SourceIdentityFields,
   slugifyNamespace,
@@ -39,7 +45,6 @@ import {
   FieldSet,
   FieldTitle,
 } from "@executor/react/components/field";
-import { FilterTabs } from "@executor/react/components/filter-tabs";
 import { FloatActions } from "@executor/react/components/float-actions";
 import { Input } from "@executor/react/components/input";
 import { Label } from "@executor/react/components/label";
@@ -419,6 +424,7 @@ export default function AddGoogleDiscoverySource(props: {
   const managedAuthApp = activeTemplate?.composioApp ?? null;
   const hasSelectedGoogleSource = selectedTemplateId.length > 0 || discoveryUrl.trim().length > 0;
   const [authKind, setAuthKind] = useState<GoogleAuthKind>("oauth2");
+  const [authChoiceTouched, setAuthChoiceTouched] = useState(false);
   const [clientIdSecretId, setClientIdSecretId] = useState<string | null>(null);
   const [clientSecretSecretId, setClientSecretSecretId] = useState<string | null>(null);
   const [probe, setProbe] = useState<ProbeResult | null>(null);
@@ -465,9 +471,10 @@ export default function AddGoogleDiscoverySource(props: {
       setManagedAuth(null);
       setError(null);
       setShowScopes(false);
-      setAuthKind("oauth2");
+      setAuthKind(template.composioApp && managedAuthAccess.allowed ? "managed" : "oauth2");
+      setAuthChoiceTouched(false);
     },
-    [identity],
+    [identity, managedAuthAccess.allowed],
   );
 
   useEffect(() => {
@@ -475,6 +482,11 @@ export default function AddGoogleDiscoverySource(props: {
       setAuthKind("oauth2");
     }
   }, [authKind, managedAuthApp]);
+
+  useEffect(() => {
+    if (authChoiceTouched || !managedAuthApp || !managedAuthAccess.allowed) return;
+    setAuthKind("managed");
+  }, [authChoiceTouched, managedAuthAccess.allowed, managedAuthApp]);
 
   const handleProbe = useCallback(async () => {
     setLoadingProbe(true);
@@ -494,6 +506,10 @@ export default function AddGoogleDiscoverySource(props: {
       });
       if (result.scopes.length === 0) {
         setAuthKind("none");
+      } else if (!authChoiceTouched && managedAuthApp && managedAuthAccess.allowed) {
+        setAuthKind("managed");
+      } else if (!authChoiceTouched) {
+        setAuthKind("oauth2");
       }
     } catch (e) {
       setProbe(null);
@@ -501,7 +517,14 @@ export default function AddGoogleDiscoverySource(props: {
     } finally {
       setLoadingProbe(false);
     }
-  }, [discoveryUrl, doProbe, scopeId]);
+  }, [
+    authChoiceTouched,
+    discoveryUrl,
+    doProbe,
+    managedAuthAccess.allowed,
+    managedAuthApp,
+    scopeId,
+  ]);
 
   // Keep the latest handleProbe in a ref so the debounced effect can call it
   // without depending on its identity (which changes every render).
@@ -750,146 +773,198 @@ export default function AddGoogleDiscoverySource(props: {
           )}
 
           <section className="space-y-2.5">
-            <div className="flex items-center justify-between gap-3">
-              <FieldLabel>Authentication</FieldLabel>
-              <FilterTabs<GoogleAuthKind>
-                tabs={[
-                  { value: "none", label: "None" },
-                  { value: "oauth2", label: "OAuth" },
-                  ...(managedAuthApp ? [{ value: "managed" as const, label: "Managed" }] : []),
-                ]}
-                value={authKind}
-                onChange={setAuthKind}
-              />
-            </div>
+            <FieldLabel>Authentication</FieldLabel>
+            <RadioGroup
+              value={authKind}
+              onValueChange={(value) => {
+                setAuthChoiceTouched(true);
+                setAuthKind(value as GoogleAuthKind);
+              }}
+              className="gap-1.5"
+            >
+              {managedAuthApp && (
+                <Label
+                  className={`flex items-start gap-2.5 rounded-lg border px-3 py-2 cursor-pointer transition-colors ${
+                    authKind === "managed"
+                      ? "border-primary/50 bg-primary/[0.03]"
+                      : "border-border hover:bg-accent/50"
+                  }`}
+                >
+                  <RadioGroupItem value="managed" className="mt-0.5" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-medium text-foreground">Managed OAuth</div>
+                    <div className="mt-0.5 text-[10px] text-muted-foreground">
+                      GOD TOOL manages Google OAuth through Composio
+                    </div>
+                  </div>
+                </Label>
+              )}
+              <Label
+                className={`flex items-start gap-2.5 rounded-lg border px-3 py-2 cursor-pointer transition-colors ${
+                  authKind === "oauth2"
+                    ? "border-primary/50 bg-primary/[0.03]"
+                    : "border-border hover:bg-accent/50"
+                }`}
+              >
+                <RadioGroupItem value="oauth2" className="mt-0.5" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-medium text-foreground">
+                    Bring your own OAuth client
+                  </div>
+                  <div className="mt-0.5 text-[10px] text-muted-foreground">
+                    Use your Google client ID and optional client secret
+                  </div>
+                </div>
+              </Label>
+              <Label
+                className={`flex items-center gap-2.5 rounded-lg border px-3 py-2 cursor-pointer transition-colors ${
+                  authKind === "none"
+                    ? "border-primary/50 bg-primary/[0.03]"
+                    : "border-border hover:bg-accent/50"
+                }`}
+              >
+                <RadioGroupItem value="none" />
+                <span className="text-xs font-medium text-foreground">None</span>
+              </Label>
+            </RadioGroup>
 
             {authKind === "oauth2" && (
-              <div className="space-y-3 rounded-xl border border-border bg-card px-4 py-4">
-                <SecretBackedField
-                  label="OAuth Client ID"
-                  headerName="Client ID"
-                  suggestedSecretId="google-oauth-client-id"
-                  secretId={clientIdSecretId}
-                  onSelect={setClientIdSecretId}
-                  secretList={secretList}
-                  placeholder="Pick or create a secret"
-                  clearable={false}
-                />
-                <SecretBackedField
-                  label="OAuth Client Secret"
-                  headerName="Client Secret"
-                  suggestedSecretId="google-oauth-client-secret"
-                  secretId={clientSecretSecretId}
-                  onSelect={setClientSecretSecretId}
-                  secretList={secretList}
-                  placeholder="Optional for confidential clients"
-                />
-                <Collapsible open={showScopes} onOpenChange={setShowScopes} className="space-y-2">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 space-y-1">
-                      <p className="text-xs text-muted-foreground">
-                        {canUseOAuth
-                          ? `${probe?.scopes.length ?? 0} scopes will be requested from Google.`
-                          : "This API does not advertise OAuth scopes."}
-                      </p>
-                      {canUseOAuth && (probe?.scopes.length ?? 0) > 0 && (
-                        <CollapsibleTrigger asChild>
+              <CardStack>
+                <CardStackContent className="border-t-0">
+                  <CardStackEntry className="block space-y-3">
+                    <SecretBackedField
+                      label="OAuth Client ID"
+                      headerName="Client ID"
+                      suggestedSecretId="google-oauth-client-id"
+                      secretId={clientIdSecretId}
+                      onSelect={setClientIdSecretId}
+                      secretList={secretList}
+                      placeholder="Pick or create a secret"
+                      clearable={false}
+                    />
+                    <SecretBackedField
+                      label="OAuth Client Secret"
+                      headerName="Client Secret"
+                      suggestedSecretId="google-oauth-client-secret"
+                      secretId={clientSecretSecretId}
+                      onSelect={setClientSecretSecretId}
+                      secretList={secretList}
+                      placeholder="Optional for confidential clients"
+                    />
+                    <Collapsible
+                      open={showScopes}
+                      onOpenChange={setShowScopes}
+                      className="space-y-2"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 space-y-1">
+                          <p className="text-xs text-muted-foreground">
+                            {canUseOAuth
+                              ? `${probe?.scopes.length ?? 0} scopes will be requested from Google.`
+                              : "This API does not advertise OAuth scopes."}
+                          </p>
+                          {canUseOAuth && (probe?.scopes.length ?? 0) > 0 && (
+                            <CollapsibleTrigger asChild>
+                              <Button
+                                variant="link"
+                                type="button"
+                                className="h-auto p-0 text-xs font-medium text-primary hover:underline"
+                              >
+                                {showScopes ? "Hide scopes" : "View scopes"}
+                              </Button>
+                            </CollapsibleTrigger>
+                          )}
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
                           <Button
-                            variant="link"
-                            type="button"
-                            className="h-auto p-0 text-xs font-medium text-primary hover:underline"
+                            variant="outline"
+                            onClick={handleStartOAuth}
+                            disabled={!probe || !clientIdSecretId || !canUseOAuth || startingOAuth}
                           >
-                            {showScopes ? "Hide scopes" : "View scopes"}
+                            {startingOAuth ? (
+                              <>
+                                <Spinner className="size-3.5" /> Waiting…
+                              </>
+                            ) : oauthAuth ? (
+                              "Re-authenticate"
+                            ) : (
+                              "Connect Google"
+                            )}
                           </Button>
-                        </CollapsibleTrigger>
-                      )}
-                    </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <Button
-                        variant="outline"
-                        onClick={handleStartOAuth}
-                        disabled={!probe || !clientIdSecretId || !canUseOAuth || startingOAuth}
-                      >
-                        {startingOAuth ? (
-                          <>
-                            <Spinner className="size-3.5" /> Waiting…
-                          </>
-                        ) : oauthAuth ? (
-                          "Re-authenticate"
-                        ) : (
-                          "Connect Google"
-                        )}
-                      </Button>
-                      {startingOAuth && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={handleCancelOAuth}
-                          className="h-8 px-2 text-xs"
-                        >
-                          Cancel
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                  <CollapsibleContent>
-                    <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2">
-                      <ul className="space-y-1">
-                        {(probe?.scopes ?? []).map((scope) => (
-                          <li
-                            key={scope}
-                            className="break-all font-mono text-[11px] text-muted-foreground"
-                          >
-                            {scope}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  </CollapsibleContent>
-                </Collapsible>
-                {oauthAuth && (
-                  <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300">
-                    Connected. Manage this connection from the Connections page.
-                  </div>
-                )}
-              </div>
+                          {startingOAuth && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={handleCancelOAuth}
+                              className="h-8 px-2 text-xs"
+                            >
+                              Cancel
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                      <CollapsibleContent>
+                        <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2">
+                          <ul className="space-y-1">
+                            {(probe?.scopes ?? []).map((scope) => (
+                              <li
+                                key={scope}
+                                className="break-all font-mono text-[11px] text-muted-foreground"
+                              >
+                                {scope}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
+                    {oauthAuth && (
+                      <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300">
+                        Connected. Manage this connection from the Connections page.
+                      </div>
+                    )}
+                  </CardStackEntry>
+                </CardStackContent>
+              </CardStack>
             )}
             {authKind === "managed" && (
-              <div className="space-y-3 rounded-xl border border-border bg-card px-4 py-4">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-foreground">
-                      {managedAuth
-                        ? "Connected with managed auth"
-                        : "Let GOD TOOL manage Google OAuth"}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {isDesktopManagedAuth()
-                        ? "This local source uses your cloud sign-in without storing OAuth secrets on this Mac."
-                        : "Credentials are stored in Composio for this cloud source."}
-                    </p>
-                  </div>
-                  <Button
-                    variant={managedAuth ? "outline" : "default"}
-                    onClick={
-                      managedAuth || managedAuthAccess.allowed
-                        ? handleStartManagedAuth
-                        : goToBilling
-                    }
-                    disabled={!probe || managedAuthAccess.loading || startingManagedAuth || adding}
-                  >
-                    {managedAuthAccess.loading
-                      ? "Checking..."
-                      : startingManagedAuth
-                        ? "Connecting..."
-                        : managedAuth
-                          ? "Reconnect"
-                          : managedAuthAccess.allowed
-                            ? "Connect"
-                            : "Upgrade to Pro"}
-                  </Button>
-                </div>
-              </div>
+              <CardStack>
+                <CardStackContent className="border-t-0">
+                  <CardStackEntry className="items-center justify-between gap-4">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground">
+                        {managedAuth
+                          ? "Connected with managed auth"
+                          : "Let GOD TOOL manage Google OAuth"}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {isDesktopManagedAuth()
+                          ? "This local source uses your cloud sign-in without storing OAuth secrets on this Mac."
+                          : "Credentials are stored in Composio for this cloud source."}
+                      </p>
+                    </div>
+                    <Button
+                      variant={managedAuth ? "outline" : "default"}
+                      onClick={
+                        managedAuth || managedAuthAccess.allowed
+                          ? handleStartManagedAuth
+                          : goToBilling
+                      }
+                      disabled={
+                        !probe || managedAuthAccess.loading || startingManagedAuth || adding
+                      }
+                    >
+                      {managedAuthAccess.loading
+                        ? "Checking..."
+                        : startingManagedAuth
+                          ? "Connecting..."
+                          : managedAuth
+                            ? "Reconnect"
+                            : managedAuthCtaLabel(managedAuthAccess)}
+                    </Button>
+                  </CardStackEntry>
+                </CardStackContent>
+              </CardStack>
             )}
           </section>
 
@@ -904,6 +979,8 @@ export default function AddGoogleDiscoverySource(props: {
                     setProbe(null);
                     setOauthAuth(null);
                     setManagedAuth(null);
+                    setAuthKind("oauth2");
+                    setAuthChoiceTouched(false);
                     setError(null);
                   }}
                   placeholder={

@@ -10,6 +10,11 @@ import {
   shell,
   type MenuItemConstructorOptions,
 } from "electron";
+import electronUpdater, {
+  type AppUpdater,
+  type ProgressInfo,
+  type UpdateInfo,
+} from "electron-updater";
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createServer, type Server } from "node:http";
@@ -49,6 +54,7 @@ const BROWSER_MAX_SESSIONS = Number(process.env.GODTOOL_BROWSER_MAX_SESSIONS ?? 
 const COMPUTER_USE_HOST_PORT = Number(process.env.GODTOOL_COMPUTER_USE_HOST_PORT ?? "14790");
 const APP_NAME = "GODTOOL";
 const SERVER_STARTUP_TIMEOUT_MS = 30_000;
+const DESKTOP_UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1_000;
 const SETTINGS_DIR = join(homedir(), ".godtool");
 const SETTINGS_PATH = join(SETTINGS_DIR, "desktop-settings.json");
 const BROWSER_SESSIONS_PATH = join(SETTINGS_DIR, "browser-sessions.json");
@@ -58,6 +64,26 @@ const DESKTOP_RPC_SECRET = randomUUID();
 
 const CLI_BIN_DIR = join(SETTINGS_DIR, "bin");
 const CLI_BIN_PATH = join(CLI_BIN_DIR, process.platform === "win32" ? "godtool.exe" : "godtool");
+
+type DesktopUpdateStatus =
+  | {
+      readonly state: "disabled" | "idle" | "checking" | "not-available";
+      readonly channel: string;
+      readonly currentVersion: string;
+    }
+  | {
+      readonly state: "available" | "downloading" | "ready";
+      readonly channel: string;
+      readonly currentVersion: string;
+      readonly latestVersion: string;
+      readonly percent?: number;
+    }
+  | {
+      readonly state: "error";
+      readonly channel: string;
+      readonly currentVersion: string;
+      readonly message: string;
+    };
 
 app.commandLine.appendSwitch("remote-debugging-address", "127.0.0.1");
 app.commandLine.appendSwitch("remote-debugging-port", String(BROWSER_DEBUGGING_PORT));
@@ -802,6 +828,7 @@ const createWindow = (): BrowserWindow => {
 
   // Inject CSS to account for traffic light buttons and enable scrolling
   win.webContents.on("did-finish-load", () => {
+    win.webContents.send("desktop-update:status", desktopUpdateStatus);
     win.webContents.insertCSS(`
       /* Drag region for the titlebar area */
       body::before {
@@ -1635,6 +1662,140 @@ const syncDeviceConnection = (authState: CloudAuthState): void => {
 };
 
 // ---------------------------------------------------------------------------
+// Desktop updates
+// ---------------------------------------------------------------------------
+
+const getDesktopUpdateChannel = (): string => {
+  if (process.platform === "darwin") return `latest-${process.arch}`;
+  return "latest";
+};
+
+let desktopUpdateStatus: DesktopUpdateStatus = {
+  state: app.isPackaged ? "idle" : "disabled",
+  channel: getDesktopUpdateChannel(),
+  currentVersion: app.getVersion(),
+};
+let desktopUpdatesStarted = false;
+let desktopUpdateCheck: Promise<DesktopUpdateStatus> | null = null;
+
+const getAutoUpdater = (): AppUpdater => {
+  const { autoUpdater } = electronUpdater;
+  return autoUpdater;
+};
+
+const setDesktopUpdateStatus = (status: DesktopUpdateStatus): DesktopUpdateStatus => {
+  desktopUpdateStatus = status;
+  mainWindow?.webContents.send("desktop-update:status", status);
+  return status;
+};
+
+const updateInfoVersion = (info: UpdateInfo): string => info.version || app.getVersion();
+
+const setupDesktopUpdates = (): void => {
+  if (desktopUpdatesStarted || !app.isPackaged) return;
+  desktopUpdatesStarted = true;
+
+  const autoUpdater = getAutoUpdater();
+  autoUpdater.channel = getDesktopUpdateChannel();
+  autoUpdater.allowPrerelease = app.getVersion().includes("-");
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.logger = console;
+
+  autoUpdater.on("checking-for-update", () => {
+    setDesktopUpdateStatus({
+      state: "checking",
+      channel: getDesktopUpdateChannel(),
+      currentVersion: app.getVersion(),
+    });
+  });
+
+  autoUpdater.on("update-available", (info) => {
+    setDesktopUpdateStatus({
+      state: "available",
+      channel: getDesktopUpdateChannel(),
+      currentVersion: app.getVersion(),
+      latestVersion: updateInfoVersion(info),
+    });
+  });
+
+  autoUpdater.on("download-progress", (progress: ProgressInfo) => {
+    const latestVersion =
+      desktopUpdateStatus.state === "available" || desktopUpdateStatus.state === "downloading"
+        ? desktopUpdateStatus.latestVersion
+        : app.getVersion();
+    setDesktopUpdateStatus({
+      state: "downloading",
+      channel: getDesktopUpdateChannel(),
+      currentVersion: app.getVersion(),
+      latestVersion,
+      percent: Math.max(0, Math.min(100, progress.percent)),
+    });
+  });
+
+  autoUpdater.on("update-downloaded", (info) => {
+    setDesktopUpdateStatus({
+      state: "ready",
+      channel: getDesktopUpdateChannel(),
+      currentVersion: app.getVersion(),
+      latestVersion: updateInfoVersion(info),
+    });
+  });
+
+  autoUpdater.on("update-not-available", () => {
+    setDesktopUpdateStatus({
+      state: "not-available",
+      channel: getDesktopUpdateChannel(),
+      currentVersion: app.getVersion(),
+    });
+  });
+
+  autoUpdater.on("error", (error) => {
+    setDesktopUpdateStatus({
+      state: "error",
+      channel: getDesktopUpdateChannel(),
+      currentVersion: app.getVersion(),
+      message: error instanceof Error ? error.message : String(error),
+    });
+  });
+};
+
+const checkDesktopUpdates = async (): Promise<DesktopUpdateStatus> => {
+  if (!app.isPackaged) return desktopUpdateStatus;
+  if (
+    desktopUpdateStatus.state === "checking" ||
+    desktopUpdateStatus.state === "downloading" ||
+    desktopUpdateStatus.state === "ready"
+  ) {
+    return desktopUpdateStatus;
+  }
+  if (desktopUpdateCheck) return desktopUpdateCheck;
+
+  setupDesktopUpdates();
+  desktopUpdateCheck = getAutoUpdater()
+    .checkForUpdates()
+    .then(() => desktopUpdateStatus)
+    .catch((error) =>
+      setDesktopUpdateStatus({
+        state: "error",
+        channel: getDesktopUpdateChannel(),
+        currentVersion: app.getVersion(),
+        message: error instanceof Error ? error.message : String(error),
+      }),
+    )
+    .finally(() => {
+      desktopUpdateCheck = null;
+    });
+  return desktopUpdateCheck;
+};
+
+const restartAndInstallDesktopUpdate = (): boolean => {
+  if (!app.isPackaged || desktopUpdateStatus.state !== "ready") return false;
+  getAutoUpdater().quitAndInstall(false, true);
+  return true;
+};
+
+// ---------------------------------------------------------------------------
 // IPC handlers
 // ---------------------------------------------------------------------------
 
@@ -1648,6 +1809,9 @@ const setupIPC = (): void => {
     }
     await shell.openExternal(parsed.toString());
   });
+  ipcMain.handle("desktop-update:get-status", () => desktopUpdateStatus);
+  ipcMain.handle("desktop-update:check", () => checkDesktopUpdates());
+  ipcMain.handle("desktop-update:restart-and-install", () => restartAndInstallDesktopUpdate());
   ipcMain.handle("cloud-auth:me", async () => {
     const authState = await fetchCloudAuthState();
     syncDeviceConnection(authState);
@@ -2050,6 +2214,16 @@ app.whenReady().then(async () => {
   fetchCloudAuthState()
     .then(syncDeviceConnection)
     .catch((error) => console.warn("[devices] initial auth check failed", error));
+
+  if (app.isPackaged) {
+    setTimeout(() => {
+      void checkDesktopUpdates();
+    }, 5_000);
+    const updateCheckInterval = setInterval(() => {
+      void checkDesktopUpdates();
+    }, DESKTOP_UPDATE_CHECK_INTERVAL_MS);
+    updateCheckInterval.unref();
+  }
 });
 
 app.on("window-all-closed", () => {

@@ -122,6 +122,14 @@ type PlanLike = {
   } | null;
 };
 
+export type ManagedAuthAccessStatus = "loading" | "allowed" | "signed-out" | "not-pro" | "error";
+
+export type ManagedAuthAccess = {
+  readonly loading: boolean;
+  readonly allowed: boolean;
+  readonly status: ManagedAuthAccessStatus;
+};
+
 const isProPlanActive = (plans: unknown): boolean => {
   const list = Array.isArray(plans)
     ? plans
@@ -136,10 +144,25 @@ const isProPlanActive = (plans: unknown): boolean => {
   });
 };
 
-const fetchManagedAuthAccess = async (): Promise<boolean> => {
+const accessFromPlans = (plans: unknown): ManagedAuthAccess => {
+  const allowed = isProPlanActive(plans);
+  return allowed
+    ? { loading: false, allowed: true, status: "allowed" }
+    : { loading: false, allowed: false, status: "not-pro" };
+};
+
+const fetchManagedAuthAccess = async (): Promise<ManagedAuthAccess> => {
   const electronBilling = (window as ElectronWindow).electronAPI?.cloudBilling;
   if (electronBilling?.listPlans) {
-    return isProPlanActive(await electronBilling.listPlans());
+    try {
+      return accessFromPlans(await electronBilling.listPlans());
+    } catch (error) {
+      const message = error instanceof Error ? error.message.toLowerCase() : "";
+      if (message.includes("sign in") || message.includes("unauthorized")) {
+        return { loading: false, allowed: false, status: "signed-out" };
+      }
+      return { loading: false, allowed: false, status: "error" };
+    }
   }
 
   const response = await fetch("/api/autumn/listPlans", {
@@ -149,25 +172,28 @@ const fetchManagedAuthAccess = async (): Promise<boolean> => {
     body: JSON.stringify({}),
   });
 
-  if (response.status === 401 || response.status === 403) return false;
-  if (!response.ok) return false;
-  return isProPlanActive(await response.json());
+  if (response.status === 401 || response.status === 403) {
+    return { loading: false, allowed: false, status: "signed-out" };
+  }
+  if (!response.ok) return { loading: false, allowed: false, status: "error" };
+  return accessFromPlans(await response.json());
 };
 
 export const useManagedAuthAccess = () => {
-  const [state, setState] = useState<{ loading: boolean; allowed: boolean }>({
+  const [state, setState] = useState<ManagedAuthAccess>({
     loading: true,
     allowed: false,
+    status: "loading",
   });
 
   useEffect(() => {
     let alive = true;
     void fetchManagedAuthAccess()
       .then((allowed) => {
-        if (alive) setState({ loading: false, allowed });
+        if (alive) setState(allowed);
       })
       .catch(() => {
-        if (alive) setState({ loading: false, allowed: false });
+        if (alive) setState({ loading: false, allowed: false, status: "error" });
       });
     return () => {
       alive = false;
@@ -175,4 +201,11 @@ export const useManagedAuthAccess = () => {
   }, []);
 
   return state;
+};
+
+export const managedAuthCtaLabel = (access: ManagedAuthAccess): string => {
+  if (access.loading) return "Checking...";
+  if (access.allowed) return "Connect";
+  if (access.status === "signed-out") return "Sign in for Pro";
+  return "Upgrade to Pro";
 };

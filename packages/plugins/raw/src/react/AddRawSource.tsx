@@ -28,6 +28,7 @@ import {
   startManagedAuthConnect,
   isDesktopManagedAuth,
   useManagedAuthAccess,
+  managedAuthCtaLabel,
   type ManagedAuthConnectResult,
 } from "@executor/react/plugins/managed-auth";
 import { type HeaderState, headersFromState } from "@executor/react/plugins/secret-header-auth";
@@ -194,9 +195,7 @@ export default function AddRawSource(props: {
                       ? "Connecting..."
                       : managedAuth
                         ? "Reconnect"
-                        : managedAuthAccess.allowed
-                          ? "Connect"
-                          : "Upgrade to Pro"}
+                        : managedAuthCtaLabel(managedAuthAccess)}
                 </Button>
               </CardStackEntry>
             </CardStackContent>

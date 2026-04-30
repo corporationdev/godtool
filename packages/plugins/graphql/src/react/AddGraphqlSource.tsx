@@ -18,6 +18,7 @@ import {
   startManagedAuthConnect,
   isDesktopManagedAuth,
   useManagedAuthAccess,
+  managedAuthCtaLabel,
   type ManagedAuthConnectResult,
 } from "@executor/react/plugins/managed-auth";
 import { Button } from "@executor/react/components/button";
@@ -198,9 +199,7 @@ export default function AddGraphqlSource(props: {
                       ? "Connecting..."
                       : managedAuth
                         ? "Reconnect"
-                        : managedAuthAccess.allowed
-                          ? "Connect"
-                          : "Upgrade to Pro"}
+                        : managedAuthCtaLabel(managedAuthAccess)}
                 </Button>
               </div>
             </CardStackContent>

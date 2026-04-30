@@ -138,6 +138,19 @@ jobs:
           npx electron-builder --${{ matrix.platform }} --${{ matrix.arch }} 2>&1 | tee "$log_path"
         working-directory: apps/desktop
 
+      - name: Prepare update metadata
+        if: matrix.platform == 'mac'
+        run: |
+          metadata="release/latest-mac.yml"
+          arch_metadata="release/latest-${{ matrix.arch }}-mac.yml"
+          if [ -f "$metadata" ]; then
+            cp "$metadata" "$arch_metadata"
+            echo "Prepared $arch_metadata for ${{ matrix.arch }} auto-updates."
+          else
+            echo "No $metadata file was generated."
+          fi
+        working-directory: apps/desktop
+
       - name: Inspect desktop release output
         if: always()
         run: |
@@ -163,6 +176,8 @@ jobs:
           path: |
             apps/desktop/release/*.dmg
             apps/desktop/release/*-mac.zip
+            apps/desktop/release/latest-${{ matrix.arch }}-mac.yml
+            apps/desktop/release/*.blockmap
           if-no-files-found: warn
 
   release:
@@ -182,5 +197,9 @@ jobs:
         run: |
           find artifacts -type f \( -name "*.dmg" -o -name "*-mac.zip" \) | while read file; do
             echo "Uploading: $file"
+            gh release upload "${{ inputs.tag }}" "$file" --repo "${{ github.repository }}" --clobber || true
+          done
+          find artifacts -type f \( -name "*.yml" -o -name "*.blockmap" \) | while read file; do
+            echo "Uploading updater metadata: $file"
             gh release upload "${{ inputs.tag }}" "$file" --repo "${{ github.repository }}" --clobber || true
           done

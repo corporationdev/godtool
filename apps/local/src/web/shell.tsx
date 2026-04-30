@@ -8,6 +8,7 @@ import {
   Folder,
   Globe,
   KeyRound,
+  RefreshCw,
   Settings,
 } from "lucide-react";
 import { useAtomRefresh } from "@effect-atom/atom-react";
@@ -75,6 +76,18 @@ const { VITE_APP_VERSION } = (
 type UpdateChannel = "latest" | "beta";
 
 const EXECUTOR_DIST_TAGS_PATH = "/v1/app/npm/dist-tags";
+
+type ReadyDesktopUpdateStatus = {
+  readonly state: "ready";
+  readonly channel: string;
+  readonly currentVersion: string;
+  readonly latestVersion: string;
+  readonly percent?: number;
+};
+
+const isReadyDesktopUpdateStatus = (
+  status: DesktopUpdateStatus | null,
+): status is ReadyDesktopUpdateStatus => status?.state === "ready";
 
 type ParsedVersion = {
   readonly major: number;
@@ -238,6 +251,74 @@ function UpdateCard(props: { latestVersion: string; channel: UpdateChannel }) {
   );
 }
 
+// ── useDesktopUpdate ────────────────────────────────────────────────────
+
+function useDesktopUpdate() {
+  const [status, setStatus] = useState<DesktopUpdateStatus | null>(null);
+  const [restarting, setRestarting] = useState(false);
+
+  useEffect(() => {
+    const updates = window.electronAPI?.updates;
+    if (!updates) return;
+
+    let cancelled = false;
+    updates
+      .getStatus()
+      .then((nextStatus) => {
+        if (!cancelled) setStatus(nextStatus);
+      })
+      .catch(() => {});
+    const unsubscribe = updates.onStatus(setStatus);
+    void updates.check().catch(() => {});
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, []);
+
+  const restartAndInstall = useCallback(() => {
+    const updates = window.electronAPI?.updates;
+    if (!updates) return;
+    setRestarting(true);
+    void updates.restartAndInstall().then((started) => {
+      if (!started) setRestarting(false);
+    });
+  }, []);
+
+  return { status, restarting, restartAndInstall };
+}
+
+function DesktopUpdateCard(props: {
+  status: ReadyDesktopUpdateStatus;
+  restarting: boolean;
+  onRestart: () => void;
+}) {
+  return (
+    <div className="mx-2 mb-2 rounded-xl border border-primary/25 bg-primary/[0.06] p-3 group-data-[collapsible=icon]:hidden">
+      <div className="flex items-center gap-2">
+        <div className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/15">
+          <RefreshCw className="size-3 text-primary" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-xs font-semibold text-foreground">Update ready</p>
+          <p className="text-sm text-muted-foreground">v{props.status.latestVersion}</p>
+        </div>
+      </div>
+      <Button
+        type="button"
+        variant="outline"
+        onClick={props.onRestart}
+        disabled={props.restarting}
+        className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-lg border-border/60 bg-background/50 px-2.5 py-1.5 hover:bg-background/80"
+      >
+        <RefreshCw className="size-3.5" />
+        {props.restarting ? "Restarting..." : "Restart"}
+      </Button>
+    </div>
+  );
+}
+
 // ── NavItem ──────────────────────────────────────────────────────────────
 
 function NavItem(props: {
@@ -266,12 +347,16 @@ function AppSidebar(props: {
   updateAvailable: boolean;
   latestVersion: string | null;
   channel: UpdateChannel;
+  desktopUpdate: ReturnType<typeof useDesktopUpdate>;
   auth: ReturnType<typeof useLocalAuth>;
 }) {
   const isHome = props.pathname === "/";
   const isSecrets = props.pathname === "/secrets";
   const isBrowsers = props.pathname === "/browsers";
   const isFiles = props.pathname === "/files";
+  const readyDesktopUpdate = isReadyDesktopUpdateStatus(props.desktopUpdate.status)
+    ? props.desktopUpdate.status
+    : null;
 
   return (
     <Sidebar collapsible="icon">
@@ -292,9 +377,15 @@ function AppSidebar(props: {
         </SidebarGroup>
       </ShadSidebarContent>
 
-      {props.updateAvailable && props.latestVersion && (
+      {readyDesktopUpdate ? (
+        <DesktopUpdateCard
+          status={readyDesktopUpdate}
+          restarting={props.desktopUpdate.restarting}
+          onRestart={props.desktopUpdate.restartAndInstall}
+        />
+      ) : props.updateAvailable && props.latestVersion ? (
         <UpdateCard latestVersion={props.latestVersion} channel={props.channel} />
-      )}
+      ) : null}
 
       <SidebarFooter className="group-data-[collapsible=icon]:items-center">
         <AccountMenu
@@ -372,6 +463,7 @@ export function Shell() {
   const refreshTools = useAtomRefresh(toolsAtom(scopeId));
   const auth = useLocalAuth();
   const { latestVersion, updateAvailable, channel } = useLatestVersion(VITE_APP_VERSION);
+  const desktopUpdate = useDesktopUpdate();
   const shellSidebar = matches.some((match) => match.staticData.shellSidebar === "settings")
     ? "settings"
     : "app";
@@ -404,6 +496,7 @@ export function Shell() {
           updateAvailable={updateAvailable}
           latestVersion={latestVersion}
           channel={channel}
+          desktopUpdate={desktopUpdate}
           auth={auth}
         />
       )}

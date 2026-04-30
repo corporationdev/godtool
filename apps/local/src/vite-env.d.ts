@@ -45,11 +45,37 @@ interface WorkspaceOpenTargetOption {
   readonly label: string;
 }
 
+type DesktopUpdateStatus =
+  | {
+      readonly state: "disabled" | "idle" | "checking" | "not-available";
+      readonly channel: string;
+      readonly currentVersion: string;
+    }
+  | {
+      readonly state: "available" | "downloading" | "ready";
+      readonly channel: string;
+      readonly currentVersion: string;
+      readonly latestVersion: string;
+      readonly percent?: number;
+    }
+  | {
+      readonly state: "error";
+      readonly channel: string;
+      readonly currentVersion: string;
+      readonly message: string;
+    };
+
 interface Window {
   readonly electronAPI?: {
     readonly getCurrentScope: () => Promise<string | null>;
     readonly system?: {
       readonly openExternal: (url: string) => Promise<void>;
+    };
+    readonly updates?: {
+      readonly getStatus: () => Promise<DesktopUpdateStatus>;
+      readonly check: () => Promise<DesktopUpdateStatus>;
+      readonly restartAndInstall: () => Promise<boolean>;
+      readonly onStatus: (listener: (status: DesktopUpdateStatus) => void) => () => void;
     };
     readonly cloudBilling?: {
       readonly getCustomer: () => Promise<unknown>;

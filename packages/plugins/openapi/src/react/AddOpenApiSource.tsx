@@ -31,6 +31,7 @@ import { SourceAdvancedSettings } from "@executor/react/plugins/source-advanced-
 import { useSecretPickerSecrets } from "@executor/react/plugins/use-secret-picker-secrets";
 import {
   isDesktopManagedAuth,
+  managedAuthCtaLabel,
   startManagedAuthConnect,
   useManagedAuthAccess,
   type ManagedAuthConnectResult,
@@ -285,6 +286,7 @@ export default function AddOpenApiSource(props: {
 
   // Auth
   const [strategy, setStrategy] = useState<StrategySelection>({ kind: "none" });
+  const [authChoiceTouched, setAuthChoiceTouched] = useState(false);
   const [customHeaders, setCustomHeaders] = useState<HeaderState[]>([]);
 
   // OAuth2 state (only populated while an oauth2 preset is selected)
@@ -465,13 +467,27 @@ export default function AddOpenApiSource(props: {
       }
 
       const firstPreset = result.headerPresets[0];
-      if (firstPreset) {
+      const firstServerBaseUrl = firstServer
+        ? substituteUrlVariables(firstServer.url, defaultSelectionsFor(firstServer))
+        : "";
+      const nextManagedAuthApp = managedAuthAppFromOpenApi({
+        presetApp: resolvedPreset?.composio?.app,
+        title: Option.getOrElse(result.title, () => ""),
+        specUrl,
+        baseUrl: firstServerBaseUrl,
+      });
+
+      if (nextManagedAuthApp && managedAuthAccess.allowed) {
+        setStrategy({ kind: "managed" });
+        setCustomHeaders([]);
+      } else if (firstPreset) {
         setStrategy({ kind: "header", presetIndex: 0 });
         setCustomHeaders(entriesFromSpecPreset(firstPreset));
       } else {
         setStrategy({ kind: "none" });
         setCustomHeaders([]);
       }
+      setAuthChoiceTouched(false);
     } catch (e) {
       setAnalyzeError(e instanceof Error ? e.message : "Failed to parse spec");
     } finally {
@@ -482,6 +498,7 @@ export default function AddOpenApiSource(props: {
   handleAnalyzeRef.current = handleAnalyze;
 
   const selectStrategy = (next: StrategySelection) => {
+    setAuthChoiceTouched(true);
     setStrategy(next);
     // Clear any stale OAuth grant whenever the strategy changes away from oauth2.
     if (next.kind !== "oauth2") {
@@ -525,6 +542,13 @@ export default function AddOpenApiSource(props: {
     setManagedAuth(null);
   }, [managedAuthApp, strategy.kind]);
 
+  useEffect(() => {
+    if (!preview || authChoiceTouched || !managedAuthApp || !managedAuthAccess.allowed) return;
+    if (strategy.kind === "managed") return;
+    setStrategy({ kind: "managed" });
+    setCustomHeaders([]);
+  }, [authChoiceTouched, managedAuthAccess.allowed, managedAuthApp, preview, strategy.kind]);
+
   const handleConnectManagedAuth = useCallback(async () => {
     if (!managedAuthApp) return;
     setStartingManagedAuth(true);
@@ -544,6 +568,7 @@ export default function AddOpenApiSource(props: {
   }, [managedAuthApp]);
 
   const handleHeadersChange = (next: HeaderState[]) => {
+    setAuthChoiceTouched(true);
     setCustomHeaders(next);
     if (strategy.kind === "header" && next.every((h) => !h.fromPreset)) {
       setStrategy(next.length === 0 ? { kind: "none" } : { kind: "custom" });
@@ -1030,9 +1055,7 @@ export default function AddOpenApiSource(props: {
                           ? "Connecting..."
                           : managedAuth
                             ? "Reconnect"
-                            : managedAuthAccess.allowed
-                              ? "Connect"
-                              : "Upgrade to Pro"}
+                            : managedAuthCtaLabel(managedAuthAccess)}
                     </Button>
                   </CardStackEntry>
                 </CardStackContent>
