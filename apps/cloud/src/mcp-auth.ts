@@ -7,6 +7,8 @@ export type VerifiedToken = {
   accountId: string;
   /** The WorkOS organization ID, if the session has org context. */
   organizationId: string | null;
+  /** Where the organization context came from. */
+  organizationSource?: "token" | "membership" | "none";
 };
 
 export class McpJwtVerificationError extends Data.TaggedError("McpJwtVerificationError")<{
@@ -62,7 +64,7 @@ export const verifyMcpAccessToken = (
   jwks: JWTVerifyGetKey,
   options: {
     readonly issuer: string;
-    readonly audience: string;
+    readonly audience?: string;
   },
 ) =>
   Effect.gen(function* () {
@@ -70,7 +72,7 @@ export const verifyMcpAccessToken = (
       try: () =>
         jwtVerify(token, jwks, {
           issuer: options.issuer,
-          audience: options.audience,
+          ...(options.audience ? { audience: options.audience } : {}),
         }),
       catch: classifyJwtVerificationError,
     }).pipe(withJwtVerificationSpan);
@@ -80,6 +82,7 @@ export const verifyMcpAccessToken = (
     return {
       accountId: payload.sub,
       organizationId: (payload.org_id as string | undefined) ?? null,
+      organizationSource: payload.org_id ? "token" : "none",
     } satisfies VerifiedToken;
   });
 
@@ -94,10 +97,9 @@ export const verifyWorkOSMcpAccessToken = (
   Effect.gen(function* () {
     const verified = yield* verifyMcpAccessToken(token, jwks, {
       issuer: options.issuer,
-      audience: options.audience,
     });
     yield* Effect.annotateCurrentSpan({
-      "mcp.auth.audience_mode": "workos_client",
+      "mcp.auth.audience_mode": "issuer_only",
     });
     return verified;
   });

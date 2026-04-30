@@ -175,6 +175,15 @@ describe("/.well-known/oauth-protected-resource", () => {
       scopes_supported: [],
     });
   });
+
+  it("also serves the legacy base protected resource metadata path", async () => {
+    const response = await SELF.fetch(`${BASE}/.well-known/oauth-protected-resource`);
+    expect(response.status).toBe(200);
+
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body.resource).toBe("https://test-resource.example.com/mcp");
+    expect(body.authorization_servers).toEqual(["https://test-authkit.example.com"]);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -189,7 +198,7 @@ describe("/mcp unauthorized", () => {
     expect(wwwAuth).toContain('Bearer error="unauthorized"');
     expect(wwwAuth).toContain('resource_metadata="');
     expect(wwwAuth).toContain(
-      "https://test-resource.example.com/.well-known/oauth-protected-resource/mcp",
+      "https://test-resource.example.com/.well-known/oauth-protected-resource",
     );
     expect(await response.json()).toEqual({ error: "unauthorized" });
   });

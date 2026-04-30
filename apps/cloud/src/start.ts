@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { createMiddleware, createStart } from "@tanstack/react-start";
 import { handleApiRequest } from "./api";
+import { deviceFetch } from "./devices";
 import { mcpFetch } from "./mcp";
 
 // ---------------------------------------------------------------------------
@@ -60,6 +61,20 @@ const sentryTunnelMiddleware = createMiddleware({ type: "request" }).server(
 );
 
 // ---------------------------------------------------------------------------
+// Device middleware — authenticated desktop presence websocket + status API
+// ---------------------------------------------------------------------------
+
+const deviceRequestMiddleware = createMiddleware({ type: "request" }).server(
+  async ({ pathname, request, next }) => {
+    if (pathname.startsWith("/api/devices/")) {
+      const response = await deviceFetch(request);
+      if (response) return response;
+    }
+    return next();
+  },
+);
+
+// ---------------------------------------------------------------------------
 // API middleware — routes /api/* to the Effect HTTP layer
 // ---------------------------------------------------------------------------
 
@@ -75,5 +90,10 @@ const apiRequestMiddleware = createMiddleware({ type: "request" }).server(
 );
 
 export const startInstance = createStart(() => ({
-  requestMiddleware: [mcpRequestMiddleware, sentryTunnelMiddleware, apiRequestMiddleware],
+  requestMiddleware: [
+    mcpRequestMiddleware,
+    sentryTunnelMiddleware,
+    deviceRequestMiddleware,
+    apiRequestMiddleware,
+  ],
 }));

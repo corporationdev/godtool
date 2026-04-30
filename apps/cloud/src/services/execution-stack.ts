@@ -12,6 +12,7 @@ import { makeDynamicWorkerExecutor } from "@executor/runtime-dynamic-worker";
 
 import { withExecutionUsageTracking } from "../api/execution-usage";
 import { AutumnService } from "./autumn";
+import { makeDeviceFirstCodeExecutor } from "./device-code-executor";
 import { createScopedExecutor } from "./executor";
 
 export const makeExecutionStack = (
@@ -25,7 +26,13 @@ export const makeExecutionStack = (
       organizationId,
       organizationName,
     ).pipe(Effect.withSpan("McpSessionDO.createScopedExecutor"));
-    const codeExecutor = makeDynamicWorkerExecutor({ loader: env.LOADER });
+    const fallbackCodeExecutor = makeDynamicWorkerExecutor({ loader: env.LOADER });
+    const codeExecutor = makeDeviceFirstCodeExecutor({
+      fallback: fallbackCodeExecutor,
+      organizationId,
+      organizationName,
+      userId,
+    });
     const autumn = yield* AutumnService;
     const engine = withExecutionUsageTracking(
       organizationId,

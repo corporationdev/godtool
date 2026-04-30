@@ -25,7 +25,7 @@ import {
   appendFileSync,
 } from "node:fs";
 import { copyFile, lstat, mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
+import { homedir, hostname } from "node:os";
 import { BrowserSessionManager } from "./browser/session-manager";
 import { startBrowserHostServer } from "./browser/host-server";
 import type { BrowserBounds } from "./browser/types";
@@ -52,6 +52,8 @@ const SETTINGS_DIR = join(homedir(), ".godtool");
 const SETTINGS_PATH = join(SETTINGS_DIR, "desktop-settings.json");
 const BROWSER_SESSIONS_PATH = join(SETTINGS_DIR, "browser-sessions.json");
 const DEFAULT_WORKSPACE_DIR = join(SETTINGS_DIR, "workspace");
+const DEVICE_CONNECTION_RECONNECT_MS = 5_000;
+const DEVICE_CONNECTION_PING_MS = 25_000;
 
 const CLI_BIN_DIR = join(SETTINGS_DIR, "bin");
 const CLI_BIN_PATH = join(CLI_BIN_DIR, process.platform === "win32" ? "godtool.exe" : "godtool");
@@ -218,6 +220,8 @@ const installCli = (): void => {
 
 interface Settings {
   windowBounds?: { x: number; y: number; width: number; height: number };
+  deviceId?: string;
+  deviceName?: string;
 }
 
 type CloudAuthUser = {
@@ -966,9 +970,23 @@ const buildMenu = (): void => {
 
 const cloudUrl = (path: string): string => new URL(path, CLOUD_APP_URL).toString();
 
+const cloudWebSocketUrl = (path: string): string => {
+  const url = new URL(path, CLOUD_APP_URL);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  return url.toString();
+};
+
 const getCloudCookieHeader = async (): Promise<string> => {
   const cookies = await session.defaultSession.cookies.get({ url: CLOUD_APP_URL });
   return cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; ");
+};
+
+const getCloudSessionCookieValue = async (): Promise<string | null> => {
+  const cookies = await session.defaultSession.cookies.get({
+    url: CLOUD_APP_URL,
+    name: "wos-session",
+  });
+  return cookies[0]?.value ?? null;
 };
 
 const fetchCloudAuthState = async (): Promise<CloudAuthState> => {
@@ -1161,6 +1179,7 @@ const openCloudSignIn = async (): Promise<CloudAuthState> => {
 };
 
 const signOutCloud = async (): Promise<CloudAuthState> => {
+  stopDeviceConnection();
   await session.defaultSession.cookies.remove(CLOUD_APP_URL, "wos-session").catch(() => undefined);
   return { status: "unauthenticated" };
 };
@@ -1176,13 +1195,276 @@ const registerDeepLinkProtocol = (): void => {
 };
 
 // ---------------------------------------------------------------------------
+// Cloud device connection
+// ---------------------------------------------------------------------------
+
+let deviceSocket: WebSocket | null = null;
+let deviceReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let devicePingTimer: ReturnType<typeof setInterval> | null = null;
+let deviceAuthState: Extract<CloudAuthState, { status: "authenticated" }> | null = null;
+let deviceConnecting = false;
+
+type LocalDesktopRpcResponse =
+  | {
+      readonly status: "completed";
+      readonly result: unknown;
+    }
+  | {
+      readonly status: "error";
+      readonly error: string;
+    };
+
+type DeviceSocketMessage = {
+  readonly type?: string;
+  readonly requestId?: unknown;
+  readonly code?: unknown;
+};
+
+const encodeBase64Url = (value: string): string =>
+  Buffer.from(value, "utf-8").toString("base64url");
+
+const ensureDeviceIdentity = (): { deviceId: string; deviceName: string } => {
+  let changed = false;
+  if (!settings.deviceId) {
+    settings.deviceId = randomUUID();
+    changed = true;
+  }
+  if (!settings.deviceName) {
+    settings.deviceName = hostname() || "Desktop";
+    changed = true;
+  }
+  if (changed) saveSettings(settings);
+  return { deviceId: settings.deviceId, deviceName: settings.deviceName };
+};
+
+const localAppBaseUrl = (): string =>
+  isDev ? DEV_SERVER_URL : `http://127.0.0.1:${currentPort}`;
+
+const localAppUrl = (path: string): string => new URL(path, localAppBaseUrl()).toString();
+
+const readJsonResponse = async <T>(response: Response): Promise<T> => {
+  const text = await response.text();
+  const data = text.length > 0 ? JSON.parse(text) : {};
+  if (!response.ok) {
+    const message =
+      data &&
+      typeof data === "object" &&
+      "error" in data &&
+      typeof data.error === "string"
+        ? data.error
+        : `Local request failed with status ${response.status}`;
+    throw new Error(message);
+  }
+  return data as T;
+};
+
+const executeLocalDesktopRpc = async (code: string): Promise<LocalDesktopRpcResponse> => {
+  const response = await fetch(localAppUrl("/api/__desktop/execute"), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ code }),
+  });
+  return readJsonResponse<LocalDesktopRpcResponse>(response);
+};
+
+const ensureLocalComputerUseSource = async (): Promise<void> => {
+  try {
+    const scopeResponse = await fetch(localAppUrl("/api/scope"), {
+      signal: AbortSignal.timeout(10_000),
+    });
+    const scope = await readJsonResponse<{ readonly id?: unknown }>(scopeResponse);
+    if (typeof scope.id !== "string" || !scope.id) return;
+
+    const response = await fetch(
+      localAppUrl(`/api/scopes/${encodeURIComponent(scope.id)}/computer-use/sources`),
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        signal: AbortSignal.timeout(10_000),
+      },
+    );
+    await readJsonResponse(response);
+    console.log("[devices] computer_use source ready");
+  } catch (error) {
+    console.warn("[devices] computer_use source not ready", error);
+  }
+};
+
+const clearDeviceReconnectTimer = (): void => {
+  if (!deviceReconnectTimer) return;
+  clearTimeout(deviceReconnectTimer);
+  deviceReconnectTimer = null;
+};
+
+const clearDevicePingTimer = (): void => {
+  if (!devicePingTimer) return;
+  clearInterval(devicePingTimer);
+  devicePingTimer = null;
+};
+
+const scheduleDeviceReconnect = (delayMs = DEVICE_CONNECTION_RECONNECT_MS): void => {
+  if (!deviceAuthState?.organization) return;
+  if (deviceReconnectTimer) return;
+  deviceReconnectTimer = setTimeout(() => {
+    deviceReconnectTimer = null;
+    void connectDeviceWebSocket();
+  }, delayMs);
+};
+
+const stopDeviceConnection = (): void => {
+  deviceAuthState = null;
+  clearDeviceReconnectTimer();
+  clearDevicePingTimer();
+  const socket = deviceSocket;
+  deviceSocket = null;
+  if (socket && socket.readyState !== WebSocket.CLOSED) {
+    socket.close(1000, "signed out");
+  }
+};
+
+const sendDeviceExecutionResponse = (
+  socket: WebSocket,
+  requestId: string,
+  response: LocalDesktopRpcResponse,
+): void => {
+  if (socket.readyState !== WebSocket.OPEN) return;
+  if (response.status === "completed") {
+    socket.send(
+      JSON.stringify({
+        type: "execute.response",
+        requestId,
+        status: "completed",
+        result: response.result,
+      }),
+    );
+    return;
+  }
+
+  socket.send(
+    JSON.stringify({
+      type: "execute.response",
+      requestId,
+      status: "error",
+      error: response.error,
+    }),
+  );
+};
+
+const handleDeviceSocketMessage = async (socket: WebSocket, data: unknown): Promise<void> => {
+  if (typeof data !== "string") return;
+
+  let message: DeviceSocketMessage;
+  try {
+    message = JSON.parse(data) as DeviceSocketMessage;
+  } catch {
+    return;
+  }
+
+  if (message.type !== "execute.request") return;
+  if (typeof message.requestId !== "string" || typeof message.code !== "string") {
+    return;
+  }
+
+  try {
+    const response = await executeLocalDesktopRpc(message.code);
+    sendDeviceExecutionResponse(socket, message.requestId, response);
+  } catch (error) {
+    sendDeviceExecutionResponse(socket, message.requestId, {
+      status: "error",
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+};
+
+const connectDeviceWebSocket = async (): Promise<void> => {
+  if (!deviceAuthState?.organization || deviceConnecting) return;
+  if (
+    deviceSocket &&
+    (deviceSocket.readyState === WebSocket.OPEN || deviceSocket.readyState === WebSocket.CONNECTING)
+  ) {
+    return;
+  }
+
+  deviceConnecting = true;
+  try {
+    const sealedSession = await getCloudSessionCookieValue();
+    if (!sealedSession) {
+      scheduleDeviceReconnect();
+      return;
+    }
+
+    const { deviceId, deviceName } = ensureDeviceIdentity();
+    const url = new URL(cloudWebSocketUrl("/api/devices/connect"));
+    url.searchParams.set("deviceId", deviceId);
+    url.searchParams.set("name", deviceName);
+    url.searchParams.set("platform", process.platform);
+    url.searchParams.set("appVersion", app.getVersion());
+
+    const socket = new WebSocket(url.toString(), [
+      "godtool-device",
+      `godtool-auth.${encodeBase64Url(sealedSession)}`,
+    ]);
+    deviceSocket = socket;
+
+    socket.addEventListener("open", () => {
+      console.log(`[devices] connected ${deviceId}`);
+      void ensureLocalComputerUseSource();
+      clearDevicePingTimer();
+      devicePingTimer = setInterval(() => {
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ type: "ping", at: Date.now() }));
+        }
+      }, DEVICE_CONNECTION_PING_MS);
+    });
+
+    socket.addEventListener("message", (event) => {
+      void handleDeviceSocketMessage(socket, event.data);
+    });
+
+    socket.addEventListener("close", () => {
+      if (deviceSocket === socket) deviceSocket = null;
+      clearDevicePingTimer();
+      scheduleDeviceReconnect();
+    });
+
+    socket.addEventListener("error", () => {
+      if (deviceSocket === socket) deviceSocket = null;
+      clearDevicePingTimer();
+      scheduleDeviceReconnect();
+    });
+  } catch (error) {
+    console.warn("[devices] connection failed", error);
+    scheduleDeviceReconnect();
+  } finally {
+    deviceConnecting = false;
+  }
+};
+
+const syncDeviceConnection = (authState: CloudAuthState): void => {
+  if (authState.status !== "authenticated" || !authState.organization) {
+    stopDeviceConnection();
+    return;
+  }
+  deviceAuthState = authState;
+  scheduleDeviceReconnect(0);
+};
+
+// ---------------------------------------------------------------------------
 // IPC handlers
 // ---------------------------------------------------------------------------
 
 const setupIPC = (): void => {
   ipcMain.handle("get-current-scope", () => currentScope);
-  ipcMain.handle("cloud-auth:me", () => fetchCloudAuthState());
-  ipcMain.handle("cloud-auth:sign-in", () => openCloudSignIn());
+  ipcMain.handle("cloud-auth:me", async () => {
+    const authState = await fetchCloudAuthState();
+    syncDeviceConnection(authState);
+    return authState;
+  });
+  ipcMain.handle("cloud-auth:sign-in", async () => {
+    const authState = await openCloudSignIn();
+    syncDeviceConnection(authState);
+    return authState;
+  });
   ipcMain.handle("cloud-auth:sign-out", () => signOutCloud());
   ipcMain.handle("cloud-auth:get-cloud-url", () => CLOUD_APP_URL);
 
@@ -1553,11 +1835,15 @@ app.whenReady().then(async () => {
 
   mkdirSync(DEFAULT_WORKSPACE_DIR, { recursive: true });
   await loadScope(DEFAULT_WORKSPACE_DIR);
+  fetchCloudAuthState()
+    .then(syncDeviceConnection)
+    .catch((error) => console.warn("[devices] initial auth check failed", error));
 });
 
 app.on("window-all-closed", () => {
   stopBrowserHost();
   stopComputerUseHost();
+  stopDeviceConnection();
   stopDesktopAuthCallbackServer();
   // Synchronously kill the server process before quitting
   if (serverProcess) {
@@ -1570,6 +1856,7 @@ app.on("window-all-closed", () => {
 app.on("before-quit", () => {
   stopBrowserHost();
   stopComputerUseHost();
+  stopDeviceConnection();
   stopDesktopAuthCallbackServer();
   if (serverProcess) {
     serverProcess.kill("SIGTERM");
@@ -1580,6 +1867,7 @@ app.on("before-quit", () => {
 // Last resort: kill server on exit
 process.on("exit", () => {
   stopComputerUseHost();
+  stopDeviceConnection();
   stopDesktopAuthCallbackServer();
   if (serverProcess) {
     serverProcess.kill("SIGKILL");

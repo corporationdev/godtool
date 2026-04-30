@@ -58,6 +58,7 @@ describe("MCP AuthKit token verification", () => {
       expect(verified).toEqual({
         accountId: "user_test",
         organizationId: "org_test",
+        organizationSource: "token",
       });
     }),
   );
@@ -77,41 +78,40 @@ describe("MCP AuthKit token verification", () => {
       expect(verified).toEqual({
         accountId: "user_test",
         organizationId: "org_test",
+        organizationSource: "token",
       });
     }),
   );
 
-  it.effect("MCP verifier rejects resource-audience tokens", () =>
+  it.effect("MCP verifier accepts resource-audience tokens", () =>
     Effect.gen(function* () {
       const { jwks, sign } = yield* Effect.promise(() => makeVerifier());
       const token = yield* Effect.promise(() => sign({ aud: resource }));
 
-      const error = yield* Effect.flip(
-        verifyWorkOSMcpAccessToken(token, jwks, {
-          issuer,
-          audience: workosApplicationClientId,
-        }),
-      );
+      const verified = yield* verifyWorkOSMcpAccessToken(token, jwks, {
+        issuer,
+        audience: workosApplicationClientId,
+      });
 
-      expect(error).toBeInstanceOf(McpJwtVerificationError);
+      expect(verified?.accountId).toBe("user_test");
+      expect(verified?.organizationId).toBe("org_test");
     }),
   );
 
-  it.effect("MCP verifier rejects dynamic OAuth client-audience tokens", () =>
+  it.effect("MCP verifier accepts dynamic OAuth client-audience tokens", () =>
     Effect.gen(function* () {
       const { jwks, sign } = yield* Effect.promise(() => makeVerifier());
       const token = yield* Effect.promise(() =>
         sign({ aud: dynamicOAuthClientId, sid: "app_consent_test" }),
       );
 
-      const error = yield* Effect.flip(
-        verifyWorkOSMcpAccessToken(token, jwks, {
-          issuer,
-          audience: workosApplicationClientId,
-        }),
-      );
+      const verified = yield* verifyWorkOSMcpAccessToken(token, jwks, {
+        issuer,
+        audience: workosApplicationClientId,
+      });
 
-      expect(error).toBeInstanceOf(McpJwtVerificationError);
+      expect(verified?.accountId).toBe("user_test");
+      expect(verified?.organizationId).toBe("org_test");
     }),
   );
 });

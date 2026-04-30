@@ -29,6 +29,16 @@ import {
 
 const sourcePlugins = [openApiSourcePlugin, mcpSourcePlugin, graphqlSourcePlugin];
 
+type DeviceStatusResponse = {
+  readonly activeDeviceId: string | null;
+  readonly devices: readonly {
+    readonly deviceId: string;
+    readonly name: string;
+    readonly online: boolean;
+    readonly lastSeenAt: number;
+  }[];
+};
+
 // ── NavItem ──────────────────────────────────────────────────────────────
 
 function NavItem(props: { to: string; label: string; active: boolean; onNavigate?: () => void }) {
@@ -207,6 +217,81 @@ function UserFooter() {
   );
 }
 
+function DeviceConnectionFooter() {
+  const auth = useAuth();
+  const activeOrganizationId =
+    auth.status === "authenticated" ? (auth.organization?.id ?? null) : null;
+  const [status, setStatus] = useState<DeviceStatusResponse | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    if (!activeOrganizationId) {
+      setStatus(null);
+      setFailed(false);
+      return;
+    }
+
+    let alive = true;
+    const controller = new AbortController();
+
+    const load = async () => {
+      try {
+        const response = await fetch("/api/devices/status", {
+          headers: { accept: "application/json" },
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error(`Device status failed: ${response.status}`);
+        const data = (await response.json()) as DeviceStatusResponse;
+        if (!alive) return;
+        setStatus(data);
+        setFailed(false);
+      } catch {
+        if (!alive) return;
+        setFailed(true);
+      }
+    };
+
+    void load();
+    const interval = window.setInterval(() => void load(), 5_000);
+    return () => {
+      alive = false;
+      controller.abort();
+      window.clearInterval(interval);
+    };
+  }, [activeOrganizationId]);
+
+  if (auth.status !== "authenticated" || !auth.organization) return null;
+
+  const onlineDevices = status?.devices.filter((device) => device.online) ?? [];
+  const activeDevice =
+    onlineDevices.find((device) => device.deviceId === status?.activeDeviceId) ?? onlineDevices[0];
+  const connected = onlineDevices.length > 0;
+  const label = connected
+    ? onlineDevices.length === 1
+      ? activeDevice?.name ?? "Local Mac"
+      : `${onlineDevices.length} devices online`
+    : failed
+      ? "Connection unavailable"
+      : "No local device";
+
+  return (
+    <div className="shrink-0 px-3 pb-2">
+      <div className="flex items-center gap-2 rounded-md px-2.5 py-2 text-xs text-sidebar-foreground">
+        <span
+          className={[
+            "size-2 rounded-full",
+            connected ? "bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.6)]" : "bg-muted",
+          ].join(" ")}
+        />
+        <span className="min-w-0 flex-1 truncate">{label}</span>
+        <span className={connected ? "text-emerald-400" : "text-muted-foreground"}>
+          {connected ? "Connected" : "Offline"}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 // ── SidebarContent ───────────────────────────────────────────────────────
 
 function SidebarContent(props: { pathname: string; onNavigate?: () => void; showBrand?: boolean }) {
@@ -238,6 +323,7 @@ function SidebarContent(props: { pathname: string; onNavigate?: () => void; show
         <SourceList pathname={props.pathname} onNavigate={props.onNavigate} />
       </nav>
 
+      <DeviceConnectionFooter />
       <UserFooter />
     </>
   );

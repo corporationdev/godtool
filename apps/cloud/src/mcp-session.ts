@@ -5,7 +5,6 @@
 import { DurableObject, env } from "cloudflare:workers";
 import { createTraceState } from "@opentelemetry/api";
 import { Data, Effect, Layer } from "effect";
-import * as OtelTracer from "@effect/opentelemetry/Tracer";
 import type * as Tracer from "effect/Tracer";
 import * as Sentry from "@sentry/cloudflare";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -28,7 +27,6 @@ import { resolveOrganization } from "./auth/resolve-organization";
 import { DbService, combinedSchema, resolveConnectionString } from "./services/db";
 import { makeExecutionStack } from "./services/execution-stack";
 import { makeMcpWorkerTransport, type McpWorkerTransport } from "./services/mcp-worker-transport";
-import { DoTelemetryLive } from "./services/telemetry";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -110,8 +108,8 @@ const withIncomingParent = <A, E, R>(
   incoming: IncomingTraceHeaders | null | undefined,
   effect: Effect.Effect<A, E, R>,
 ): Effect.Effect<A, E, R> => {
-  const parsed = parseTraceparent(incoming?.traceparent, incoming?.tracestate);
-  return parsed ? OtelTracer.withSpanContext(effect, parsed) : effect;
+  void incoming;
+  return effect;
 };
 
 type DbHandle = DbServiceShape & { end: () => Promise<void> };
@@ -156,6 +154,14 @@ const makeLongLivedDb = (): DbHandle =>
   });
 
 const makeEphemeralDb = (): DbHandle => makeDbHandle({ idleTimeout: 0, maxLifetime: 60 });
+
+const withDeviceExecutionDescription = (description: string): string =>
+  [
+    description,
+    "",
+    "## Local Mac execution",
+    "When the signed-in desktop app is connected, this server executes code on that Mac through the device connection. Use `tools.search({ namespace: \"computer_use\", query: \"list apps screen state click type\" })` to discover local Computer Use tools, then invoke them from code as usual. If no desktop is connected, code automatically runs in the cloud dynamic worker and local-only tools will not be available.",
+  ].join("\n");
 
 const makeResolveOrganizationServices = (dbHandle: DbHandle) => {
   const DbLive = Layer.succeed(DbService, { sql: dbHandle.sql, db: dbHandle.db });
@@ -292,7 +298,9 @@ export class McpSessionDO extends DurableObject {
       // `McpSessionDO.createRuntime`. host-mcp would otherwise call
       // `Effect.runPromise(engine.getDescription)` at its async
       // MCP-SDK boundary and orphan the sub-span.
-      const description = yield* buildExecuteDescription(executor);
+      const description = withDeviceExecutionDescription(
+        yield* buildExecuteDescription(executor),
+      );
       const mcpServer = yield* createExecutorMcpServer({
         engine,
         description,
@@ -424,7 +432,6 @@ export class McpSessionDO extends DurableObject {
           attributes: { "mcp.auth.organization_id": token.organizationId },
         }),
         (eff) => withIncomingParent(incoming, eff),
-        Effect.provide(DoTelemetryLive),
       ),
     );
   }
@@ -521,7 +528,6 @@ export class McpSessionDO extends DurableObject {
         },
       }),
       (eff) => withIncomingParent(incoming, eff),
-      Effect.provide(DoTelemetryLive),
     );
     return Effect.runPromise(program);
   }
@@ -589,7 +595,6 @@ export class McpSessionDO extends DurableObject {
   async alarm(): Promise<void> {
     const program = Effect.promise(() => this.runAlarm()).pipe(
       Effect.withSpan("McpSessionDO.alarm"),
-      Effect.provide(DoTelemetryLive),
     );
     return Effect.runPromise(program);
   }
@@ -599,7 +604,6 @@ export class McpSessionDO extends DurableObject {
       Effect.promise(() => this.cleanup()).pipe(
         Effect.withSpan("McpSessionDO.clearSession"),
         (eff) => withIncomingParent(incoming, eff),
-        Effect.provide(DoTelemetryLive),
       ),
     );
   }

@@ -30,6 +30,7 @@ import { organizations } from "./services/schema";
 import { parseTestBearer } from "./test-bearer";
 import { DoTelemetryLive } from "./services/telemetry";
 
+export { DeviceSessionDO } from "./device-session";
 export { McpSessionDO } from "./mcp-session";
 
 const TestMcpAuthLive = Layer.succeed(McpAuth, {

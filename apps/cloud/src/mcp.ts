@@ -20,7 +20,6 @@ import * as Sentry from "@sentry/cloudflare";
 import { Context, Effect, Layer, Option, Schema } from "effect";
 import { createRemoteJWKSet } from "jose";
 
-import { TelemetryLive } from "./services/telemetry";
 import {
   McpJwtVerificationError,
   verifyWorkOSMcpAccessToken,
@@ -28,6 +27,7 @@ import {
 } from "./mcp-auth";
 import { authorizeOrganization } from "./auth/authorize-organization";
 import { UserStoreService } from "./auth/context";
+import { WorkOSAuth, type WorkOSAuthService } from "./auth/workos";
 import { CoreSharedServices } from "./api/core-shared-services";
 import { DbService } from "./services/db";
 
@@ -57,7 +57,8 @@ const CORS_PREFLIGHT_HEADERS = {
 
 const MCP_PATH = "/mcp";
 const PROTECTED_RESOURCE_METADATA_PATH = "/.well-known/oauth-protected-resource/mcp";
-const PROTECTED_RESOURCE_METADATA_URL = `${RESOURCE_ORIGIN}${PROTECTED_RESOURCE_METADATA_PATH}`;
+const LEGACY_PROTECTED_RESOURCE_METADATA_PATH = "/.well-known/oauth-protected-resource";
+const PROTECTED_RESOURCE_METADATA_URL = `${RESOURCE_ORIGIN}${LEGACY_PROTECTED_RESOURCE_METADATA_PATH}`;
 const RESOURCE_URL = `${RESOURCE_ORIGIN}${MCP_PATH}`;
 
 const WWW_AUTHENTICATE = [
@@ -120,6 +121,7 @@ const verifyJwt = (token: string) =>
 
 const DbLive = DbService.Live;
 const UserStoreLive = UserStoreService.Live.pipe(Layer.provide(DbLive));
+const McpAuthServices = CoreSharedServices;
 const McpOrganizationAuthServices = Layer.mergeAll(
   DbLive,
   UserStoreLive,
@@ -134,37 +136,77 @@ export const McpOrganizationAuthLive = Layer.succeed(McpOrganizationAuth, {
     ),
 });
 
-export const McpAuthLive = Layer.succeed(McpAuth, {
-  verifyBearer: Effect.fn("mcp.auth.verify_bearer")(function* (request) {
-    const authHeader = request.headers.get("authorization");
-    if (!authHeader?.startsWith(BEARER_PREFIX)) {
-      yield* Effect.annotateCurrentSpan({ "mcp.auth.outcome": "missing_bearer" });
-      return null;
-    }
-    const verified = yield* verifyJwt(authHeader.slice(BEARER_PREFIX.length)).pipe(
-      Effect.catchTag("McpJwtVerificationError", (error) => {
-        if (error.reason === "system") return Effect.fail(error);
-        return Effect.gen(function* () {
+const withDefaultOrganization = (
+  workos: WorkOSAuthService,
+  token: VerifiedToken,
+) =>
+  Effect.gen(function* () {
+    if (token.organizationId) return token;
+
+    const memberships = yield* workos.listUserMemberships(token.accountId).pipe(
+      Effect.catchAll((error) =>
+        Effect.gen(function* () {
           yield* Effect.annotateCurrentSpan({
-            "mcp.auth.outcome": "invalid",
-            "mcp.auth.invalid_reason": error.reason,
+            "mcp.auth.membership_hydration_error": String(error),
           });
-          return null;
-        });
-      }),
+          return { data: [] };
+        }),
+      ),
+      Effect.withSpan("mcp.auth.hydrate_default_organization"),
     );
-    if (!verified) return null;
-    if (!verified.accountId) {
-      yield* Effect.annotateCurrentSpan({ "mcp.auth.outcome": "missing_subject" });
-      return null;
-    }
+    const membership = memberships.data.find((candidate) => candidate.status === "active");
+
     yield* Effect.annotateCurrentSpan({
-      "mcp.auth.outcome": "verified",
-      "mcp.auth.has_organization": !!verified.organizationId,
+      "mcp.auth.organization_source": membership ? "membership" : "none",
     });
-    return verified;
+
+    return {
+      ...token,
+      organizationId: membership?.organizationId ?? null,
+      organizationSource: membership ? "membership" : "none",
+    } satisfies VerifiedToken;
+  });
+
+export const McpAuthLive = Layer.effect(
+  McpAuth,
+  Effect.gen(function* () {
+    const workos = yield* WorkOSAuth;
+    return {
+      verifyBearer: Effect.fn("mcp.auth.verify_bearer")(function* (request) {
+        const authHeader = request.headers.get("authorization");
+        if (!authHeader?.startsWith(BEARER_PREFIX)) {
+          yield* Effect.annotateCurrentSpan({ "mcp.auth.outcome": "missing_bearer" });
+          return null;
+        }
+        const verified = yield* verifyJwt(authHeader.slice(BEARER_PREFIX.length)).pipe(
+          Effect.catchTag("McpJwtVerificationError", (error) => {
+            if (error.reason === "system") return Effect.fail(error);
+            return Effect.gen(function* () {
+              yield* Effect.annotateCurrentSpan({
+                "mcp.auth.outcome": "invalid",
+                "mcp.auth.invalid_reason": error.reason,
+              });
+              return null;
+            });
+          }),
+        );
+        if (!verified) return null;
+        if (!verified.accountId) {
+          yield* Effect.annotateCurrentSpan({ "mcp.auth.outcome": "missing_subject" });
+          return null;
+        }
+
+        const token = yield* withDefaultOrganization(workos, verified);
+        yield* Effect.annotateCurrentSpan({
+          "mcp.auth.outcome": "verified",
+          "mcp.auth.has_organization": !!token.organizationId,
+          "mcp.auth.organization_source": token.organizationSource ?? "unknown",
+        });
+        return token;
+      }),
+    };
   }),
-});
+).pipe(Layer.provide(McpAuthServices));
 
 // ---------------------------------------------------------------------------
 // Client fingerprint capture
@@ -777,7 +819,12 @@ type McpRoute = "mcp" | "oauth-protected-resource" | "oauth-authorization-server
  */
 export const classifyMcpPath = (pathname: string): McpRoute => {
   if (pathname === MCP_PATH) return "mcp";
-  if (pathname === PROTECTED_RESOURCE_METADATA_PATH) return "oauth-protected-resource";
+  if (
+    pathname === PROTECTED_RESOURCE_METADATA_PATH ||
+    pathname === LEGACY_PROTECTED_RESOURCE_METADATA_PATH
+  ) {
+    return "oauth-protected-resource";
+  }
   if (pathname === "/.well-known/oauth-authorization-server") return "oauth-authorization-server";
   return null;
 };
@@ -831,7 +878,7 @@ export const mcpApp: Effect.Effect<
 );
 
 const rawMcpFetch = HttpApp.toWebHandler(
-  mcpApp.pipe(Effect.provide(Layer.mergeAll(McpAuthLive, McpOrganizationAuthLive, TelemetryLive))),
+  mcpApp.pipe(Effect.provide(Layer.mergeAll(McpAuthLive, McpOrganizationAuthLive))),
 );
 
 /**

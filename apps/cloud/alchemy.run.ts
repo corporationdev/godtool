@@ -73,8 +73,13 @@ const mcpSession = DurableObjectNamespace("mcp-session", {
   className: "McpSessionDO",
 });
 
+const deviceSession = DurableObjectNamespace("device-session", {
+  className: "DeviceSessionDO",
+});
+
 const bindings: Bindings = {
   ASSETS: assets,
+  DEVICE_SESSION: deviceSession,
   HYPERDRIVE: hyperdrive,
   LOADER: WorkerLoader(),
   MCP_SESSION: mcpSession,

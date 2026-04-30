@@ -37,6 +37,7 @@ function executorApiPlugin(): Plugin {
       server.middlewares.use(async (req, res, next) => {
         const rawUrl = req.url ?? "/";
         const isApi = rawUrl.startsWith("/api/") || rawUrl === "/api";
+        const isDesktopRpc = rawUrl.startsWith("/api/__desktop/");
         const isMcp = rawUrl.startsWith("/mcp");
 
         if (!isApi && !isMcp) return next();
@@ -53,8 +54,11 @@ function executorApiPlugin(): Plugin {
             if (value) headers.set(key, Array.isArray(value) ? value.join(", ") : value);
           }
 
-          // Strip /api prefix for Effect handlers
-          const url = isApi ? rawUrl.slice("/api".length) || "/" : rawUrl;
+          const url = isDesktopRpc
+            ? rawUrl.slice("/api/__desktop".length) || "/"
+            : isApi
+              ? rawUrl.slice("/api".length) || "/"
+              : rawUrl;
 
           const hasBody = req.method !== "GET" && req.method !== "HEAD";
           const webRequest = new Request(new URL(url, origin), {
@@ -66,7 +70,9 @@ function executorApiPlugin(): Plugin {
 
           const response = isMcp
             ? await handlers.mcp.handleRequest(webRequest)
-            : await handlers.api.handler(webRequest);
+            : isDesktopRpc
+              ? await handlers.desktopRpc.handler(webRequest)
+              : await handlers.api.handler(webRequest);
 
           res.statusCode = response.status;
           response.headers.forEach((v, k) => res.setHeader(k, v));

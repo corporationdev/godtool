@@ -4,7 +4,7 @@
 declare namespace Cloudflare {
   interface GlobalProps {
     mainModule: typeof import("./src/server");
-    durableNamespaces: "McpSessionDO";
+    durableNamespaces: "McpSessionDO" | "DeviceSessionDO";
   }
   interface Env {
     HYPERDRIVE: Hyperdrive;
@@ -15,6 +15,7 @@ declare namespace Cloudflare {
     APP_URL: string;
     WORKOS_CLAIM_TOKEN: string;
     MCP_SESSION: DurableObjectNamespace<import("./src/server").McpSessionDO>;
+    DEVICE_SESSION: DurableObjectNamespace<import("./src/device-session").DeviceSessionDO>;
   }
 }
 interface Env extends Cloudflare.Env {}

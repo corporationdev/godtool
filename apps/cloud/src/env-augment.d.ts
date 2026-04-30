@@ -25,6 +25,7 @@ declare global {
       COMPOSIO_API_KEY?: string;
 
       // MCP
+      DEVICE_SESSION?: DurableObjectNamespace<import("./device-session").DeviceSessionDO>;
       EXECUTOR_MCP_DEBUG?: string;
       MCP_AUTHKIT_DOMAIN?: string;
       MCP_RESOURCE_ORIGIN?: string;
