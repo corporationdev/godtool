@@ -111,7 +111,10 @@ describe("buildAuthorizationUrl", () => {
 
   it("preserves pre-existing query params on the authorization URL", () => {
     const url = new URL(
-      buildAuthorizationUrl({ ...baseInput, authorizationUrl: "https://example.com/auth?tenant=acme" }),
+      buildAuthorizationUrl({
+        ...baseInput,
+        authorizationUrl: "https://example.com/auth?tenant=acme",
+      }),
     );
     expect(url.searchParams.get("tenant")).toBe("acme");
     expect(url.searchParams.get("client_id")).toBe("client-123");
@@ -143,9 +146,7 @@ describe("decodeTokenResponse", () => {
 
   it.effect("parses a minimal successful response", () =>
     Effect.gen(function* () {
-      const result = yield* decodeTokenResponse(
-        jsonResponse(200, { access_token: "tok" }),
-      );
+      const result = yield* decodeTokenResponse(jsonResponse(200, { access_token: "tok" }));
       expect(result.access_token).toBe("tok");
       expect(result.token_type).toBeUndefined();
       expect(result.expires_in).toBeUndefined();
@@ -235,9 +236,7 @@ describe("decodeTokenResponse", () => {
 
   it.effect("fails with OAuth2Error on 200 responses with an empty access_token", () =>
     Effect.gen(function* () {
-      const exit = yield* Effect.exit(
-        decodeTokenResponse(jsonResponse(200, { access_token: "" })),
-      );
+      const exit = yield* Effect.exit(decodeTokenResponse(jsonResponse(200, { access_token: "" })));
       expectOAuth2ErrorMatching(exit, /did not return an access_token/);
     }),
   );
@@ -260,12 +259,10 @@ type FetchArgs = { url: string; init: RequestInit };
 
 const captureFetch = (response: Response): { calls: FetchArgs[] } => {
   const calls: FetchArgs[] = [];
-  globalThis.fetch = vi
-    .fn()
-    .mockImplementation(async (url: string, init: RequestInit) => {
-      calls.push({ url, init });
-      return response;
-    }) as unknown as typeof fetch;
+  globalThis.fetch = vi.fn().mockImplementation(async (url: string, init: RequestInit) => {
+    calls.push({ url, init });
+    return response;
+  }) as unknown as typeof fetch;
   return { calls };
 };
 
@@ -500,7 +497,9 @@ describe("shouldRefreshToken", () => {
 
 describe("OAuth2Error tagging", () => {
   beforeEach(() => {
-    globalThis.fetch = vi.fn().mockRejectedValue(new Error("network down")) as unknown as typeof fetch;
+    globalThis.fetch = vi
+      .fn()
+      .mockRejectedValue(new Error("network down")) as unknown as typeof fetch;
   });
   afterEach(() => {
     globalThis.fetch = originalFetch;

@@ -27,7 +27,10 @@ export const orgDomainsAtom = Atom.refreshOnWindowFocus(
   }),
 );
 
-export const getDomainVerificationLink = CloudApiClient.mutation("org", "getDomainVerificationLink");
+export const getDomainVerificationLink = CloudApiClient.mutation(
+  "org",
+  "getDomainVerificationLink",
+);
 
 export const deleteDomain = CloudApiClient.mutation("org", "deleteDomain");
 

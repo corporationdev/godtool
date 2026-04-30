@@ -12,11 +12,7 @@ import {
 import { OnePasswordConfig, Vault, ConnectionStatus } from "./types";
 import type { OnePasswordAuth } from "./types";
 import { OnePasswordError } from "./errors";
-import {
-  makeOnePasswordService,
-  type ResolvedAuth,
-  type OnePasswordService,
-} from "./service";
+import { makeOnePasswordService, type ResolvedAuth, type OnePasswordService } from "./service";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -46,24 +42,16 @@ export type OnePasswordExtensionFailure = OnePasswordError | StorageFailure;
 
 export interface OnePasswordExtension {
   /** Configure the 1Password connection */
-  readonly configure: (
-    config: OnePasswordConfig,
-  ) => Effect.Effect<void, StorageFailure>;
+  readonly configure: (config: OnePasswordConfig) => Effect.Effect<void, StorageFailure>;
 
   /** Get current configuration (if any) */
-  readonly getConfig: () => Effect.Effect<
-    OnePasswordConfig | null,
-    OnePasswordExtensionFailure
-  >;
+  readonly getConfig: () => Effect.Effect<OnePasswordConfig | null, OnePasswordExtensionFailure>;
 
   /** Remove the 1Password configuration */
   readonly removeConfig: () => Effect.Effect<void, StorageFailure>;
 
   /** Check connection status */
-  readonly status: () => Effect.Effect<
-    ConnectionStatus,
-    OnePasswordExtensionFailure
-  >;
+  readonly status: () => Effect.Effect<ConnectionStatus, OnePasswordExtensionFailure>;
 
   /** List accessible vaults (requires auth) */
   readonly listVaults: (
@@ -71,9 +59,7 @@ export interface OnePasswordExtension {
   ) => Effect.Effect<ReadonlyArray<Vault>, OnePasswordExtensionFailure>;
 
   /** Resolve a secret directly by op:// URI */
-  readonly resolve: (
-    uri: string,
-  ) => Effect.Effect<string, OnePasswordExtensionFailure>;
+  readonly resolve: (uri: string) => Effect.Effect<string, OnePasswordExtensionFailure>;
 }
 
 // ---------------------------------------------------------------------------
@@ -88,15 +74,14 @@ export interface OnePasswordStore {
     OnePasswordConfig | null,
     StorageError | OnePasswordError
   >;
-  readonly saveConfig: (
-    config: OnePasswordConfig,
-  ) => Effect.Effect<void, StorageError>;
+  readonly saveConfig: (config: OnePasswordConfig) => Effect.Effect<void, StorageError>;
   readonly deleteConfig: () => Effect.Effect<void, StorageError>;
 }
 
 const decodeConfig = Schema.decodeUnknownSync(OnePasswordConfig);
 
-const blobStorageError = (operation: string) =>
+const blobStorageError =
+  (operation: string) =>
   (cause: unknown): StorageError =>
     new StorageError({
       message: `onepassword blob ${operation}: ${
@@ -194,9 +179,7 @@ const getServiceFromConfig = (
   preferSdk: boolean | undefined,
 ): Effect.Effect<OnePasswordService, OnePasswordError | StorageFailure> =>
   resolveAuth(config.auth, ctx).pipe(
-    Effect.flatMap((resolved) =>
-      makeOnePasswordService(resolved, { timeoutMs, preferSdk }),
-    ),
+    Effect.flatMap((resolved) => makeOnePasswordService(resolved, { timeoutMs, preferSdk })),
   );
 
 // ---------------------------------------------------------------------------
@@ -235,10 +218,7 @@ const makeProvider = (
   list: () =>
     ctx.storage.getConfig().pipe(
       Effect.flatMap((config) => {
-        if (!config)
-          return Effect.succeed(
-            [] as ReadonlyArray<{ id: string; name: string }>,
-          );
+        if (!config) return Effect.succeed([] as ReadonlyArray<{ id: string; name: string }>);
         return getServiceFromConfig(config, ctx, timeoutMs, preferSdk).pipe(
           Effect.flatMap((svc) => svc.listItems(config.vaultId)),
           Effect.map(
@@ -247,9 +227,7 @@ const makeProvider = (
           ),
         );
       }),
-      Effect.orElseSucceed(
-        () => [] as ReadonlyArray<{ id: string; name: string }>,
-      ),
+      Effect.orElseSucceed(() => [] as ReadonlyArray<{ id: string; name: string }>),
     ),
 });
 
@@ -264,83 +242,70 @@ export interface OnePasswordPluginOptions {
   readonly preferSdk?: boolean;
 }
 
-export const onepasswordPlugin = definePlugin(
-  (options?: OnePasswordPluginOptions) => {
-    const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-    const preferSdk = options?.preferSdk;
+export const onepasswordPlugin = definePlugin((options?: OnePasswordPluginOptions) => {
+  const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const preferSdk = options?.preferSdk;
 
-    return {
-      id: "onepassword" as const,
-      storage: ({ blobs, scopes }) =>
-        makeOnePasswordStore(blobs, scopes.at(-1)!.id as string),
+  return {
+    id: "onepassword" as const,
+    storage: ({ blobs, scopes }) => makeOnePasswordStore(blobs, scopes.at(-1)!.id as string),
 
-      extension: (ctx) => {
-        return {
-          configure: (config) => ctx.storage.saveConfig(config),
+    extension: (ctx) => {
+      return {
+        configure: (config) => ctx.storage.saveConfig(config),
 
-          getConfig: () => ctx.storage.getConfig(),
+        getConfig: () => ctx.storage.getConfig(),
 
-          removeConfig: () => ctx.storage.deleteConfig(),
+        removeConfig: () => ctx.storage.deleteConfig(),
 
-          status: () =>
-            Effect.gen(function* () {
-              const config = yield* ctx.storage.getConfig();
-              if (!config) {
-                return new ConnectionStatus({
-                  connected: false,
-                  error: "Not configured",
-                });
-              }
-              const svc = yield* getServiceFromConfig(
-                config,
-                ctx,
-                timeoutMs,
-                preferSdk,
-              );
-              const vaults = yield* svc.listVaults();
-              const vault = vaults.find((v) => v.id === config.vaultId);
+        status: () =>
+          Effect.gen(function* () {
+            const config = yield* ctx.storage.getConfig();
+            if (!config) {
               return new ConnectionStatus({
-                connected: true,
-                vaultName: vault?.title,
+                connected: false,
+                error: "Not configured",
               });
-            }),
+            }
+            const svc = yield* getServiceFromConfig(config, ctx, timeoutMs, preferSdk);
+            const vaults = yield* svc.listVaults();
+            const vault = vaults.find((v) => v.id === config.vaultId);
+            return new ConnectionStatus({
+              connected: true,
+              vaultName: vault?.title,
+            });
+          }),
 
-          listVaults: (auth) =>
-            Effect.gen(function* () {
-              const resolved = yield* resolveAuth(auth, ctx);
-              const svc = yield* makeOnePasswordService(resolved, {
-                timeoutMs,
-                preferSdk,
-              });
-              const vaults = yield* svc.listVaults();
-              return vaults
-                .map((v) => new Vault({ id: v.id, name: v.title }))
-                .sort((a, b) => a.name.localeCompare(b.name));
-            }),
+        listVaults: (auth) =>
+          Effect.gen(function* () {
+            const resolved = yield* resolveAuth(auth, ctx);
+            const svc = yield* makeOnePasswordService(resolved, {
+              timeoutMs,
+              preferSdk,
+            });
+            const vaults = yield* svc.listVaults();
+            return vaults
+              .map((v) => new Vault({ id: v.id, name: v.title }))
+              .sort((a, b) => a.name.localeCompare(b.name));
+          }),
 
-          resolve: (uri) =>
-            Effect.gen(function* () {
-              const config = yield* ctx.storage.getConfig();
-              if (!config) {
-                return yield* Effect.fail(
-                  new OnePasswordError({
-                    operation: "resolve",
-                    message: "1Password is not configured",
-                  }),
-                );
-              }
-              const svc = yield* getServiceFromConfig(
-                config,
-                ctx,
-                timeoutMs,
-                preferSdk,
+        resolve: (uri) =>
+          Effect.gen(function* () {
+            const config = yield* ctx.storage.getConfig();
+            if (!config) {
+              return yield* Effect.fail(
+                new OnePasswordError({
+                  operation: "resolve",
+                  message: "1Password is not configured",
+                }),
               );
-              return yield* svc.resolveSecret(uri);
-            }),
-        } satisfies OnePasswordExtension;
-      },
+            }
+            const svc = yield* getServiceFromConfig(config, ctx, timeoutMs, preferSdk);
+            return yield* svc.resolveSecret(uri);
+          }),
+      } satisfies OnePasswordExtension;
+    },
 
-      secretProviders: (ctx) => [makeProvider(ctx, timeoutMs, preferSdk)],
-    };
-  },
-);
+    secretProviders: (ctx) => [makeProvider(ctx, timeoutMs, preferSdk)],
+  };
+});

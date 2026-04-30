@@ -75,9 +75,7 @@ describe("pluginBlobStore", () => {
     Effect.gen(function* () {
       const store = makeInMemoryBlobStore();
       const plugin = pluginBlobStore(store, ["inner", "outer"], "my-plugin");
-      const result = yield* Effect.exit(
-        plugin.put("k", "v", { scope: "not-in-stack" }),
-      );
+      const result = yield* Effect.exit(plugin.put("k", "v", { scope: "not-in-stack" }));
       expect(Exit.isFailure(result)).toBe(true);
       if (Exit.isFailure(result)) {
         const err = result.cause._tag === "Fail" ? result.cause.error : null;
@@ -93,9 +91,7 @@ describe("pluginBlobStore", () => {
     Effect.gen(function* () {
       const store = makeInMemoryBlobStore();
       const plugin = pluginBlobStore(store, ["inner"], "my-plugin");
-      const result = yield* Effect.exit(
-        plugin.delete("k", { scope: "not-in-stack" }),
-      );
+      const result = yield* Effect.exit(plugin.delete("k", { scope: "not-in-stack" }));
       expect(Exit.isFailure(result)).toBe(true);
     }),
   );

@@ -169,23 +169,25 @@ skipUnlessDeno("runtime-deno-subprocess", () => {
   );
 
   // Skipped in CI and on Windows — outbound HTTPS may be blocked by firewall/policy
-  it.effect.skipIf(process.env["CI"] === "true" || process.platform === "win32")("network access can be allowed via permissions", () =>
-    Effect.gen(function* () {
-      const executor = makeDenoSubprocessExecutor({
-        permissions: {
-          allowNet: true,
-        },
-      });
-      const toolInvoker = makeTestInvoker({});
+  it.effect.skipIf(process.env["CI"] === "true" || process.platform === "win32")(
+    "network access can be allowed via permissions",
+    () =>
+      Effect.gen(function* () {
+        const executor = makeDenoSubprocessExecutor({
+          permissions: {
+            allowNet: true,
+          },
+        });
+        const toolInvoker = makeTestInvoker({});
 
-      const output = yield* executor.execute(
-        ['const res = await fetch("https://example.com");', "return res.status;"].join("\n"),
-        toolInvoker,
-      );
+        const output = yield* executor.execute(
+          ['const res = await fetch("https://example.com");', "return res.status;"].join("\n"),
+          toolInvoker,
+        );
 
-      expect(output.result).toBe(200);
-      expect(output.error).toBeUndefined();
-    }),
+        expect(output.result).toBe(200);
+        expect(output.error).toBeUndefined();
+      }),
   );
 
   it.effect("multiple sequential tool calls work correctly", () =>

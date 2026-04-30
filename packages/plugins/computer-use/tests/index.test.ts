@@ -99,9 +99,9 @@ describe("computerUsePlugin", () => {
     });
 
     try {
-      await expect(
-        executor.computer_use.addSource({ scope: "default-scope" }),
-      ).rejects.toThrow("Computer Use needs Accessibility and Screen Recording permissions.");
+      await expect(executor.computer_use.addSource({ scope: "default-scope" })).rejects.toThrow(
+        "Computer Use needs Accessibility and Screen Recording permissions.",
+      );
 
       const sources = await executor.sources.list();
       expect(sources.some((source) => source.id === "computer_use")).toBe(false);

@@ -140,17 +140,13 @@ const exampleOpenApiSpec = JSON.stringify({
       get: {
         operationId: "items.get",
         tags: ["items"],
-        parameters: [
-          { name: "id", in: "path", required: true, schema: { type: "string" } },
-        ],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
         responses: { "200": { description: "ok" } },
       },
       delete: {
         operationId: "items.delete",
         tags: ["items"],
-        parameters: [
-          { name: "id", in: "path", required: true, schema: { type: "string" } },
-        ],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
         responses: { "204": { description: "deleted" } },
       },
     },
@@ -399,10 +395,7 @@ const program = Effect.gen(function* () {
   console.log("  executor.keychain.isSupported:", executor.keychain.isSupported);
   console.log("  executor.keychain.displayName:", executor.keychain.displayName);
 
-  console.log(
-    "  executor.fileSecrets.filePath:   ",
-    executor.fileSecrets.filePath,
-  );
+  console.log("  executor.fileSecrets.filePath:   ", executor.fileSecrets.filePath);
 
   // executor.mcp.addSource({ connector: { kind: "remote", endpoint: "..." } });
   // executor.googleDiscovery.addSource({ discoveryUrl: "..." });

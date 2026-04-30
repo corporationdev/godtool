@@ -100,9 +100,11 @@ const DEBUG_LOG_FILE = "/tmp/executor-mcp-debug.log";
 
 const appendDebugLine = (file: string, line: string): void => {
   if (typeof process === "undefined") return;
-  const getBuiltinModule = (process as unknown as {
-    getBuiltinModule?: (name: string) => { appendFileSync?: (...args: unknown[]) => void };
-  }).getBuiltinModule;
+  const getBuiltinModule = (
+    process as unknown as {
+      getBuiltinModule?: (name: string) => { appendFileSync?: (...args: unknown[]) => void };
+    }
+  ).getBuiltinModule;
   const fs = getBuiltinModule?.("node:fs");
   fs?.appendFileSync?.(file, line, "utf8");
 };
@@ -226,8 +228,7 @@ const makeMcpElicitationHandler =
 
 type McpToolResult = {
   content: Array<
-    | { type: "text"; text: string }
-    | { type: "image"; mimeType: string; data: string }
+    { type: "text"; text: string } | { type: "image"; mimeType: string; data: string }
   >;
   structuredContent?: Record<string, unknown>;
   isError?: boolean;
@@ -320,9 +321,7 @@ export const createExecutorMcpServer = <E extends Cause.YieldableError>(
     const engine = "engine" in config ? config.engine : createExecutionEngine(config);
     const description =
       config.description ??
-      (yield* engine.getDescription.pipe(
-        Effect.withSpan("mcp.host.get_description"),
-      ));
+      (yield* engine.getDescription.pipe(Effect.withSpan("mcp.host.get_description")));
 
     // Captured at construction time. SDK callbacks fire later (often
     // deferred past the outer Effect's await), so we use the runtime to
@@ -360,9 +359,7 @@ export const createExecutorMcpServer = <E extends Cause.YieldableError>(
     const runToolEffect = <EffE>(effect: Effect.Effect<McpToolResult, EffE>) =>
       Runtime.runPromise(runtime)(
         anchor(effect).pipe(
-          Effect.catchAllCause((cause) =>
-            Effect.succeed(toMcpFailureResult(cause)),
-          ),
+          Effect.catchAllCause((cause) => Effect.succeed(toMcpFailureResult(cause))),
         ),
       );
 
@@ -451,9 +448,7 @@ export const createExecutorMcpServer = <E extends Cause.YieldableError>(
         if (!outcome) {
           debugLog("resume.missing_execution", { executionId });
           return {
-            content: [
-              { type: "text" as const, text: `No paused execution: ${executionId}` },
-            ],
+            content: [{ type: "text" as const, text: `No paused execution: ${executionId}` }],
             isError: true,
           } satisfies McpToolResult;
         }

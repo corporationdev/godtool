@@ -10,11 +10,7 @@ import { join } from "node:path";
 import * as fs from "node:fs";
 import * as jsonc from "jsonc-parser";
 
-import type {
-  SourceConfig,
-  ExecutorFileConfig,
-  ConfigHeaderValue,
-} from "@executor/config";
+import type { SourceConfig, ExecutorFileConfig, ConfigHeaderValue } from "@executor/config";
 import { SECRET_REF_PREFIX } from "@executor/config";
 
 import type { LocalExecutor } from "./executor";
@@ -57,8 +53,7 @@ const translateHeaders = (
 // Config path resolution
 // ---------------------------------------------------------------------------
 
-export const resolveConfigPath = (scopeDir: string): string =>
-  join(scopeDir, "godtool.jsonc");
+export const resolveConfigPath = (scopeDir: string): string => join(scopeDir, "godtool.jsonc");
 
 // ---------------------------------------------------------------------------
 // Load config (sync, no Effect deps — runs at startup)
@@ -91,53 +86,63 @@ const addSourceFromConfig = (
   const scope = executor.scopes.at(-1)!.id as string;
   switch (source.kind) {
     case "openapi":
-      return executor.openapi.addSpec({
-        spec: source.spec,
-        scope,
-        baseUrl: source.baseUrl,
-        namespace: source.namespace,
-        headers: translateHeaders(source.headers),
-      }).pipe(Effect.asVoid);
+      return executor.openapi
+        .addSpec({
+          spec: source.spec,
+          scope,
+          baseUrl: source.baseUrl,
+          namespace: source.namespace,
+          headers: translateHeaders(source.headers),
+        })
+        .pipe(Effect.asVoid);
 
     case "graphql":
-      return executor.graphql.addSource({
-        endpoint: source.endpoint,
-        scope,
-        namespace: source.namespace,
-        headers: translateHeaders(source.headers) as Record<string, string> | undefined,
-      }).pipe(Effect.asVoid);
+      return executor.graphql
+        .addSource({
+          endpoint: source.endpoint,
+          scope,
+          namespace: source.namespace,
+          headers: translateHeaders(source.headers) as Record<string, string> | undefined,
+        })
+        .pipe(Effect.asVoid);
 
     case "raw":
-      return executor.raw.addSource({
-        baseUrl: source.baseUrl,
-        scope,
-        namespace: source.namespace,
-        headers: translateHeaders(source.headers),
-      }).pipe(Effect.asVoid);
+      return executor.raw
+        .addSource({
+          baseUrl: source.baseUrl,
+          scope,
+          namespace: source.namespace,
+          headers: translateHeaders(source.headers),
+        })
+        .pipe(Effect.asVoid);
 
     case "mcp":
       if (source.transport === "stdio") {
-        return executor.mcp.addSource({
-          transport: "stdio",
+        return executor.mcp
+          .addSource({
+            transport: "stdio",
+            scope,
+            name: source.name,
+            command: source.command,
+            args: source.args ? [...source.args] : undefined,
+            env: source.env,
+            cwd: source.cwd,
+            namespace: source.namespace,
+          })
+          .pipe(Effect.asVoid);
+      }
+      return executor.mcp
+        .addSource({
+          transport: "remote",
           scope,
           name: source.name,
-          command: source.command,
-          args: source.args ? [...source.args] : undefined,
-          env: source.env,
-          cwd: source.cwd,
+          endpoint: source.endpoint,
+          remoteTransport: source.remoteTransport,
+          queryParams: source.queryParams,
+          headers: source.headers,
           namespace: source.namespace,
-        }).pipe(Effect.asVoid);
-      }
-      return executor.mcp.addSource({
-        transport: "remote",
-        scope,
-        name: source.name,
-        endpoint: source.endpoint,
-        remoteTransport: source.remoteTransport,
-        queryParams: source.queryParams,
-        headers: source.headers,
-        namespace: source.namespace,
-      }).pipe(Effect.asVoid);
+        })
+        .pipe(Effect.asVoid);
   }
 };
 
@@ -145,10 +150,7 @@ const addSourceFromConfig = (
  * Read godtool.jsonc and replay all sources into the executor.
  * Each source is added independently — if one fails, the rest still load.
  */
-export const syncFromConfig = (
-  executor: LocalExecutor,
-  configPath: string,
-): Effect.Effect<void> =>
+export const syncFromConfig = (executor: LocalExecutor, configPath: string): Effect.Effect<void> =>
   Effect.gen(function* () {
     const config = loadConfigSync(configPath);
     if (!config?.sources?.length) {
@@ -156,9 +158,7 @@ export const syncFromConfig = (
       return;
     }
 
-    console.log(
-      `[config-sync] syncing ${config.sources.length} source(s) from ${configPath}`,
-    );
+    console.log(`[config-sync] syncing ${config.sources.length} source(s) from ${configPath}`);
 
     const results = yield* Effect.forEach(
       config.sources,
@@ -166,7 +166,8 @@ export const syncFromConfig = (
         addSourceFromConfig(executor, source).pipe(
           Effect.map(() => true as const),
           Effect.catchAll((e) => {
-            const ns = "namespace" in source ? source.namespace : ("name" in source ? source.name : "unknown");
+            const ns =
+              "namespace" in source ? source.namespace : "name" in source ? source.name : "unknown";
             console.warn(
               `[config-sync] Failed to load source "${ns}":`,
               e instanceof Error ? e.message : String(e),

@@ -11,7 +11,9 @@ const signComputerUseBinary = (binaryPath) => {
     { stdio: "inherit" },
   );
   if (result.status !== 0) {
-    console.warn("Computer Use sidecar signing failed; macOS permissions may not persist across rebuilds");
+    console.warn(
+      "Computer Use sidecar signing failed; macOS permissions may not persist across rebuilds",
+    );
   }
 };
 

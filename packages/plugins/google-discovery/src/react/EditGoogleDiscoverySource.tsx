@@ -49,15 +49,11 @@ export default function EditGoogleDiscoverySource({
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div className="rounded-lg border border-border bg-card/50 p-3">
-              <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">
-                Service
-              </p>
+              <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Service</p>
               <p className="text-sm font-medium text-foreground">{config.service}</p>
             </div>
             <div className="rounded-lg border border-border bg-card/50 p-3">
-              <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">
-                Version
-              </p>
+              <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Version</p>
               <p className="text-sm font-medium text-foreground">{config.version}</p>
             </div>
           </div>

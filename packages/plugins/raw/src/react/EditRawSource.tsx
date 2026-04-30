@@ -18,10 +18,7 @@ import {
   headerValueToState,
   headersFromState,
 } from "@executor/react/plugins/secret-header-auth";
-import {
-  SourceIdentityFields,
-  useSourceIdentity,
-} from "@executor/react/plugins/source-identity";
+import { SourceIdentityFields, useSourceIdentity } from "@executor/react/plugins/source-identity";
 import { useSecretPickerSecrets } from "@executor/react/plugins/use-secret-picker-secrets";
 
 import type { StoredRawSource } from "../sdk/store";
@@ -29,11 +26,7 @@ import { rawSourceAtom, updateRawSource } from "./atoms";
 
 type EditableSource = Omit<StoredRawSource, "scope">;
 
-function EditForm(props: {
-  sourceId: string;
-  initial: EditableSource;
-  onSave: () => void;
-}) {
+function EditForm(props: { sourceId: string; initial: EditableSource; onSave: () => void }) {
   const scopeId = useScope();
   const doUpdate = useAtomSet(updateRawSource, { mode: "promise" });
   const secretList = useSecretPickerSecrets();

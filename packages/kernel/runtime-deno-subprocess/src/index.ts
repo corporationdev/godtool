@@ -91,9 +91,7 @@ const defaultDenoExecutable = (): string => {
   const isWindows = process.platform === "win32";
   const home = (process.env.HOME || process.env.USERPROFILE)?.trim();
   if (home) {
-    const installedPath = isWindows
-      ? `${home}\\.deno\\bin\\deno.exe`
-      : `${home}/.deno/bin/deno`;
+    const installedPath = isWindows ? `${home}\\.deno\\bin\\deno.exe` : `${home}/.deno/bin/deno`;
     const result = spawnSync(installedPath, ["--version"], {
       stdio: "ignore",
       timeout: 5000,

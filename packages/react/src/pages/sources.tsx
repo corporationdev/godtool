@@ -56,7 +56,10 @@ function googleServiceFromUrl(url?: string): string | null {
 }
 
 function normalizeSourceName(name: string) {
-  return name.toLowerCase().replace(/\s+api$/, "").replace(/[^a-z0-9]+/g, "");
+  return name
+    .toLowerCase()
+    .replace(/\s+api$/, "")
+    .replace(/[^a-z0-9]+/g, "");
 }
 
 function findPresetIcon(source: { name: string; url?: string }, plugin?: SourcePlugin) {
@@ -218,10 +221,7 @@ export function SourcesPage(props: { sourcePlugins: readonly SourcePlugin[] }) {
               <div className="mb-8 space-y-8">
                 {connectedSources.length > 0 && (
                   <section className="space-y-3">
-                    <SourceGrid
-                      sources={connectedSources}
-                      sourcePlugins={sourcePlugins}
-                    />
+                    <SourceGrid sources={connectedSources} sourcePlugins={sourcePlugins} />
                   </section>
                 )}
               </div>
@@ -235,7 +235,10 @@ export function SourcesPage(props: { sourcePlugins: readonly SourcePlugin[] }) {
           onInitial: () => <PresetGrid plugins={sourcePlugins} />,
           onFailure: () => <PresetGrid plugins={sourcePlugins} />,
           onSuccess: ({ value }) => (
-            <PresetGrid plugins={sourcePlugins} connectedSources={value.filter(isConnectedSource)} />
+            <PresetGrid
+              plugins={sourcePlugins}
+              connectedSources={value.filter(isConnectedSource)}
+            />
           ),
         })}
       </div>
@@ -252,6 +255,31 @@ type PresetEntry = {
   pluginKey: string;
   pluginLabel: string;
 };
+
+const TOP_PRESET_ORDER = [
+  "openapi:github-rest",
+  "googleDiscovery:google-gmail",
+  "raw:slack",
+  "googleDiscovery:google-drive",
+  "raw:notion",
+  "googleDiscovery:google-sheets",
+  "raw:hubspot",
+  "openapi:microsoft-outlook",
+  "googleDiscovery:google-calendar",
+  "openapi:jira-cloud",
+  "graphql:linear",
+  "raw:salesforce",
+  "openapi:microsoft-teams",
+  "openapi:stripe",
+  "raw:supabase",
+  "openapi:figma",
+  "raw:airtable",
+  "graphql:gitlab",
+  "openapi:asana",
+  "openapi:intercom",
+] as const;
+
+const TOP_PRESET_RANK = new Map<string, number>(TOP_PRESET_ORDER.map((key, index) => [key, index]));
 
 function PresetGrid(props: {
   plugins: readonly SourcePlugin[];
@@ -273,7 +301,17 @@ function PresetGrid(props: {
         });
       }
     }
-    return entries;
+    return entries
+      .map((entry, index) => ({ entry, index }))
+      .sort((a, b) => {
+        const aRank = TOP_PRESET_RANK.get(`${a.entry.pluginKey}:${a.entry.preset.id}`);
+        const bRank = TOP_PRESET_RANK.get(`${b.entry.pluginKey}:${b.entry.preset.id}`);
+        if (aRank !== undefined && bRank !== undefined) return aRank - bRank;
+        if (aRank !== undefined) return -1;
+        if (bRank !== undefined) return 1;
+        return a.index - b.index;
+      })
+      .map(({ entry }) => entry);
   }, [connectedSourceIds, props.plugins]);
 
   if (allPresets.length === 0) return null;

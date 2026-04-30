@@ -36,7 +36,10 @@ const startTestServer = async (): Promise<string> => {
 beforeEach(() => {
   clientDir = mkdtempSync(join(tmpdir(), "exec-local-serve-"));
   mkdirSync(join(clientDir, "assets"), { recursive: true });
-  writeFileSync(join(clientDir, "index.html"), "<!doctype html><html><body>index-shell</body></html>");
+  writeFileSync(
+    join(clientDir, "index.html"),
+    "<!doctype html><html><body>index-shell</body></html>",
+  );
   writeFileSync(join(clientDir, "assets", "app.js"), "console.log('ok')");
 });
 

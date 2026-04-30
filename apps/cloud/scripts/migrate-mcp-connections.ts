@@ -87,8 +87,7 @@ const classifyRow = (row: Row): Bucket => {
   const legacyOption = decodeLegacy(auth);
   if (Option.isSome(legacyOption)) {
     const legacy = legacyOption.value;
-    const endpoint =
-      typeof row.config.endpoint === "string" ? row.config.endpoint : null;
+    const endpoint = typeof row.config.endpoint === "string" ? row.config.endpoint : null;
     if (!endpoint) {
       return {
         kind: "legacy-blocked",
@@ -118,9 +117,7 @@ const main = async () => {
   const connectionString =
     process.env.DATABASE_URL || process.env.HYPERDRIVE_CONNECTION_STRING || "";
   if (!connectionString) {
-    console.error(
-      "DATABASE_URL not set (try: op run --env-file=.env.production -- ...)",
-    );
+    console.error("DATABASE_URL not set (try: op run --env-file=.env.production -- ...)");
     process.exit(1);
   }
 
@@ -160,12 +157,9 @@ const main = async () => {
     console.log(`  unrecognized shape:        ${counts.unknown}\n`);
 
     const migratable = buckets.filter(
-      (b): b is Extract<Bucket, { kind: "legacy-migratable" }> =>
-        b.kind === "legacy-migratable",
+      (b): b is Extract<Bucket, { kind: "legacy-migratable" }> => b.kind === "legacy-migratable",
     );
-    const blocked = buckets.filter(
-      (b) => b.kind === "legacy-blocked" || b.kind === "unknown",
-    );
+    const blocked = buckets.filter((b) => b.kind === "legacy-blocked" || b.kind === "unknown");
 
     for (const b of blocked) {
       const ref = `${b.row.scope_id}/${b.row.id}`;
@@ -187,12 +181,8 @@ const main = async () => {
       console.log(`[migratable] ${ref}`);
       console.log(`  endpoint:           ${b.endpoint}`);
       console.log(`  accessTokenSecret:  ${b.legacy.accessTokenSecretId}`);
-      console.log(
-        `  refreshTokenSecret: ${b.legacy.refreshTokenSecretId ?? "(null)"}`,
-      );
-      console.log(
-        `  authServerUrl:      ${b.legacy.authorizationServerUrl ?? "(null)"}`,
-      );
+      console.log(`  refreshTokenSecret: ${b.legacy.refreshTokenSecretId ?? "(null)"}`);
+      console.log(`  authServerUrl:      ${b.legacy.authorizationServerUrl ?? "(null)"}`);
       console.log();
     }
 
@@ -264,9 +254,7 @@ const main = async () => {
             where scope_id = ${b.row.scope_id} and id = any(${secretIds})
           `) as SecretRow[];
           const alreadyOwned = existing.filter(
-            (r) =>
-              r.owned_by_connection_id !== null &&
-              r.owned_by_connection_id !== connectionId,
+            (r) => r.owned_by_connection_id !== null && r.owned_by_connection_id !== connectionId,
           );
           if (alreadyOwned.length > 0) {
             throw new Error(
@@ -275,9 +263,7 @@ const main = async () => {
           }
           // Backfill any missing routing rows pointing at workos-vault, the
           // only writable provider on cloud. Matches the openapi migration.
-          const missing = secretIds.filter(
-            (id) => !existing.some((r) => r.id === id),
-          );
+          const missing = secretIds.filter((id) => !existing.some((r) => r.id === id));
           for (const id of missing) {
             const name =
               id === l.accessTokenSecretId
@@ -311,9 +297,7 @@ const main = async () => {
         console.log(`  [OK]   ${ref} -> ${connectionId}`);
       } catch (err) {
         failed++;
-        console.log(
-          `  [FAIL] ${ref}: ${err instanceof Error ? err.message : String(err)}`,
-        );
+        console.log(`  [FAIL] ${ref}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
 

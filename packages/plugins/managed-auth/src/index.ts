@@ -336,7 +336,8 @@ export const invokeManagedHttp = (input: {
 
     if (input.proxy) {
       return yield* Effect.tryPromise({
-        try: () => input.proxy!({ config: input.config, connectedAccountId, request: input.request }),
+        try: () =>
+          input.proxy!({ config: input.config, connectedAccountId, request: input.request }),
         catch: (cause) =>
           cause instanceof ManagedAuthInvocationError
             ? cause

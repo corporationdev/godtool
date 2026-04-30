@@ -78,11 +78,7 @@ const hostUrlFromConfig = (config?: ComputerUsePluginConfig): string =>
     "http://127.0.0.1:14790"
   ).replace(/\/+$/, "");
 
-const request = async <T>(
-  hostUrl: string,
-  path: string,
-  init?: RequestInit,
-): Promise<T> => {
+const request = async <T>(hostUrl: string, path: string, init?: RequestInit): Promise<T> => {
   const response = await fetch(`${hostUrl}${path}`, {
     ...init,
     headers: {
@@ -121,9 +117,7 @@ const extensionHostRequest = <A>(
   init?: RequestInit,
 ): Effect.Effect<A, ComputerUseHostError> =>
   hostRequest<A>(config, path, init).pipe(
-    Effect.mapError(
-      (cause) => new ComputerUseHostError({ message: cause.message }),
-    ),
+    Effect.mapError((cause) => new ComputerUseHostError({ message: cause.message })),
   );
 
 const tool = <A>(
@@ -308,7 +302,8 @@ const toolDeclarations = (
   },
   {
     name: "click",
-    description: "Click an accessibility element index from get_app_state, or raw screenshot coordinates.",
+    description:
+      "Click an accessibility element index from get_app_state, or raw screenshot coordinates.",
     inputSchema: clickSchema,
     handler: ({ args }) => tool(config, "/click", decodeClickArgs(args)),
   },
@@ -334,8 +329,7 @@ const toolDeclarations = (
     name: "perform_secondary_action",
     description: "Invoke a named accessibility action exposed by an element.",
     inputSchema: secondaryActionSchema,
-    handler: ({ args }) =>
-      tool(config, "/secondary-action", decodeSecondaryActionArgs(args)),
+    handler: ({ args }) => tool(config, "/secondary-action", decodeSecondaryActionArgs(args)),
   },
   {
     name: "press_key",

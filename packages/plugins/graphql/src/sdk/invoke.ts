@@ -2,11 +2,7 @@ import { Effect, Layer, Option } from "effect";
 import { HttpClient, HttpClientRequest } from "@effect/platform";
 
 import { GraphqlInvocationError } from "./errors";
-import {
-  type HeaderValue,
-  type OperationBinding,
-  InvocationResult,
-} from "./types";
+import { type HeaderValue, type OperationBinding, InvocationResult } from "./types";
 
 // ---------------------------------------------------------------------------
 // Header resolution — resolves secret refs at invocation time
@@ -36,12 +32,7 @@ export const resolveHeaders = (
               Effect.catchAll(() => Effect.succeed<string | null>(null)),
               Effect.map((secret) => ({
                 name,
-                value:
-                  secret === null
-                    ? null
-                    : value.prefix
-                      ? `${value.prefix}${secret}`
-                      : secret,
+                value: secret === null ? null : value.prefix ? `${value.prefix}${secret}` : secret,
               })),
             ),
       ),

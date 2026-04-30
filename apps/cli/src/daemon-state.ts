@@ -59,7 +59,8 @@ export const currentDaemonScopeId = (): string => {
 const resolveDaemonDataDir = (path: Path.Path): string =>
   process.env.GODTOOL_DATA_DIR ?? path.join(homedir(), ".godtool");
 
-const sanitizeHostForPath = (hostname: string): string => hostname.replaceAll(/[^a-z0-9.-]+/gi, "_");
+const sanitizeHostForPath = (hostname: string): string =>
+  hostname.replaceAll(/[^a-z0-9.-]+/gi, "_");
 const sanitizeScopeForPath = (scopeId: string): string => scopeId.replaceAll(/[^a-z0-9.-]+/gi, "_");
 
 const daemonRecordPath = (path: Path.Path, input: { hostname: string; port: number }): string => {
@@ -67,14 +68,19 @@ const daemonRecordPath = (path: Path.Path, input: { hostname: string; port: numb
   return path.join(resolveDaemonDataDir(path), `daemon-${host}-${input.port}.json`);
 };
 
-const daemonPointerPath = (path: Path.Path, input: { hostname: string; scopeId: string }): string => {
+const daemonPointerPath = (
+  path: Path.Path,
+  input: { hostname: string; scopeId: string },
+): string => {
   const host = sanitizeHostForPath(canonicalDaemonHost(input.hostname));
   const scope = sanitizeScopeForPath(input.scopeId);
   return path.join(resolveDaemonDataDir(path), `daemon-active-${host}-${scope}.json`);
 };
 
-const daemonStartLockPath = (path: Path.Path, input: { hostname: string; scopeId: string }): string =>
-  `${daemonPointerPath(path, input)}.lock`;
+const daemonStartLockPath = (
+  path: Path.Path,
+  input: { hostname: string; scopeId: string },
+): string => `${daemonPointerPath(path, input)}.lock`;
 
 // ---------------------------------------------------------------------------
 // Persistence
@@ -195,9 +201,9 @@ export const readDaemonRecord = (input: {
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const raw = yield* fs.readFileString(daemonRecordPath(path, input)).pipe(
-      Effect.catchAll(() => Effect.succeed(null)),
-    );
+    const raw = yield* fs
+      .readFileString(daemonRecordPath(path, input))
+      .pipe(Effect.catchAll(() => Effect.succeed(null)));
     if (raw === null) return null;
     return parseRecord(raw);
   });
@@ -322,7 +328,9 @@ export const acquireDaemonStartLock = (input: {
       };
     }
 
-    const existingRaw = yield* fs.readFileString(lockPath).pipe(Effect.catchAll(() => Effect.succeed(null)));
+    const existingRaw = yield* fs
+      .readFileString(lockPath)
+      .pipe(Effect.catchAll(() => Effect.succeed(null)));
     if (existingRaw !== null) {
       const existingPid = parseLockPid(existingRaw);
       if (existingPid !== null && !isPidAlive(existingPid)) {
@@ -344,11 +352,9 @@ export const acquireDaemonStartLock = (input: {
     );
   });
 
-export const releaseDaemonStartLock = (input: DaemonStartLock): Effect.Effect<
-  void,
-  PlatformError,
-  FileSystem.FileSystem | Path.Path
-> =>
+export const releaseDaemonStartLock = (
+  input: DaemonStartLock,
+): Effect.Effect<void, PlatformError, FileSystem.FileSystem | Path.Path> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
     yield* fs.remove(input.path, { force: true });
@@ -374,5 +380,7 @@ export const terminatePid = (pid: number): Effect.Effect<void, Error> =>
       process.kill(pid, "SIGTERM");
     },
     catch: (cause) =>
-      cause instanceof Error ? cause : new Error(`Failed to terminate pid ${pid}: ${String(cause)}`),
+      cause instanceof Error
+        ? cause
+        : new Error(`Failed to terminate pid ${pid}: ${String(cause)}`),
   });

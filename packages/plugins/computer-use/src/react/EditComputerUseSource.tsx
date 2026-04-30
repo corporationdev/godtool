@@ -46,12 +46,17 @@ export default function EditComputerUseSource() {
 
       <CardStack>
         <CardStackContent className="border-t-0">
-          <CardStackEntryField label="Accessibility" description="inspect controls and perform actions">
-            <Badge variant={Result.match(status, {
-              onSuccess: ({ value }) => (value.accessibility ? "default" : "secondary"),
-              onInitial: () => "secondary",
-              onFailure: () => "secondary",
-            })}>
+          <CardStackEntryField
+            label="Accessibility"
+            description="inspect controls and perform actions"
+          >
+            <Badge
+              variant={Result.match(status, {
+                onSuccess: ({ value }) => (value.accessibility ? "default" : "secondary"),
+                onInitial: () => "secondary",
+                onFailure: () => "secondary",
+              })}
+            >
               {Result.match(status, {
                 onSuccess: ({ value }) => (value.accessibility ? "Granted" : "Needed"),
                 onInitial: () => "Checking",
@@ -60,11 +65,13 @@ export default function EditComputerUseSource() {
             </Badge>
           </CardStackEntryField>
           <CardStackEntryField label="Screen Recording" description="capture app windows">
-            <Badge variant={Result.match(status, {
-              onSuccess: ({ value }) => (value.screenRecording ? "default" : "secondary"),
-              onInitial: () => "secondary",
-              onFailure: () => "secondary",
-            })}>
+            <Badge
+              variant={Result.match(status, {
+                onSuccess: ({ value }) => (value.screenRecording ? "default" : "secondary"),
+                onInitial: () => "secondary",
+                onFailure: () => "secondary",
+              })}
+            >
               {Result.match(status, {
                 onSuccess: ({ value }) => (value.screenRecording ? "Granted" : "Needed"),
                 onInitial: () => "Checking",

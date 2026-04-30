@@ -110,9 +110,9 @@ type WorkspaceFilesApi = {
   readonly importPaths: (
     sourcePaths: readonly string[],
     destinationDirectoryPath: string,
-      ) => Promise<{
-        readonly paths: readonly string[];
-      }>;
+  ) => Promise<{
+    readonly paths: readonly string[];
+  }>;
   readonly getFileUrl: (path: string) => Promise<string>;
   readonly open: (path: string, target: WorkspaceOpenTarget) => Promise<boolean>;
 };
@@ -545,8 +545,7 @@ export function FilesPage() {
     }
     return openTargets[0]?.id ?? null;
   }, [openTargets, preferredOpenTarget]);
-  const primaryOpenTarget =
-    openTargets.find((target) => target.id === effectiveOpenTarget) ?? null;
+  const primaryOpenTarget = openTargets.find((target) => target.id === effectiveOpenTarget) ?? null;
 
   const openCurrentPath = useCallback(
     async (target: WorkspaceOpenTarget | null) => {
@@ -592,9 +591,7 @@ export function FilesPage() {
       <section className="flex h-full min-w-0 flex-1 flex-col border-l border-sidebar-border">
         <header className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-sidebar-border px-5">
           <div className="min-w-0">
-            <h1 className="truncate font-mono text-sm font-medium">
-              {selectedPath ?? "Files"}
-            </h1>
+            <h1 className="truncate font-mono text-sm font-medium">{selectedPath ?? "Files"}</h1>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <DropdownMenu>
@@ -1550,7 +1547,10 @@ function FileRow(props: {
           style={{ paddingLeft: rowIndent(props.depth) + 20, paddingRight: 12 }}
           title={props.node.path}
         >
-          <FileTypeIcon path={props.node.path} className="size-3.5 shrink-0 text-muted-foreground" />
+          <FileTypeIcon
+            path={props.node.path}
+            className="size-3.5 shrink-0 text-muted-foreground"
+          />
           <span className="min-w-0 flex-1 truncate text-left font-mono">{props.node.name}</span>
         </Button>
       </ContextMenuTrigger>

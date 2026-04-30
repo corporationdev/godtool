@@ -16,11 +16,7 @@ import { Database } from "bun:sqlite";
 import { randomUUID } from "node:crypto";
 import { Effect, Option, Schema } from "effect";
 import { FetchHttpClient } from "@effect/platform";
-import {
-  parse as parseOpenApi,
-  resolveSpecText,
-  OAuth2Auth,
-} from "@executor/plugin-openapi";
+import { parse as parseOpenApi, resolveSpecText, OAuth2Auth } from "@executor/plugin-openapi";
 import { McpConnectionAuth } from "@executor/plugin-mcp";
 
 // ---------------------------------------------------------------------------
@@ -36,9 +32,9 @@ const JsonObject = Schema.Record({ key: Schema.String, value: Schema.Unknown });
 /** Pre-flight: bail unless the drizzle migration that added the Connection
  *  table + `secret.owned_by_connection_id` has completed. */
 const connectionsReady = (sqlite: Database): boolean => {
-  const secretColumns = sqlite
-    .prepare("PRAGMA table_info('secret')")
-    .all() as ReadonlyArray<{ readonly name: string }>;
+  const secretColumns = sqlite.prepare("PRAGMA table_info('secret')").all() as ReadonlyArray<{
+    readonly name: string;
+  }>;
   if (!secretColumns.some((c) => c.name === "owned_by_connection_id")) return false;
   const connectionTable = sqlite
     .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='connection'")
@@ -88,16 +84,10 @@ const rewireSecrets = (
      ) VALUES (?, ?, ?, ?, ?, ?)`,
   );
 
-  const rows = secretIds.map(
-    (sid) => selectSecret.get(scopeId, sid) as SecretRow | undefined,
-  );
+  const rows = secretIds.map((sid) => selectSecret.get(scopeId, sid) as SecretRow | undefined);
   const alreadyOwned = rows
     .filter((r): r is SecretRow => !!r)
-    .filter(
-      (r) =>
-        r.owned_by_connection_id !== null &&
-        r.owned_by_connection_id !== connectionId,
-    );
+    .filter((r) => r.owned_by_connection_id !== null && r.owned_by_connection_id !== connectionId);
   if (alreadyOwned.length > 0) return "secret(s) already owned";
 
   // Early-onboarded rows never got a `secret` routing row — pre-refactor
@@ -108,9 +98,7 @@ const rewireSecrets = (
   const missingCount = rows.filter((r) => r === undefined).length;
   let fallbackProvider: string | null = null;
   if (missingCount > 0) {
-    const existing = selectAnySecretProvider.get(scopeId) as
-      | { provider: string }
-      | undefined;
+    const existing = selectAnySecretProvider.get(scopeId) as { provider: string } | undefined;
     fallbackProvider = existing?.provider ?? "keychain";
   }
 
@@ -217,19 +205,18 @@ const extractAuthorizationUrl = async (
   const spec = parsed.right as unknown;
   if (!isRecord(spec)) return null;
   const components = isRecord(spec.components) ? spec.components : null;
-  const schemes = components && isRecord(components.securitySchemes)
-    ? components.securitySchemes
-    : null;
-  const scheme = schemes && isRecord(schemes[securitySchemeName])
-    ? (schemes[securitySchemeName] as Record<string, unknown>)
-    : null;
+  const schemes =
+    components && isRecord(components.securitySchemes) ? components.securitySchemes : null;
+  const scheme =
+    schemes && isRecord(schemes[securitySchemeName])
+      ? (schemes[securitySchemeName] as Record<string, unknown>)
+      : null;
   const flows = scheme && isRecord(scheme.flows) ? scheme.flows : null;
-  const flowObj = flows && isRecord(flows.authorizationCode)
-    ? (flows.authorizationCode as Record<string, unknown>)
-    : null;
-  return flowObj && isString(flowObj.authorizationUrl)
-    ? flowObj.authorizationUrl
-    : null;
+  const flowObj =
+    flows && isRecord(flows.authorizationCode)
+      ? (flows.authorizationCode as Record<string, unknown>)
+      : null;
+  return flowObj && isString(flowObj.authorizationUrl) ? flowObj.authorizationUrl : null;
 };
 
 type OpenApiRow = {
@@ -244,9 +231,7 @@ type OpenApiRow = {
 const migrateOpenApi = async (sqlite: Database): Promise<void> => {
   if (!tableExists(sqlite, "openapi_source")) return;
   const rows = sqlite
-    .prepare(
-      "SELECT scope_id, id, name, spec, invocation_config, oauth2 FROM openapi_source",
-    )
+    .prepare("SELECT scope_id, id, name, spec, invocation_config, oauth2 FROM openapi_source")
     .all() as ReadonlyArray<OpenApiRow>;
   if (rows.length === 0) return;
 
@@ -343,9 +328,7 @@ const migrateOpenApi = async (sqlite: Database): Promise<void> => {
     });
     try {
       txn();
-      console.log(
-        `[migrate-connections] openapi ${row.scope_id}/${row.id} -> ${connectionId}`,
-      );
+      console.log(`[migrate-connections] openapi ${row.scope_id}/${row.id} -> ${connectionId}`);
     } catch (err) {
       console.warn(
         `[migrate-connections] fail openapi ${row.scope_id}/${row.id}: ${err instanceof Error ? err.message : String(err)}`,
@@ -418,9 +401,7 @@ const migrateMcp = (sqlite: Database): void => {
 
     const endpoint = typeof config.endpoint === "string" ? config.endpoint : null;
     if (!endpoint) {
-      console.warn(
-        `[migrate-connections] skip mcp ${row.scope_id}/${row.id}: endpoint missing`,
-      );
+      console.warn(`[migrate-connections] skip mcp ${row.scope_id}/${row.id}: endpoint missing`);
       continue;
     }
     const connectionId = `mcp-oauth2-${row.id}`;
@@ -461,9 +442,7 @@ const migrateMcp = (sqlite: Database): void => {
     });
     try {
       txn();
-      console.log(
-        `[migrate-connections] mcp ${row.scope_id}/${row.id} -> ${connectionId}`,
-      );
+      console.log(`[migrate-connections] mcp ${row.scope_id}/${row.id} -> ${connectionId}`);
     } catch (err) {
       console.warn(
         `[migrate-connections] fail mcp ${row.scope_id}/${row.id}: ${err instanceof Error ? err.message : String(err)}`,

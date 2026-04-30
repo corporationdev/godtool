@@ -5,6 +5,18 @@ contextBridge.exposeInMainWorld("electronAPI", {
   system: {
     openExternal: (url: string) => ipcRenderer.invoke("system:open-external", url),
   },
+  updates: {
+    getStatus: () => ipcRenderer.invoke("desktop-update:get-status"),
+    check: () => ipcRenderer.invoke("desktop-update:check"),
+    restartAndInstall: () => ipcRenderer.invoke("desktop-update:restart-and-install"),
+    onStatus: (listener: (status: unknown) => void) => {
+      const wrapped = (_event: Electron.IpcRendererEvent, status: unknown) => {
+        listener(status);
+      };
+      ipcRenderer.on("desktop-update:status", wrapped);
+      return () => ipcRenderer.off("desktop-update:status", wrapped);
+    },
+  },
   cloudAuth: {
     me: () => ipcRenderer.invoke("cloud-auth:me"),
     signIn: () => ipcRenderer.invoke("cloud-auth:sign-in"),

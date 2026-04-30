@@ -23,10 +23,7 @@ import { combinedSchema } from "./db";
 
 describe("combinedSchema", () => {
   it("spreads every cloud + executor schema export", () => {
-    const expected = new Set([
-      ...Object.keys(cloudSchema),
-      ...Object.keys(executorSchema),
-    ]);
+    const expected = new Set([...Object.keys(cloudSchema), ...Object.keys(executorSchema)]);
     for (const key of expected) {
       expect(combinedSchema, `combinedSchema missing "${key}"`).toHaveProperty(key);
     }
@@ -50,7 +47,8 @@ describe("combinedSchema", () => {
     const sql = postgres("postgres://u:p@127.0.0.1:1/x", { max: 1 });
     try {
       const db = drizzle(sql, { schema: combinedSchema });
-      const fullSchema = (db as unknown as { _: { fullSchema: Record<string, unknown> } })._.fullSchema;
+      const fullSchema = (db as unknown as { _: { fullSchema: Record<string, unknown> } })._
+        .fullSchema;
       for (const key of Object.keys(executorSchema)) {
         expect(fullSchema, `fullSchema missing "${key}"`).toHaveProperty(key);
       }

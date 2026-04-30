@@ -115,7 +115,10 @@ const resolveKeyringNative = (t: Target): string | null => {
   const platformMap: Record<string, { pkg: string; node: string }> = {
     "darwin-arm64": { pkg: "@napi-rs/keyring-darwin-arm64", node: "keyring.darwin-arm64.node" },
     "darwin-x64": { pkg: "@napi-rs/keyring-darwin-x64", node: "keyring.darwin-x64.node" },
-    "linux-arm64": { pkg: "@napi-rs/keyring-linux-arm64-gnu", node: "keyring.linux-arm64-gnu.node" },
+    "linux-arm64": {
+      pkg: "@napi-rs/keyring-linux-arm64-gnu",
+      node: "keyring.linux-arm64-gnu.node",
+    },
     "linux-x64": { pkg: "@napi-rs/keyring-linux-x64-gnu", node: "keyring.linux-x64-gnu.node" },
     "linux-arm64-musl": {
       pkg: "@napi-rs/keyring-linux-arm64-musl",
@@ -135,9 +138,7 @@ const resolveKeyringNative = (t: Target): string | null => {
   const entry = platformMap[key];
   if (!entry) return null;
   try {
-    const req = createRequire(
-      join(repoRoot, "node_modules", "@napi-rs/keyring", "package.json"),
-    );
+    const req = createRequire(join(repoRoot, "node_modules", "@napi-rs/keyring", "package.json"));
     const pkgJson = req.resolve(`${entry.pkg}/package.json`);
     return join(dirname(pkgJson), entry.node);
   } catch {
@@ -526,7 +527,10 @@ const buildPreviewTarballs = async (binaries: Record<string, string>) => {
 
 const resolveTargetsFromEnv = (env: string | undefined): Target[] => {
   if (!env) throw new Error("EXECUTOR_PREVIEW_TARGETS must be set (comma-separated package names)");
-  const names = env.split(",").map((s) => s.trim()).filter(Boolean);
+  const names = env
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
   const resolved = names.map((name) => {
     const match = ALL_TARGETS.find((t) => targetPackageName(t) === name);
     if (!match) throw new Error(`Unknown preview target: ${name}`);
@@ -553,10 +557,7 @@ const buildPreviewWrapperPackage = async (targets: Target[]) => {
   await writeFile(join(binDir, "executor"), NODE_SHIM);
   await chmod(join(binDir, "executor"), 0o755);
 
-  const postinstall = PREVIEW_POSTINSTALL_SCRIPT.replaceAll(
-    "__CDN_BASE_URL__",
-    `${cdnUrl}/${sha}`,
-  );
+  const postinstall = PREVIEW_POSTINSTALL_SCRIPT.replaceAll("__CDN_BASE_URL__", `${cdnUrl}/${sha}`);
   await writeFile(join(wrapperDir, "postinstall.cjs"), postinstall);
 
   // Restrict os/cpu to platforms we actually built this run so npm refuses
@@ -767,7 +768,7 @@ const packageJson = JSON.parse(fs.readFileSync(path.join(packageDir, "package.js
 const repositoryUrl = typeof packageJson.repository === "string"
   ? packageJson.repository
   : packageJson.repository && packageJson.repository.url;
-const githubBase = String(packageJson.homepage || repositoryUrl || "https://github.com/RhysSullivan/executor")
+const githubBase = String(packageJson.homepage || repositoryUrl || "https://github.com/corporationdev/godtool")
   .replace(/^git[+]/, "")
   .replace(/.git$/, "");
 const version = packageJson.version;

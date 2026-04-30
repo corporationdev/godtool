@@ -35,8 +35,6 @@ export class StorageError extends Data.TaggedError("StorageError")<{
  * driver message) stays internal because plugin code rarely needs it
  * and surfacing it leaks backend specifics.
  */
-export class UniqueViolationError extends Data.TaggedError(
-  "UniqueViolationError",
-)<{
+export class UniqueViolationError extends Data.TaggedError("UniqueViolationError")<{
   readonly model?: string;
 }> {}

@@ -177,8 +177,7 @@ describe("runOAuthCallback", () => {
       runOAuthCallback<GoogleAuth, DomainError, never>({
         complete: () => Effect.fail(new DomainError("Code expired")),
         urlParams: { state: "s1" },
-        toErrorMessage: (error) =>
-          error instanceof DomainError ? error.message : "unknown",
+        toErrorMessage: (error) => (error instanceof DomainError ? error.message : "unknown"),
         channelName: "c",
       }),
     );

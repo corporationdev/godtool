@@ -20,10 +20,7 @@ const devCrashGuard = (): Plugin => {
     if (installed) return;
     installed = true;
     process.on("uncaughtException", (err, origin) => {
-      console.error(
-        `[dev-crash-guard] uncaughtException (origin=${origin}):`,
-        err,
-      );
+      console.error(`[dev-crash-guard] uncaughtException (origin=${origin}):`, err);
     });
     process.on("unhandledRejection", (reason, promise) => {
       console.error("[dev-crash-guard] unhandledRejection:", reason, promise);

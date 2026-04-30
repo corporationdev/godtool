@@ -25,7 +25,10 @@ const allPresets = [
   ...openApiPresets.map((p) => ({ ...p, plugin: "openapi" as const })),
   ...mcpPresets.map((p) => ({ ...p, plugin: "mcp" as const })),
   ...graphqlPresets.map((p) => ({ ...p, plugin: "graphql" as const })),
-  ...googleDiscoveryPresets.map((p) => ({ ...p, plugin: "google-discovery" as const })),
+  ...googleDiscoveryPresets.map((p) => ({
+    ...p,
+    plugin: "google-discovery" as const,
+  })),
 ];
 
 // ---------------------------------------------------------------------------
@@ -222,9 +225,21 @@ describe("preset icons are reachable", () => {
   }
 });
 
-describe("raw presets include Slack and Notion HTTP connectors", () => {
-  it("defines only Slack and Notion with base URLs", () => {
-    expect(rawPresets.map((preset) => preset.id)).toEqual(["slack", "notion"]);
+describe("raw presets include managed-auth HTTP connectors", () => {
+  it("defines raw OAuth-friendly presets with base URLs", () => {
+    expect(rawPresets.map((preset) => preset.id)).toEqual([
+      "slack",
+      "notion",
+      "twitter",
+      "supabase",
+      "airtable",
+      "hubspot",
+      "gong",
+      "salesforce",
+      "canvas",
+      "zendesk",
+      "discord",
+    ]);
     expect(rawPresets.find((preset) => preset.id === "slack")).toMatchObject({
       name: "Slack",
       baseUrl: "https://slack.com/api",
@@ -233,6 +248,11 @@ describe("raw presets include Slack and Notion HTTP connectors", () => {
     expect(rawPresets.find((preset) => preset.id === "notion")).toMatchObject({
       name: "Notion",
       baseUrl: "https://api.notion.com",
+      featured: true,
+    });
+    expect(rawPresets.find((preset) => preset.id === "salesforce")).toMatchObject({
+      name: "Salesforce",
+      baseUrl: "https://instance.my.salesforce.com/services/data",
       featured: true,
     });
   });

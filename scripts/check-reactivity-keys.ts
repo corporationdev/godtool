@@ -42,7 +42,8 @@ const useAtomSetRegex = /useAtomSet\(\s*([A-Za-z_][\w]*)\s*,\s*\{\s*mode:\s*"pro
 for (const root of ROOTS) {
   const glob = new Glob(`${root}/**/*.{ts,tsx}`);
   for await (const path of glob.scan({ cwd: import.meta.dir + "/.." })) {
-    if (path.includes("node_modules") || path.includes(".test.") || path.endsWith(".d.ts")) continue;
+    if (path.includes("node_modules") || path.includes(".test.") || path.endsWith(".d.ts"))
+      continue;
     const file = Bun.file(`${import.meta.dir}/../${path}`);
     const text = await file.text();
     if (!text.includes("useAtomSet")) continue;
@@ -111,7 +112,9 @@ if (violations.length === 0) {
   process.exit(0);
 }
 
-console.error(`✗ reactivityKeys check failed — ${violations.length} mutation call(s) missing reactivityKeys:\n`);
+console.error(
+  `✗ reactivityKeys check failed — ${violations.length} mutation call(s) missing reactivityKeys:\n`,
+);
 for (const v of violations) {
   console.error(`  ${v.file}:${v.line} — ${v.mutationVar}`);
 }

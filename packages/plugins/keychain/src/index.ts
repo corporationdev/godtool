@@ -64,48 +64,39 @@ export interface KeychainExtension {
 const scopedServiceName = (
   ctx: PluginCtx<unknown>,
   options: KeychainPluginConfig | undefined,
-): string =>
-  `${resolveServiceName(options?.serviceName)}/${ctx.scopes[0]!.id as string}`;
+): string => `${resolveServiceName(options?.serviceName)}/${ctx.scopes[0]!.id as string}`;
 
-export const keychainPlugin = definePlugin(
-  (options?: KeychainPluginConfig) => ({
-    id: "keychain" as const,
-    storage: () => ({}),
+export const keychainPlugin = definePlugin((options?: KeychainPluginConfig) => ({
+  id: "keychain" as const,
+  storage: () => ({}),
 
-    extension: (ctx): KeychainExtension => {
+  extension: (ctx): KeychainExtension => {
+    const serviceName = scopedServiceName(ctx, options);
+    return {
+      displayName: displayName(),
+      isSupported: isSupportedPlatform(),
+      has: (id) =>
+        getPassword(serviceName, id).pipe(
+          Effect.map((v) => v !== null),
+          Effect.orElseSucceed(() => false),
+        ),
+    };
+  },
+
+  secretProviders: (ctx) =>
+    Effect.gen(function* () {
       const serviceName = scopedServiceName(ctx, options);
-      return {
-        displayName: displayName(),
-        isSupported: isSupportedPlatform(),
-        has: (id) =>
-          getPassword(serviceName, id).pipe(
-            Effect.map((v) => v !== null),
-            Effect.orElseSucceed(() => false),
-          ),
-      };
-    },
-
-    secretProviders: (ctx) =>
-      Effect.gen(function* () {
-        const serviceName = scopedServiceName(ctx, options);
-        const reachable = yield* setPassword(
-          serviceName,
-          PROBE_ACCOUNT,
-          PROBE_VALUE,
-        ).pipe(
-          Effect.andThen(
-            deletePassword(serviceName, PROBE_ACCOUNT).pipe(
-              Effect.catchAll(() => Effect.void),
-            ),
-          ),
-          Effect.as(true),
-          Effect.catchAll((cause) =>
-            Effect.logWarning(
-              `keychain unavailable, skipping provider registration: ${cause.message}`,
-            ).pipe(Effect.as(false)),
-          ),
-        );
-        return reachable ? [makeKeychainProvider(serviceName)] : [];
-      }),
-  }),
-);
+      const reachable = yield* setPassword(serviceName, PROBE_ACCOUNT, PROBE_VALUE).pipe(
+        Effect.andThen(
+          deletePassword(serviceName, PROBE_ACCOUNT).pipe(Effect.catchAll(() => Effect.void)),
+        ),
+        Effect.as(true),
+        Effect.catchAll((cause) =>
+          Effect.logWarning(
+            `keychain unavailable, skipping provider registration: ${cause.message}`,
+          ).pipe(Effect.as(false)),
+        ),
+      );
+      return reachable ? [makeKeychainProvider(serviceName)] : [];
+    }),
+}));

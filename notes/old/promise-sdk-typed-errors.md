@@ -6,7 +6,7 @@
 `Effect.runPromise(...)`. That works but it's lossy at the Promise
 boundary:
 
-- The promise's *rejection type* is `unknown` (or `any` after
+- The promise's _rejection type_ is `unknown` (or `any` after
   `try/catch`). Consumers have to `instanceof InternalError` /
   `err._tag === "..."` to discriminate, even though the underlying
   Effect had a fully typed error union.
@@ -43,12 +43,14 @@ Do we expose Effect's `Exit` / `Cause` directly to promise consumers,
 or wrap them in a promise-native `Result<A, E>`?
 
 **Expose `Exit`/`Cause`:**
+
 - Pros: one fewer abstraction, no translation layer to maintain, cause
   preserves parallel/sequential composition.
 - Cons: consumers depend on `effect`'s API even though they're using a
   "Promise" SDK — partly defeats the abstraction.
 
 **Wrap in a `Result<A, E>`:**
+
 - Pros: `@executor/sdk/promise` consumers don't import `effect` at all,
   surface stays small.
 - Cons: another type to learn / document; loses some Cause structure

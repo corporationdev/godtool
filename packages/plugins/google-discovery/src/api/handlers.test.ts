@@ -43,9 +43,7 @@ const WebHandler = Effect.acquireRelease(
         Layer.provide(observabilityMiddleware(Api)),
         Layer.provide(Layer.succeed(ExecutorService, {} as never)),
         Layer.provide(Layer.succeed(ExecutionEngineService, {} as never)),
-        Layer.provide(
-          Layer.succeed(GoogleDiscoveryExtensionService, failingExtension),
-        ),
+        Layer.provide(Layer.succeed(GoogleDiscoveryExtensionService, failingExtension)),
         Layer.provideMerge(HttpServer.layerContext),
         Layer.provideMerge(HttpApiBuilder.Router.Live),
         Layer.provideMerge(HttpApiBuilder.Middleware.layer),
@@ -56,31 +54,29 @@ const WebHandler = Effect.acquireRelease(
 );
 
 describe("GoogleDiscoveryHandlers", () => {
-  it.scoped(
-    "defect-returning methods produce an opaque InternalError, no leakage",
-    () =>
-      Effect.gen(function* () {
-        const web = yield* WebHandler;
-        const response = yield* Effect.promise(() =>
-          web.handler(
-            new Request("http://localhost/scopes/scope_1/google-discovery/probe", {
-              method: "POST",
-              headers: { "content-type": "application/json" },
-              body: JSON.stringify({
-                discoveryUrl: "https://example.googleapis.com/$discovery/rest?version=v1",
-              }),
+  it.scoped("defect-returning methods produce an opaque InternalError, no leakage", () =>
+    Effect.gen(function* () {
+      const web = yield* WebHandler;
+      const response = yield* Effect.promise(() =>
+        web.handler(
+          new Request("http://localhost/scopes/scope_1/google-discovery/probe", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              discoveryUrl: "https://example.googleapis.com/$discovery/rest?version=v1",
             }),
-          ),
-        );
+          }),
+        ),
+      );
 
-        expect(response.status).toBe(500);
-        const body = (yield* Effect.promise(() => response.json())) as {
-          _tag?: string;
-          traceId?: string;
-        };
-        expect(body._tag).toBe("InternalError");
-        expect(typeof body.traceId).toBe("string");
-        expect(JSON.stringify(body)).not.toContain("Not implemented");
-      }),
+      expect(response.status).toBe(500);
+      const body = (yield* Effect.promise(() => response.json())) as {
+        _tag?: string;
+        traceId?: string;
+      };
+      expect(body._tag).toBe("InternalError");
+      expect(typeof body.traceId).toBe("string");
+      expect(JSON.stringify(body)).not.toContain("Not implemented");
+    }),
   );
 });

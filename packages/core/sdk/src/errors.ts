@@ -32,13 +32,10 @@ export class PluginNotLoadedError extends Schema.TaggedError<PluginNotLoadedErro
  *  the plugin only declares static tools and this one's id matched
  *  dynamically somehow. Shouldn't happen in practice; guards against
  *  programmer error. */
-export class NoHandlerError extends Schema.TaggedError<NoHandlerError>()(
-  "NoHandlerError",
-  {
-    toolId: ToolId,
-    pluginId: Schema.String,
-  },
-) {}
+export class NoHandlerError extends Schema.TaggedError<NoHandlerError>()("NoHandlerError", {
+  toolId: ToolId,
+  pluginId: Schema.String,
+}) {}
 
 // ---------------------------------------------------------------------------
 // Source lifecycle

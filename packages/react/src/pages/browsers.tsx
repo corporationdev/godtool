@@ -413,9 +413,7 @@ export function BrowsersPage() {
             </Button>
           </div>
           {error ? (
-            <div className="border-b border-border px-4 py-2 text-xs text-destructive">
-              {error}
-            </div>
+            <div className="border-b border-border px-4 py-2 text-xs text-destructive">{error}</div>
           ) : null}
           {sessions.length === 0 ? (
             <div className="p-5 text-sm text-muted-foreground">No browser sessions yet.</div>

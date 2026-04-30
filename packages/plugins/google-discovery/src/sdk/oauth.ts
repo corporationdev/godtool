@@ -72,4 +72,3 @@ export const exchangeAuthorizationCode = (input: {
       code: input.code,
     }),
   );
-

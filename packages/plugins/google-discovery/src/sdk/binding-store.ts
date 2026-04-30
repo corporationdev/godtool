@@ -14,11 +14,7 @@
 
 import { Effect, Schema } from "effect";
 
-import {
-  defineSchema,
-  type StorageDeps,
-  type StorageFailure,
-} from "@executor/sdk";
+import { defineSchema, type StorageDeps, type StorageFailure } from "@executor/sdk";
 
 import {
   GoogleDiscoveryMethodBinding,
@@ -146,14 +142,9 @@ export interface GoogleDiscoveryStore {
   readonly getBindingsForSource: (
     sourceId: string,
     scope: string,
-  ) => Effect.Effect<
-    ReadonlyMap<string, GoogleDiscoveryMethodBinding>,
-    StorageFailure
-  >;
+  ) => Effect.Effect<ReadonlyMap<string, GoogleDiscoveryMethodBinding>, StorageFailure>;
 
-  readonly putSource: (
-    source: GoogleDiscoveryStoredSource,
-  ) => Effect.Effect<void, StorageFailure>;
+  readonly putSource: (source: GoogleDiscoveryStoredSource) => Effect.Effect<void, StorageFailure>;
   readonly updateSourceMeta: (
     sourceId: string,
     scope: string,
@@ -162,10 +153,7 @@ export interface GoogleDiscoveryStore {
       readonly auth?: import("./types").GoogleDiscoveryAuth;
     },
   ) => Effect.Effect<void, StorageFailure>;
-  readonly removeSource: (
-    sourceId: string,
-    scope: string,
-  ) => Effect.Effect<void, StorageFailure>;
+  readonly removeSource: (sourceId: string, scope: string) => Effect.Effect<void, StorageFailure>;
   readonly getSource: (
     sourceId: string,
     scope: string,

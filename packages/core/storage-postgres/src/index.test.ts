@@ -22,10 +22,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import type { DBAdapter } from "@executor/storage-core";
-import {
-  conformanceSchema,
-  runAdapterConformance,
-} from "@executor/storage-core/testing";
+import { conformanceSchema, runAdapterConformance } from "@executor/storage-core/testing";
 
 import { makePostgresAdapter } from "./index";
 
@@ -134,10 +131,7 @@ const createConformanceTables = Effect.tryPromise({
       )`,
     );
   },
-  catch: (cause) =>
-    new Error(
-      `failed to create postgres conformance tables: ${String(cause)}`,
-    ),
+  catch: (cause) => new Error(`failed to create postgres conformance tables: ${String(cause)}`),
 });
 
 const resetTables = Effect.gen(function* () {
@@ -146,10 +140,7 @@ const resetTables = Effect.gen(function* () {
       sql`DROP TABLE IF EXISTS "source", "tag", "source_tag", "with_defaults", "blob" CASCADE`.then(
         () => undefined,
       ),
-    catch: (cause) =>
-      new Error(
-        `failed to reset postgres conformance tables: ${String(cause)}`,
-      ),
+    catch: (cause) => new Error(`failed to reset postgres conformance tables: ${String(cause)}`),
   });
   yield* createConformanceTables;
 });
@@ -191,8 +182,7 @@ const resetScopedTable = Effect.tryPromise({
       )`,
     );
   },
-  catch: (cause) =>
-    new Error(`failed to reset scoped_item table: ${String(cause)}`),
+  catch: (cause) => new Error(`failed to reset scoped_item table: ${String(cause)}`),
 });
 
 const makeScopedAdapter = () =>

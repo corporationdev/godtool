@@ -43,21 +43,14 @@ const wrapErr =
     });
   };
 
-export const makeSqliteBlobStore = (
-  options: MakeSqliteBlobStoreOptions,
-): BlobStore => ({
+export const makeSqliteBlobStore = (options: MakeSqliteBlobStoreOptions): BlobStore => ({
   get: (namespace, key) =>
     Effect.try({
       try: () =>
         options.db
           .select({ value: blobTable.value })
           .from(blobTable)
-          .where(
-            and(
-              eq(blobTable.namespace, namespace),
-              eq(blobTable.key, key),
-            ),
-          )
+          .where(and(eq(blobTable.namespace, namespace), eq(blobTable.key, key)))
           .limit(1)
           .all() as ReadonlyArray<{ value: string }>,
       catch: wrapErr("get"),
@@ -74,12 +67,7 @@ export const makeSqliteBlobStore = (
                 value: blobTable.value,
               })
               .from(blobTable)
-              .where(
-                and(
-                  inArray(blobTable.namespace, [...namespaces]),
-                  eq(blobTable.key, key),
-                ),
-              )
+              .where(and(inArray(blobTable.namespace, [...namespaces]), eq(blobTable.key, key)))
               .all() as ReadonlyArray<{ namespace: string; value: string }>,
           catch: wrapErr("getMany"),
         }).pipe(
@@ -109,12 +97,7 @@ export const makeSqliteBlobStore = (
       try: () =>
         options.db
           .delete(blobTable)
-          .where(
-            and(
-              eq(blobTable.namespace, namespace),
-              eq(blobTable.key, key),
-            ),
-          )
+          .where(and(eq(blobTable.namespace, namespace), eq(blobTable.key, key)))
           .run(),
       catch: wrapErr("delete"),
     }).pipe(Effect.asVoid),
@@ -125,12 +108,7 @@ export const makeSqliteBlobStore = (
         options.db
           .select({ one: drizzleSql<number>`1`.as("one") })
           .from(blobTable)
-          .where(
-            and(
-              eq(blobTable.namespace, namespace),
-              eq(blobTable.key, key),
-            ),
-          )
+          .where(and(eq(blobTable.namespace, namespace), eq(blobTable.key, key)))
           .limit(1)
           .all() as ReadonlyArray<{ one: number }>,
       catch: wrapErr("has"),

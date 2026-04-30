@@ -36,10 +36,12 @@ describe("MCP AuthKit token verification", () => {
       const { jwks, sign } = yield* Effect.promise(() => makeVerifier());
       const token = yield* Effect.promise(() => sign({ aud: otherResource }));
 
-      const error = yield* Effect.flip(verifyMcpAccessToken(token, jwks, {
-        issuer,
-        audience: resource,
-      }));
+      const error = yield* Effect.flip(
+        verifyMcpAccessToken(token, jwks, {
+          issuer,
+          audience: resource,
+        }),
+      );
 
       expect(error).toBeInstanceOf(McpJwtVerificationError);
     }),

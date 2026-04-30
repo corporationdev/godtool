@@ -115,8 +115,7 @@ const makeManagedAuthProxy = async (input: {
 }): Promise<ManagedHttpResult> => {
   void input.config;
   const settings = readDesktopSettings();
-  const bridgeUrl =
-    process.env.GODTOOL_DESKTOP_AUTH_BRIDGE_URL ?? "http://127.0.0.1:14791";
+  const bridgeUrl = process.env.GODTOOL_DESKTOP_AUTH_BRIDGE_URL ?? "http://127.0.0.1:14791";
   const bridgeToken = process.env.GODTOOL_DESKTOP_AUTH_BRIDGE_TOKEN ?? settings.authBridgeToken;
   if (!bridgeToken) {
     throw new Error("Sign in to cloud before using managed auth locally");

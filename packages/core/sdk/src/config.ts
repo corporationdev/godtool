@@ -23,6 +23,4 @@ export interface ExecutorCliConfig {
  * drizzle schema. Plugin runtime credentials can be stubs — only
  * `plugin.schema` is read.
  */
-export const defineExecutorConfig = <const T extends ExecutorCliConfig>(
-  config: T,
-): T => config;
+export const defineExecutorConfig = <const T extends ExecutorCliConfig>(config: T): T => config;

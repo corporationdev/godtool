@@ -22,9 +22,7 @@ import { addSourceToConfig, removeSourceFromConfig } from "./write";
 // refs) into the config file's `secret-public-ref:<id>` string form.
 type PluginHeaderValue = string | { secretId: string; prefix?: string };
 
-export const headerToConfigValue = (
-  value: PluginHeaderValue,
-): ConfigHeaderValue => {
+export const headerToConfigValue = (value: PluginHeaderValue): ConfigHeaderValue => {
   if (typeof value === "string") return value;
   const ref = `${SECRET_REF_PREFIX}${value.secretId}`;
   return value.prefix ? { value: ref, prefix: value.prefix } : ref;
@@ -56,9 +54,7 @@ const defaultOnError = (op: "upsert" | "remove", err: unknown): void => {
   console.warn(`[config-sink] ${op} failed: ${msg}`);
 };
 
-export const makeFileConfigSink = (
-  options: ConfigFileSinkOptions,
-): ConfigFileSink => {
+export const makeFileConfigSink = (options: ConfigFileSinkOptions): ConfigFileSink => {
   const { path, fsLayer, onError = defaultOnError } = options;
 
   return {

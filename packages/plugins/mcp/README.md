@@ -56,7 +56,7 @@ import { mcpPlugin } from "@executor/plugin-mcp";
 
 ## Status
 
-Pre-`1.0`. APIs may still change between beta releases. Part of the [executor monorepo](https://github.com/RhysSullivan/executor).
+Pre-`1.0`. APIs may still change between beta releases. Part of the [executor monorepo](https://github.com/corporationdev/godtool).
 
 ## License
 

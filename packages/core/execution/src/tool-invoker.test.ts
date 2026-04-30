@@ -126,9 +126,7 @@ const imagePlugin = definePlugin(() => ({
 }));
 
 const makeSearchExecutor = () =>
-  createExecutor(
-    makeTestConfig({ plugins: [githubPlugin(), crmPlugin()] as const }),
-  );
+  createExecutor(makeTestConfig({ plugins: [githubPlugin(), crmPlugin()] as const }));
 
 describe("tool discovery", () => {
   it.effect("ranks matches using ids, namespaces, camelCase names, and descriptions", () =>
@@ -222,9 +220,7 @@ describe("tool discovery", () => {
 
   it.effect("preserves image-shaped tool results inside the sandbox", () =>
     Effect.gen(function* () {
-      const executor = yield* createExecutor(
-        makeTestConfig({ plugins: [imagePlugin()] as const }),
-      );
+      const executor = yield* createExecutor(makeTestConfig({ plugins: [imagePlugin()] as const }));
 
       const result = yield* createExecutionEngine({ executor, codeExecutor }).execute(
         "return await tools.image.screenshot({});",

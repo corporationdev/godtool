@@ -87,7 +87,9 @@ describe("browserPlugin", () => {
     expect(open?.description).toContain("creates/reuses sessionName when provided");
     expect(open?.description).toContain("makes it the caller's default");
     expect(listSessions?.description).toContain("create/reuse and switch their default session");
-    expect(schema.properties?.sessionName?.description).toContain("If it does not exist, it is created");
+    expect(schema.properties?.sessionName?.description).toContain(
+      "If it does not exist, it is created",
+    );
     expect(schema.properties?.sessionName?.description).toContain(
       "makes it the caller's default for later browser calls",
     );

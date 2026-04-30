@@ -152,7 +152,10 @@ const toProbeHost = (hostname: string): string => {
   return hostname;
 };
 
-const isPortAvailable = (input: { hostname: string; port: number }): Effect.Effect<boolean, Error> =>
+const isPortAvailable = (input: {
+  hostname: string;
+  port: number;
+}): Effect.Effect<boolean, Error> =>
   Effect.tryPromise({
     try: () =>
       new Promise<boolean>((resolve) => {
@@ -200,7 +203,9 @@ const pickEphemeralPort = (hostname: string): Effect.Effect<number, Error> =>
         server.listen({ port: 0, host: toProbeHost(hostname) });
       }),
     catch: (cause) =>
-      cause instanceof Error ? cause : new Error(`Failed selecting ephemeral port: ${String(cause)}`),
+      cause instanceof Error
+        ? cause
+        : new Error(`Failed selecting ephemeral port: ${String(cause)}`),
   });
 
 export const chooseDaemonPort = (input: {

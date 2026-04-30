@@ -12,10 +12,7 @@
 
 import { Cause, Effect } from "effect";
 
-import {
-  OAUTH_POPUP_MESSAGE_TYPE,
-  type OAuthPopupResult,
-} from "./popup-types";
+import { OAUTH_POPUP_MESSAGE_TYPE, type OAuthPopupResult } from "./popup-types";
 
 export { OAUTH_POPUP_MESSAGE_TYPE, isOAuthPopupResult } from "./popup-types";
 export type { OAuthPopupResult } from "./popup-types";

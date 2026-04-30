@@ -22,11 +22,13 @@ import {
   SourceIdentityFields,
   useSourceIdentity,
 } from "@executor/react/plugins/source-identity";
+import { SourceAdvancedSettings } from "@executor/react/plugins/source-advanced-settings";
 import { useSecretPickerSecrets } from "@executor/react/plugins/use-secret-picker-secrets";
 import {
   startManagedAuthConnect,
   isDesktopManagedAuth,
   useManagedAuthAccess,
+  managedAuthCtaLabel,
   type ManagedAuthConnectResult,
 } from "@executor/react/plugins/managed-auth";
 import { type HeaderState, headersFromState } from "@executor/react/plugins/secret-header-auth";
@@ -163,8 +165,6 @@ export default function AddRawSource(props: {
         </CardStackContent>
       </CardStack>
 
-      <SourceIdentityFields identity={identity} />
-
       {supportsManagedAuth && (
         <section className="space-y-2.5">
           <FieldLabel>Managed OAuth</FieldLabel>
@@ -184,7 +184,9 @@ export default function AddRawSource(props: {
                 <Button
                   type="button"
                   variant={managedAuth ? "outline" : "default"}
-                  onClick={managedAuth || managedAuthAccess.allowed ? handleManagedAuth : goToBilling}
+                  onClick={
+                    managedAuth || managedAuthAccess.allowed ? handleManagedAuth : goToBilling
+                  }
                   disabled={managedAuthAccess.loading || connectingManagedAuth || adding}
                 >
                   {managedAuthAccess.loading
@@ -193,9 +195,7 @@ export default function AddRawSource(props: {
                       ? "Connecting..."
                       : managedAuth
                         ? "Reconnect"
-                        : managedAuthAccess.allowed
-                          ? "Connect"
-                          : "Upgrade to Pro"}
+                        : managedAuthCtaLabel(managedAuthAccess)}
                 </Button>
               </CardStackEntry>
             </CardStackContent>
@@ -228,6 +228,10 @@ export default function AddRawSource(props: {
           initiallyPicking={headers.length === 0}
         />
       </section>
+
+      <SourceAdvancedSettings>
+        <SourceIdentityFields identity={identity} asEntries />
+      </SourceAdvancedSettings>
 
       {addError && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2">

@@ -39,11 +39,4 @@ export const graphqlPresets: readonly GraphqlPreset[] = [
     url: "https://api.monday.com/v2",
     icon: "https://monday.com/favicon.ico",
   },
-  {
-    id: "anilist",
-    name: "AniList",
-    summary: "Anime and manga database — no auth required.",
-    url: "https://graphql.anilist.co",
-    icon: "https://anilist.co/img/icons/favicon-32x32.png",
-  },
 ];

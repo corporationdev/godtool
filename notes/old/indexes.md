@@ -25,7 +25,7 @@ Tables affected (all drop candidates):
 - `workos_vault_metadata_scope_id_idx`
 
 Root cause: `core-schema.ts` and plugin schemas mark `scope_id: {
-index: true }`. The drizzle generator should probably *skip* emitting
+index: true }`. The drizzle generator should probably _skip_ emitting
 a single-column index on a column that's already the leftmost column
 of a composite primary key. Fix in two places:
 

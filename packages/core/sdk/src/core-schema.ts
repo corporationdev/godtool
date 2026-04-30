@@ -10,10 +10,7 @@
 // dynamic (runtime-registered) rows.
 // ---------------------------------------------------------------------------
 
-import type {
-  DBSchema,
-  InferDBFieldsOutput,
-} from "@executor/storage-core";
+import type { DBSchema, InferDBFieldsOutput } from "@executor/storage-core";
 
 export const coreSchema = {
   source: {
@@ -160,20 +157,15 @@ export type CoreSchema = typeof coreSchema;
 export type SourceRow = InferDBFieldsOutput<CoreSchema["source"]["fields"]> &
   Record<string, unknown>;
 
-export type ToolRow = InferDBFieldsOutput<CoreSchema["tool"]["fields"]> &
-  Record<string, unknown>;
+export type ToolRow = InferDBFieldsOutput<CoreSchema["tool"]["fields"]> & Record<string, unknown>;
 
-export type DefinitionRow = InferDBFieldsOutput<
-  CoreSchema["definition"]["fields"]
-> &
+export type DefinitionRow = InferDBFieldsOutput<CoreSchema["definition"]["fields"]> &
   Record<string, unknown>;
 
 export type SecretRow = InferDBFieldsOutput<CoreSchema["secret"]["fields"]> &
   Record<string, unknown>;
 
-export type ConnectionRow = InferDBFieldsOutput<
-  CoreSchema["connection"]["fields"]
-> &
+export type ConnectionRow = InferDBFieldsOutput<CoreSchema["connection"]["fields"]> &
   Record<string, unknown>;
 
 // ---------------------------------------------------------------------------

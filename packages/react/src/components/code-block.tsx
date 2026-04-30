@@ -147,9 +147,7 @@ export function CodeBlock(props: {
           style={maxH ? { maxHeight: maxH } : undefined}
         >
           {highlighted ?? (
-            <pre className="p-3 font-mono text-sm leading-relaxed text-foreground/60">
-              {code}
-            </pre>
+            <pre className="p-3 font-mono text-sm leading-relaxed text-foreground/60">{code}</pre>
           )}
         </div>
 

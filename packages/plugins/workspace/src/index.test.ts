@@ -5,11 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { createExecutor } from "@executor/sdk/promise";
 
-import {
-  resolveWorkspaceFileRef,
-  workspacePlugin,
-  type WorkspacePluginConfig,
-} from "./index";
+import { resolveWorkspaceFileRef, workspacePlugin, type WorkspacePluginConfig } from "./index";
 
 const makeExecutor = async (config: WorkspacePluginConfig) =>
   createExecutor({ plugins: [workspacePlugin(config)] as const });
@@ -303,12 +299,9 @@ describe("workspacePlugin", () => {
     ).rejects.toThrow("Workspace paths cannot traverse symbolic links");
     await expect(
       executor.tools.invoke("workspace.applyPatch", {
-        patch: [
-          "*** Begin Patch",
-          "*** Add File: ../outside.txt",
-          "+nope",
-          "*** End Patch",
-        ].join("\n"),
+        patch: ["*** Begin Patch", "*** Add File: ../outside.txt", "+nope", "*** End Patch"].join(
+          "\n",
+        ),
       }),
     ).rejects.toThrow("Workspace path escapes the workspace root");
 

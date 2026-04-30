@@ -31,7 +31,8 @@ export function SourceFavicon({
   const [failed, setFailed] = useState(false);
   const domain = url ? domainOf(url) : null;
   const src =
-    iconUrl ?? (domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=${size * 2}` : null);
+    iconUrl ??
+    (domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=${size * 2}` : null);
 
   const RuntimeIcon =
     kind === "computer_use" || sourceId === "computer_use"

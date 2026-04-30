@@ -41,16 +41,13 @@ export type InferDBValueType<T extends DBFieldType> = T extends "string"
               ? T[number]
               : never;
 
-export type InferDBFieldOutput<T extends DBFieldAttribute> =
-  T["returned"] extends false
-    ? never
-    : T["required"] extends false
-      ? InferDBValueType<T["type"]> | undefined | null
-      : InferDBValueType<T["type"]>;
+export type InferDBFieldOutput<T extends DBFieldAttribute> = T["returned"] extends false
+  ? never
+  : T["required"] extends false
+    ? InferDBValueType<T["type"]> | undefined | null
+    : InferDBValueType<T["type"]>;
 
-export type InferDBFieldInput<T extends DBFieldAttribute> = InferDBValueType<
-  T["type"]
->;
+export type InferDBFieldInput<T extends DBFieldAttribute> = InferDBValueType<T["type"]>;
 
 export type InferDBFieldsInput<Field> =
   Field extends Record<infer Key, DBFieldAttribute>
@@ -70,19 +67,13 @@ export type InferDBFieldsInput<Field> =
       }
     : {};
 
-export type InferDBFieldsOutput<
-  Fields extends Record<string, DBFieldAttribute>,
-> =
+export type InferDBFieldsOutput<Fields extends Record<string, DBFieldAttribute>> =
   Fields extends Record<infer Key, DBFieldAttribute>
     ? {
         [K in Key as Fields[K]["returned"] extends false
           ? never
           : Fields[K]["required"] extends false
-            ? Fields[K]["defaultValue"] extends
-                | boolean
-                | string
-                | number
-                | Date
+            ? Fields[K]["defaultValue"] extends boolean | string | number | Date
               ? K
               : never
             : K]: InferDBFieldOutput<Fields[K]>;
@@ -90,11 +81,7 @@ export type InferDBFieldsOutput<
         [K in Key as Fields[K]["returned"] extends false
           ? never
           : Fields[K]["required"] extends false
-            ? Fields[K]["defaultValue"] extends
-                | boolean
-                | string
-                | number
-                | Date
+            ? Fields[K]["defaultValue"] extends boolean | string | number | Date
               ? never
               : K
             : never]?: InferDBFieldOutput<Fields[K]> | null;
@@ -131,12 +118,7 @@ export type DBFieldAttributeConfig = {
         model: string;
         field: string;
         /** @default "cascade" */
-        onDelete?:
-          | "no action"
-          | "restrict"
-          | "cascade"
-          | "set null"
-          | "set default";
+        onDelete?: "no action" | "restrict" | "cascade" | "set null" | "set default";
       }
     | undefined;
   unique?: boolean | undefined;

@@ -38,9 +38,7 @@ export function ToolsPage() {
                     />
                   </svg>
                 </div>
-                <p className="text-sm font-medium text-foreground/70 mb-1">
-                  No tools registered
-                </p>
+                <p className="text-sm font-medium text-foreground/70 mb-1">No tools registered</p>
                 <p className="text-sm text-muted-foreground">
                   Add a source to start discovering tools.
                 </p>

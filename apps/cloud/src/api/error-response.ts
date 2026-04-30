@@ -28,7 +28,10 @@ export const toErrorResponse = (error: unknown): Response => {
 export const toErrorServerResponse = (error: unknown): HttpServerResponse.HttpServerResponse => {
   const mapped = toHttpResponseError(error);
   if (mapped.status >= 500) {
-    console.error("[api] toErrorServerResponse error:", error instanceof Error ? error.stack : error);
+    console.error(
+      "[api] toErrorServerResponse error:",
+      error instanceof Error ? error.stack : error,
+    );
     Sentry.captureException(error);
   }
   return HttpServerResponse.unsafeJson(

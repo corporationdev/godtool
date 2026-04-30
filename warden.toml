@@ -61,7 +61,4 @@ paths = [
 [[skills]]
 name = "wrdn-gha-workflows"
 remote = "getsentry/warden-skills"
-paths = [
-  ".github/workflows/**/*.yml",
-  ".github/workflows/**/*.yaml",
-]
+paths = [".github/workflows/**/*.yml", ".github/workflows/**/*.yaml"]

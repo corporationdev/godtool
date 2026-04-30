@@ -33,11 +33,15 @@ await ensureDnsRecord(zoneId, serverHostname, `${tunnel.id}.cfargotunnel.com`);
 console.log(`Tunnel -> ${runtime.serverUrl}`);
 console.log(`MCP    -> ${new URL("/mcp", runtime.serverUrl).toString()}`);
 
-const wrangler = spawn(process.execPath, ["x", "wrangler", "tunnel", "run", tunnel.id, "--log-level", "warn"], {
-  cwd: resolve(import.meta.dirname, ".."),
-  env: process.env,
-  stdio: "inherit",
-});
+const wrangler = spawn(
+  process.execPath,
+  ["x", "wrangler", "tunnel", "run", tunnel.id, "--log-level", "warn"],
+  {
+    cwd: resolve(import.meta.dirname, ".."),
+    env: process.env,
+    stdio: "inherit",
+  },
+);
 
 const stopChild = (signal: NodeJS.Signals) => {
   if (!wrangler.killed) {
@@ -119,7 +123,11 @@ async function ensureTunnelConfiguration(tunnelId: string, hostname: string): Pr
   });
 }
 
-async function ensureDnsRecord(zoneId: string, hostname: string, tunnelTarget: string): Promise<void> {
+async function ensureDnsRecord(
+  zoneId: string,
+  hostname: string,
+  tunnelTarget: string,
+): Promise<void> {
   const existingRecords = await cloudflareRequest<DnsRecord[]>(
     `/zones/${zoneId}/dns_records?name=${encodeURIComponent(hostname)}`,
   );

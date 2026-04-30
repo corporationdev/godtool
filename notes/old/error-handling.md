@@ -87,7 +87,7 @@ Owns the translation, the opaque wire schema, and the capture service.
 
   ```ts
   interface ErrorCaptureShape {
-    readonly captureException: (cause: Cause<unknown>) => Effect<string>
+    readonly captureException: (cause: Cause<unknown>) => Effect<string>;
   }
   ```
 
@@ -130,7 +130,7 @@ Plugin authors write normal Effect code. Their extension method error
 unions look like:
 
 ```ts
-Effect.Effect<X, MyPluginTypedError | StorageError, never>
+Effect.Effect<X, MyPluginTypedError | StorageError, never>;
 ```
 
 Where `MyPluginTypedError` is the union of their own
@@ -152,9 +152,9 @@ class McpGroup extends HttpApiGroup.make("mcp")
   // …
   .addError(InternalError)
   .addError(McpOAuthError)
-  .addError(McpConnectionError)
+  .addError(McpConnectionError) {
   // …
-{}
+}
 ```
 
 No per-endpoint `addError`. The framework encodes each tagged error by

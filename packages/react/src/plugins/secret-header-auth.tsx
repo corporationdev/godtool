@@ -147,9 +147,7 @@ export function InlineCreateSecret(props: {
               onChange={(e) => setSecretValue((e.target as HTMLInputElement).value)}
               placeholder="paste your token or key…"
               className="pr-9 font-mono"
-              style={
-                secretRevealed ? undefined : ({ WebkitTextSecurity: "disc" } as CSSProperties)
-              }
+              style={secretRevealed ? undefined : ({ WebkitTextSecurity: "disc" } as CSSProperties)}
             />
             <Button
               type="button"

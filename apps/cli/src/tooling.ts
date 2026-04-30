@@ -42,7 +42,10 @@ export const inspectToolPath = (input: {
 }): ToolPathInspection => {
   const prefixSegments =
     input.rawPrefixParts.length === 0 ? [] : buildToolPath(input.rawPrefixParts).split(".");
-  const children = new Map<string, { invokable: boolean; hasChildren: boolean; toolCount: number }>();
+  const children = new Map<
+    string,
+    { invokable: boolean; hasChildren: boolean; toolCount: number }
+  >();
   let exactPath: string | undefined = undefined;
   let matchingToolCount = 0;
 
@@ -97,9 +100,7 @@ export const buildToolPath = (parts: ReadonlyArray<string>): string => {
     throw new Error("Tool path must include at least one segment");
   }
   if (segments.some((segment) => !TOOL_PATH_TOKEN.test(segment))) {
-    throw new Error(
-      "Tool path segments must contain only letters, numbers, '.', '_' or '-'",
-    );
+    throw new Error("Tool path segments must contain only letters, numbers, '.', '_' or '-'");
   }
   return segments.join(".");
 };
@@ -186,9 +187,7 @@ export interface PausedInteraction {
   readonly requestedSchema?: Record<string, unknown>;
 }
 
-export const extractPausedInteraction = (
-  structured: unknown,
-): PausedInteraction | undefined => {
+export const extractPausedInteraction = (structured: unknown): PausedInteraction | undefined => {
   if (!isRecord(structured) || !isRecord(structured.interaction)) {
     return undefined;
   }

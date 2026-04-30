@@ -11,10 +11,7 @@ import { Effect } from "effect";
 
 import type { DBAdapter } from "./adapter";
 import { makeMemoryAdapter } from "./testing/memory";
-import {
-  conformanceSchema,
-  runAdapterConformance,
-} from "./testing/conformance";
+import { conformanceSchema, runAdapterConformance } from "./testing/conformance";
 
 const withAdapter = <A, E>(
   fn: (adapter: DBAdapter) => Effect.Effect<A, E>,

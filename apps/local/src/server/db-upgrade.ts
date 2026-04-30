@@ -26,9 +26,9 @@ export const isPreScopeSchema = (dbPath: string): boolean => {
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='source'")
       .get();
     if (!tableExists) return false;
-    const columns = db
-      .prepare("PRAGMA table_info('source')")
-      .all() as ReadonlyArray<{ readonly name: string }>;
+    const columns = db.prepare("PRAGMA table_info('source')").all() as ReadonlyArray<{
+      readonly name: string;
+    }>;
     return !columns.some((c) => c.name === "scope_id");
   } finally {
     db.close();

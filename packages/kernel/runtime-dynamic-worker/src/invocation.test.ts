@@ -142,7 +142,10 @@ describe("makeDynamicWorkerExecutor", () => {
     const invoker = makeInvoker(() => null);
 
     const result = await Effect.runPromise(
-      executor.execute(["Use this snippet.", "", "```ts", "async () => 42", "```"].join("\n"), invoker),
+      executor.execute(
+        ["Use this snippet.", "", "```ts", "async () => 42", "```"].join("\n"),
+        invoker,
+      ),
     );
 
     expect(result.error).toBeUndefined();

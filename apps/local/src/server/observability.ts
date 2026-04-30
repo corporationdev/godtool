@@ -23,7 +23,7 @@ export const ErrorCaptureLive: Layer.Layer<ErrorCapture> = Layer.succeed(
         const squashed = Cause.squash(cause);
         console.error(
           `[executor ${traceId}]`,
-          squashed instanceof Error ? squashed.stack ?? squashed : squashed,
+          squashed instanceof Error ? (squashed.stack ?? squashed) : squashed,
         );
         console.error(`[executor ${traceId}] cause:`, Cause.pretty(cause));
         return traceId;

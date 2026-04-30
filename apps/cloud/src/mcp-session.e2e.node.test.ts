@@ -33,10 +33,7 @@ import {
   createExecutor,
   definePlugin,
 } from "@executor/sdk";
-import {
-  makePostgresAdapter,
-  makePostgresBlobStore,
-} from "@executor/storage-postgres";
+import { makePostgresAdapter, makePostgresBlobStore } from "@executor/storage-postgres";
 import { openApiPlugin } from "@executor/plugin-openapi";
 import { mcpPlugin } from "@executor/plugin-mcp";
 import { graphqlPlugin } from "@executor/plugin-graphql";
@@ -69,7 +66,11 @@ const elicitingTestPlugin = definePlugin(() => ({
           name: "needsApproval",
           description: "Tool that asks the caller to approve before returning.",
           inputSchema: EMPTY_INPUT_SCHEMA,
-          handler: ({ elicit }: { elicit: (r: FormElicitation) => Effect.Effect<typeof ElicitationResponse.Type, unknown> }) =>
+          handler: ({
+            elicit,
+          }: {
+            elicit: (r: FormElicitation) => Effect.Effect<typeof ElicitationResponse.Type, unknown>;
+          }) =>
             Effect.gen(function* () {
               const response = yield* elicit(
                 new FormElicitation({
@@ -98,11 +99,7 @@ const ELICITATION_CAPS: ClientCapabilities = {
 
 type BuildOptions = { readonly withElicitingPlugin?: boolean };
 
-const buildScopedExecutor = (
-  scopeId: string,
-  scopeName: string,
-  options: BuildOptions = {},
-) =>
+const buildScopedExecutor = (scopeId: string, scopeName: string, options: BuildOptions = {}) =>
   Effect.gen(function* () {
     const { db } = yield* DbService;
     const basePlugins = [

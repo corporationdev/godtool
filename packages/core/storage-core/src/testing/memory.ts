@@ -35,12 +35,10 @@ const evalClause = (record: Row, clause: CleanedWhere): boolean => {
   const isInsensitive =
     mode === "insensitive" &&
     (typeof value === "string" ||
-      (Array.isArray(value) &&
-        (value as unknown[]).every((v) => typeof v === "string")));
+      (Array.isArray(value) && (value as unknown[]).every((v) => typeof v === "string")));
 
   const lhs = record[field];
-  const lowerStr = (v: unknown) =>
-    typeof v === "string" ? v.toLowerCase() : v;
+  const lowerStr = (v: unknown) => (typeof v === "string" ? v.toLowerCase() : v);
 
   const cmp = (a: unknown, b: unknown): boolean =>
     isInsensitive ? lowerStr(a) === lowerStr(b) : a === b;
@@ -54,9 +52,7 @@ const evalClause = (record: Row, clause: CleanedWhere): boolean => {
       return !(value as unknown[]).some((v) => cmp(lhs, v));
     case "contains": {
       if (typeof lhs !== "string" || typeof value !== "string") return false;
-      return isInsensitive
-        ? lhs.toLowerCase().includes(value.toLowerCase())
-        : lhs.includes(value);
+      return isInsensitive ? lhs.toLowerCase().includes(value.toLowerCase()) : lhs.includes(value);
     }
     case "starts_with": {
       if (typeof lhs !== "string" || typeof value !== "string") return false;
@@ -66,9 +62,7 @@ const evalClause = (record: Row, clause: CleanedWhere): boolean => {
     }
     case "ends_with": {
       if (typeof lhs !== "string" || typeof value !== "string") return false;
-      return isInsensitive
-        ? lhs.toLowerCase().endsWith(value.toLowerCase())
-        : lhs.endsWith(value);
+      return isInsensitive ? lhs.toLowerCase().endsWith(value.toLowerCase()) : lhs.endsWith(value);
     }
     case "ne":
       return !cmp(lhs, value);
@@ -97,14 +91,10 @@ const evalClause = (record: Row, clause: CleanedWhere): boolean => {
 const matchAll = (record: Row, where: readonly CleanedWhere[]): boolean => {
   if (where.length === 0) return true;
   if (where.length === 1) return evalClause(record, where[0]!);
-  const andGroup = where.filter(
-    (w) => w.connector === "AND" || !w.connector,
-  );
+  const andGroup = where.filter((w) => w.connector === "AND" || !w.connector);
   const orGroup = where.filter((w) => w.connector === "OR");
-  const andResult =
-    andGroup.length === 0 ? true : andGroup.every((w) => evalClause(record, w));
-  const orResult =
-    orGroup.length === 0 ? true : orGroup.some((w) => evalClause(record, w));
+  const andResult = andGroup.length === 0 ? true : andGroup.every((w) => evalClause(record, w));
+  const orResult = orGroup.length === 0 ? true : orGroup.some((w) => evalClause(record, w));
   return andResult && orResult;
 };
 
@@ -129,9 +119,7 @@ export interface MakeMemoryAdapterOptions {
   readonly generateId?: () => string;
 }
 
-export const makeMemoryAdapter = (
-  options: MakeMemoryAdapterOptions,
-): DBAdapter => {
+export const makeMemoryAdapter = (options: MakeMemoryAdapterOptions): DBAdapter => {
   let store: Store = {};
 
   const tableFor = (model: string): Row[] => {
@@ -148,9 +136,7 @@ export const makeMemoryAdapter = (
     const out: Row = { ...base };
     for (const [target, cfg] of Object.entries(join)) {
       const targetRows = tableFor(target);
-      const matches = targetRows.filter(
-        (r) => r[cfg.on.to] === base[cfg.on.from],
-      );
+      const matches = targetRows.filter((r) => r[cfg.on.to] === base[cfg.on.from]);
       if (cfg.relation === "one-to-one") {
         out[target] = matches[0] ?? null;
       } else {
@@ -252,11 +238,9 @@ export const makeMemoryAdapter = (
 
   // Snapshot-based transaction: clone on entry, restore on failure.
   const txFn: DBAdapterFactoryConfig["transaction"] = <R, E>(
-    cb: (trx: Parameters<DBAdapter["transaction"]>[0] extends (
-      t: infer T,
-    ) => unknown
-      ? T
-      : never) => Effect.Effect<R, E>,
+    cb: (
+      trx: Parameters<DBAdapter["transaction"]>[0] extends (t: infer T) => unknown ? T : never,
+    ) => Effect.Effect<R, E>,
   ) =>
     Effect.gen(function* () {
       const snapshot = cloneStore(store);
@@ -277,9 +261,7 @@ export const makeMemoryAdapter = (
       supportsDates: true,
       supportsBooleans: true,
       supportsArrays: true,
-      customIdGenerator: options.generateId
-        ? () => options.generateId!()
-        : undefined,
+      customIdGenerator: options.generateId ? () => options.generateId!() : undefined,
       transaction: txFn,
     },
     adapter: custom,

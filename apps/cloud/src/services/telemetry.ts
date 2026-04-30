@@ -49,10 +49,7 @@ import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http/build
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import { SimpleSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import { WebTracerProvider } from "@opentelemetry/sdk-trace-web";
-import {
-  ATTR_SERVICE_NAME,
-  ATTR_SERVICE_VERSION,
-} from "@opentelemetry/semantic-conventions";
+import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from "@opentelemetry/semantic-conventions";
 import { env } from "cloudflare:workers";
 import { Effect, Layer } from "effect";
 

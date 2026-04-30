@@ -49,14 +49,17 @@ const fileSystemLayer = FileSystem.layerNoop({
     }),
   remove: (path, options) =>
     Effect.tryPromise({
-      try: () => rm(path, { recursive: options?.recursive ?? false, force: options?.force ?? false }),
+      try: () =>
+        rm(path, { recursive: options?.recursive ?? false, force: options?.force ?? false }),
       catch: (cause) => fileSystemError("remove", cause),
     }),
 });
 
 const daemonStateLayer = Layer.merge(fileSystemLayer, PlatformPath.layer);
 
-const withDaemonDataDir = <A, E>(effect: Effect.Effect<A, E, FileSystem.FileSystem | PlatformPath.Path>) =>
+const withDaemonDataDir = <A, E>(
+  effect: Effect.Effect<A, E, FileSystem.FileSystem | PlatformPath.Path>,
+) =>
   Effect.gen(function* () {
     const prev = process.env.GODTOOL_DATA_DIR;
     const dir = mkdtempSync(join(tmpdir(), "godtool-daemon-state-test-"));

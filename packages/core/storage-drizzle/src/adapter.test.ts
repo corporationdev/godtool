@@ -10,8 +10,7 @@ import { StorageError, UniqueViolationError } from "@executor/storage-core";
 
 import { isTransientStorageError } from "./adapter";
 
-const transientMsg =
-  "[storage-drizzle] findOne select failed: Network connection lost.";
+const transientMsg = "[storage-drizzle] findOne select failed: Network connection lost.";
 
 describe("isTransientStorageError", () => {
   it.for([
@@ -20,9 +19,7 @@ describe("isTransientStorageError", () => {
     "[storage-drizzle] insert returning failed: ECONNRESET",
     "[storage-drizzle] findMany select failed: Connection terminated unexpectedly",
   ])("returns true for %s", (message) => {
-    expect(
-      isTransientStorageError(new StorageError({ message, cause: null })),
-    ).toBe(true);
+    expect(isTransientStorageError(new StorageError({ message, cause: null }))).toBe(true);
   });
 
   it("returns false for unique violation", () => {
@@ -52,9 +49,7 @@ describe("transient retry policy", () => {
       const result = yield* Effect.suspend(() => {
         calls++;
         if (calls < 3) {
-          return Effect.fail(
-            new StorageError({ message: transientMsg, cause: null }),
-          );
+          return Effect.fail(new StorageError({ message: transientMsg, cause: null }));
         }
         return Effect.succeed("ok");
       }).pipe(Effect.retry(retryPolicy));
@@ -70,9 +65,7 @@ describe("transient retry policy", () => {
       const exit = yield* Effect.exit(
         Effect.suspend(() => {
           calls++;
-          return Effect.fail(
-            new StorageError({ message: transientMsg, cause: null }),
-          );
+          return Effect.fail(new StorageError({ message: transientMsg, cause: null }));
         }).pipe(Effect.retry(retryPolicy)),
       );
 

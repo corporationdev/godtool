@@ -25,16 +25,12 @@ export interface MakePostgresAdapterOptions {
   readonly generateId?: () => string;
 }
 
-export const makePostgresAdapter = (
-  options: MakePostgresAdapterOptions,
-): DBAdapter =>
+export const makePostgresAdapter = (options: MakePostgresAdapterOptions): DBAdapter =>
   drizzleAdapter({
     db: options.db,
     schema: options.schema,
     provider: "pg",
     adapterId: options.adapterId ?? "postgres",
     supportsTransaction: true,
-    customIdGenerator: options.generateId
-      ? () => options.generateId!()
-      : undefined,
+    customIdGenerator: options.generateId ? () => options.generateId!() : undefined,
   });

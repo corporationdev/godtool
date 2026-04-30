@@ -2,12 +2,7 @@ import { Effect, Schema } from "effect";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import {
-  definePlugin,
-  StorageError,
-  type PluginCtx,
-  type SecretProvider,
-} from "@executor/sdk";
+import { definePlugin, StorageError, type PluginCtx, type SecretProvider } from "@executor/sdk";
 
 // ---------------------------------------------------------------------------
 // XDG data dir resolution
@@ -27,11 +22,9 @@ export const xdgDataHome = (): string => {
   return path.join(process.env.HOME || "~", ".local", "share");
 };
 
-const authDir = (overrideDir?: string): string =>
-  overrideDir ?? path.join(xdgDataHome(), APP_NAME);
+const authDir = (overrideDir?: string): string => overrideDir ?? path.join(xdgDataHome(), APP_NAME);
 
-const authFilePath = (overrideDir?: string): string =>
-  path.join(authDir(overrideDir), "auth.json");
+const authFilePath = (overrideDir?: string): string => path.join(authDir(overrideDir), "auth.json");
 
 // ---------------------------------------------------------------------------
 // Schema for the auth file
@@ -133,10 +126,7 @@ const toStorageError = (cause: unknown) =>
 // the SecretProvider.list signature is scope-agnostic. That's fine for
 // the current use: `list` feeds `secrets.list()` which already walks
 // the stack at the caller layer. Innermost-first is the display default.
-const makeScopedProvider = (
-  filePath: string,
-  listScope: string,
-): SecretProvider => ({
+const makeScopedProvider = (filePath: string, listScope: string): SecretProvider => ({
   key: "file",
   writable: true,
 
@@ -192,19 +182,17 @@ const makeScopedProvider = (
 const resolveFilePath = (config: FileSecretsPluginConfig | undefined): string =>
   authFilePath(config?.directory);
 
-export const fileSecretsPlugin = definePlugin(
-  (options?: FileSecretsPluginConfig) => ({
-    id: "fileSecrets" as const,
-    storage: () => ({}),
+export const fileSecretsPlugin = definePlugin((options?: FileSecretsPluginConfig) => ({
+  id: "fileSecrets" as const,
+  storage: () => ({}),
 
-    extension: (_ctx): FileSecretsExtension => ({
-      filePath: resolveFilePath(options),
-    }),
-
-    secretProviders: (ctx: PluginCtx<unknown>) => [
-      // list() falls back to the innermost scope for display; per-call
-      // get/set/delete honor the scope arg threaded from the secrets facade.
-      makeScopedProvider(resolveFilePath(options), ctx.scopes[0]!.id as string),
-    ],
+  extension: (_ctx): FileSecretsExtension => ({
+    filePath: resolveFilePath(options),
   }),
-);
+
+  secretProviders: (ctx: PluginCtx<unknown>) => [
+    // list() falls back to the innermost scope for display; per-call
+    // get/set/delete honor the scope arg threaded from the secrets facade.
+    makeScopedProvider(resolveFilePath(options), ctx.scopes[0]!.id as string),
+  ],
+}));

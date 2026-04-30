@@ -19,9 +19,7 @@ const accountId = requireEnv("CLOUDFLARE_ACCOUNT_ID");
 const stage = requireEnv("STAGE");
 const runtime = resolveRuntimeContext(stage);
 const marketingWorkerName =
-  runtime.stageKind === "production"
-    ? "godtool-marketing-production"
-    : undefined;
+  runtime.stageKind === "production" ? "godtool-marketing-production" : undefined;
 const marketingDomains = ["godtool.dev", "www.godtool.dev"];
 
 const cloudflareFetch = async <Result>(path: string): Promise<Result> => {

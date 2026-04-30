@@ -3,7 +3,10 @@ import { randomUUID } from "node:crypto";
 import { Effect, Option, Schema } from "effect";
 
 import { OAuth2Error, refreshAccessToken, type OAuth2TokenResponse } from "@executor/plugin-oauth2";
-import type { ManagedAuthConnectionMaterial, ManagedAuthProxy } from "@executor/plugin-managed-auth";
+import type {
+  ManagedAuthConnectionMaterial,
+  ManagedAuthProxy,
+} from "@executor/plugin-managed-auth";
 
 import {
   ConnectionId,

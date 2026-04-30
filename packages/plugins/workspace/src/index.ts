@@ -15,16 +15,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { homedir } from "node:os";
-import {
-  basename,
-  dirname,
-  extname,
-  isAbsolute,
-  join,
-  relative,
-  resolve,
-  sep,
-} from "node:path";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { definePlugin, type StaticToolDecl } from "@executor/sdk";
 
@@ -560,7 +551,9 @@ const parsePatch = (patch: string): readonly PatchFileOperation[] => {
     const header = lines[index++];
     if (!header) continue;
 
-    const addPath = header.startsWith("*** Add File: ") ? header.slice("*** Add File: ".length) : undefined;
+    const addPath = header.startsWith("*** Add File: ")
+      ? header.slice("*** Add File: ".length)
+      : undefined;
     const updatePath = header.startsWith("*** Update File: ")
       ? header.slice("*** Update File: ".length)
       : undefined;
@@ -599,7 +592,11 @@ const parsePatch = (patch: string): readonly PatchFileOperation[] => {
       const marker = lines[index++];
       if (!marker.startsWith("@@")) throw new Error("Update File hunks must start with @@");
       const hunk: string[] = [];
-      while (index < lines.length - 1 && !lines[index].startsWith("@@") && !lines[index].startsWith("*** ")) {
+      while (
+        index < lines.length - 1 &&
+        !lines[index].startsWith("@@") &&
+        !lines[index].startsWith("*** ")
+      ) {
         const line = lines[index++];
         if (!line.startsWith(" ") && !line.startsWith("-") && !line.startsWith("+")) {
           throw new Error("Update File hunk lines must start with space, -, or +");
@@ -615,7 +612,9 @@ const parsePatch = (patch: string): readonly PatchFileOperation[] => {
   return operations;
 };
 
-const splitContentLines = (text: string): { readonly lines: readonly string[]; readonly trailingNewline: boolean } => {
+const splitContentLines = (
+  text: string,
+): { readonly lines: readonly string[]; readonly trailingNewline: boolean } => {
   const trailingNewline = text.endsWith("\n");
   const lines = text.replace(/\n$/, "").split("\n");
   return { lines: text.length === 0 ? [] : lines, trailingNewline };
@@ -1023,9 +1022,7 @@ const resolveFileRefTool = (config: WorkspacePluginConfig | undefined, args: unk
     return metadata;
   });
 
-const toolDeclarations = (
-  config: WorkspacePluginConfig | undefined,
-): readonly StaticToolDecl[] => [
+const toolDeclarations = (config: WorkspacePluginConfig | undefined): readonly StaticToolDecl[] => [
   {
     name: "readFile",
     description: "Read a file from the Godtool workspace as utf8 or base64.",

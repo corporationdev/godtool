@@ -1,12 +1,7 @@
 import { describe, it, expect } from "@effect/vitest";
 import { Effect } from "effect";
 
-import {
-  createExecutor,
-  makeTestConfig,
-  Scope,
-  ScopeId,
-} from "@executor/sdk";
+import { createExecutor, makeTestConfig, Scope, ScopeId } from "@executor/sdk";
 
 import { graphqlPlugin } from "./plugin";
 import type { IntrospectionResult } from "./introspect";
@@ -110,9 +105,7 @@ describe("graphqlPlugin", () => {
       const queryTool = tools.find((t) => t.id === "test_api.query.hello");
       expect(queryTool?.description).toBe("Say hello");
 
-      const mutationTool = tools.find(
-        (t) => t.id === "test_api.mutation.setGreeting",
-      );
+      const mutationTool = tools.find((t) => t.id === "test_api.mutation.setGreeting");
       expect(mutationTool?.description).toBe("Set greeting message");
     }),
   );
@@ -131,21 +124,14 @@ describe("graphqlPlugin", () => {
       });
 
       let tools = yield* executor.tools.list();
-      expect(
-        tools.filter((t) => t.sourceId === "removable").length,
-      ).toBe(2);
+      expect(tools.filter((t) => t.sourceId === "removable").length).toBe(2);
 
       yield* executor.graphql.removeSource("removable", TEST_SCOPE);
 
       tools = yield* executor.tools.list();
-      expect(
-        tools.filter((t) => t.sourceId === "removable").length,
-      ).toBe(0);
+      expect(tools.filter((t) => t.sourceId === "removable").length).toBe(0);
 
-      const source = yield* executor.graphql.getSource(
-        "removable",
-        TEST_SCOPE,
-      );
+      const source = yield* executor.graphql.getSource("removable", TEST_SCOPE);
       expect(source).toBeNull();
     }),
   );
@@ -191,18 +177,12 @@ describe("graphqlPlugin", () => {
       });
 
       const tools = yield* executor.tools.list();
-      const mutationTool = tools.find(
-        (t) => t.id === "approval_test.mutation.setGreeting",
-      );
+      const mutationTool = tools.find((t) => t.id === "approval_test.mutation.setGreeting");
       expect(mutationTool).toBeDefined();
       expect(mutationTool!.annotations?.requiresApproval).toBe(true);
-      expect(mutationTool!.annotations?.approvalDescription).toBe(
-        "mutation setGreeting",
-      );
+      expect(mutationTool!.annotations?.approvalDescription).toBe("mutation setGreeting");
 
-      const queryTool = tools.find(
-        (t) => t.id === "approval_test.query.hello",
-      );
+      const queryTool = tools.find((t) => t.id === "approval_test.query.hello");
       expect(queryTool).toBeDefined();
       expect(queryTool!.annotations?.requiresApproval).toBeFalsy();
     }),
@@ -233,9 +213,7 @@ describe("graphqlPlugin", () => {
       // Tools still present (no re-register happened, but they were
       // already there from addSource and haven't been removed).
       const tools = yield* executor.tools.list();
-      expect(
-        tools.filter((t) => t.sourceId === "patched").length,
-      ).toBe(2);
+      expect(tools.filter((t) => t.sourceId === "patched").length).toBe(2);
     }),
   );
 
@@ -253,9 +231,7 @@ describe("graphqlPlugin", () => {
       expect(result).toEqual({ toolCount: 2, namespace: "via_static" });
 
       const tools = yield* executor.tools.list();
-      expect(
-        tools.filter((t) => t.sourceId === "via_static").length,
-      ).toBe(2);
+      expect(tools.filter((t) => t.sourceId === "via_static").length).toBe(2);
     }),
   );
 
@@ -301,14 +277,8 @@ describe("graphqlPlugin", () => {
         name: "User Source",
       });
 
-      const userView = yield* executor.graphql.getSource(
-        "shared",
-        USER_SCOPE as string,
-      );
-      const orgView = yield* executor.graphql.getSource(
-        "shared",
-        ORG_SCOPE as string,
-      );
+      const userView = yield* executor.graphql.getSource("shared", USER_SCOPE as string);
+      const orgView = yield* executor.graphql.getSource("shared", ORG_SCOPE as string);
 
       // Both rows must coexist — innermost-wins reads come from the
       // executor; the store's scope-pinned getters return the exact row.
@@ -347,14 +317,8 @@ describe("graphqlPlugin", () => {
 
       yield* executor.graphql.removeSource("shared", USER_SCOPE as string);
 
-      const userView = yield* executor.graphql.getSource(
-        "shared",
-        USER_SCOPE as string,
-      );
-      const orgView = yield* executor.graphql.getSource(
-        "shared",
-        ORG_SCOPE as string,
-      );
+      const userView = yield* executor.graphql.getSource("shared", USER_SCOPE as string);
+      const orgView = yield* executor.graphql.getSource("shared", ORG_SCOPE as string);
 
       expect(userView).toBeNull();
       expect(orgView?.name).toBe("Org Source");
@@ -391,14 +355,8 @@ describe("graphqlPlugin", () => {
         endpoint: "http://user-new.example.com/graphql",
       });
 
-      const userView = yield* executor.graphql.getSource(
-        "shared",
-        USER_SCOPE as string,
-      );
-      const orgView = yield* executor.graphql.getSource(
-        "shared",
-        ORG_SCOPE as string,
-      );
+      const userView = yield* executor.graphql.getSource("shared", USER_SCOPE as string);
+      const orgView = yield* executor.graphql.getSource("shared", ORG_SCOPE as string);
 
       expect(userView?.name).toBe("User Renamed");
       expect(userView?.endpoint).toBe("http://user-new.example.com/graphql");

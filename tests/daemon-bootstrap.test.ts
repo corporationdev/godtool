@@ -65,14 +65,7 @@ describe("daemon bootstrap helpers", () => {
     });
 
     expect(spec.command).toBe("/usr/local/bin/executor");
-    expect(spec.args).toEqual([
-      "daemon",
-      "run",
-      "--port",
-      "5000",
-      "--hostname",
-      "127.0.0.1",
-    ]);
+    expect(spec.args).toEqual(["daemon", "run", "--port", "5000", "--hostname", "127.0.0.1"]);
   });
 
   it("fails in dev mode when script path is missing", () => {
