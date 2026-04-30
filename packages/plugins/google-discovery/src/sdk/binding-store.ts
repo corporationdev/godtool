@@ -160,6 +160,7 @@ export interface GoogleDiscoveryStore {
     update: {
       readonly name?: string;
       readonly auth?: import("./types").GoogleDiscoveryAuth;
+      readonly managedAuth?: import("./types").GoogleDiscoveryStoredSourceData["managedAuth"];
     },
   ) => Effect.Effect<void, StorageFailure>;
   readonly removeSource: (
@@ -311,6 +312,8 @@ export const makeGoogleDiscoveryStore = (
           ...config,
           name: update.name ?? config.name,
           auth: update.auth ?? config.auth,
+          managedAuth:
+            update.managedAuth !== undefined ? update.managedAuth : config.managedAuth,
         });
         yield* db.update({
           model: "google_discovery_source",

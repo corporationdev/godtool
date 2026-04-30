@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { ManagedAuthConfig } from "@executor/plugin-managed-auth";
 
 export const GoogleDiscoveryHttpMethod = Schema.Literal(
   "get",
@@ -100,6 +101,7 @@ export class GoogleDiscoveryStoredSourceData extends Schema.Class<GoogleDiscover
   rootUrl: Schema.String,
   servicePath: Schema.String,
   auth: GoogleDiscoveryAuth,
+  managedAuth: Schema.optional(ManagedAuthConfig),
 }) {}
 
 export class GoogleDiscoveryInvocationResult extends Schema.Class<GoogleDiscoveryInvocationResult>(

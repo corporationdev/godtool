@@ -92,6 +92,7 @@ export const openapi_source = sqliteTable("openapi_source", {
   base_url: text('base_url'),
   headers: text('headers', { mode: "json" }),
   oauth2: text('oauth2', { mode: "json" }),
+  managed_auth: text('managed_auth', { mode: "json" }),
   invocation_config: text('invocation_config', { mode: "json" }).notNull()
 }, (table) => [
   primaryKey({ columns: [table.scope_id, table.id] }),
@@ -208,7 +209,8 @@ export const graphql_source = sqliteTable("graphql_source", {
   scope_id: text('scope_id').notNull(),
   name: text('name').notNull(),
   endpoint: text('endpoint').notNull(),
-  headers: text('headers', { mode: "json" })
+  headers: text('headers', { mode: "json" }),
+  managed_auth: text('managed_auth', { mode: "json" })
 }, (table) => [
   primaryKey({ columns: [table.scope_id, table.id] }),
   index("graphql_source_scope_id_idx").on(table.scope_id),
@@ -231,6 +233,8 @@ export const raw_source = sqliteTable("raw_source", {
   name: text('name').notNull(),
   base_url: text('base_url').notNull(),
   headers: text('headers', { mode: "json" }),
+  composio: text('composio', { mode: "json" }),
+  auth: text('auth', { mode: "json" }),
   created_at: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   updated_at: integer('updated_at', { mode: 'timestamp_ms' }).notNull()
 }, (table) => [
@@ -238,3 +242,12 @@ export const raw_source = sqliteTable("raw_source", {
   index("raw_source_scope_id_idx").on(table.scope_id),
 ]);
 
+export const raw_composio_session = sqliteTable("raw_composio_session", {
+  id: text('id').notNull(),
+  scope_id: text('scope_id').notNull(),
+  session: text('session', { mode: "json" }).notNull(),
+  created_at: integer('created_at', { mode: 'timestamp_ms' }).notNull()
+}, (table) => [
+  primaryKey({ columns: [table.scope_id, table.id] }),
+  index("raw_composio_session_scope_id_idx").on(table.scope_id),
+]);

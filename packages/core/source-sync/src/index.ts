@@ -298,6 +298,7 @@ export const importSourcePackages = async (
           ...(typeof config.baseUrl === "string" ? { baseUrl: config.baseUrl } : {}),
           ...(config.headers ? { headers: config.headers } : {}),
           ...(config.oauth2 ? { oauth2: config.oauth2 } : {}),
+          ...(config.managedAuth ? { managedAuth: config.managedAuth } : {}),
         }),
       );
       if (executor.openapi.setSourceBinding) {
@@ -321,6 +322,7 @@ export const importSourcePackages = async (
           name: stored.name ?? sourcePackage.name,
           namespace: sourcePackage.id,
           ...(stored.headers ? { headers: stored.headers } : {}),
+          ...(stored.managedAuth ? { managedAuth: stored.managedAuth } : {}),
         }),
       );
     } else if (sourcePackage.kind === "raw" && executor.raw) {
@@ -331,16 +333,20 @@ export const importSourcePackages = async (
           name: stored.name ?? sourcePackage.name,
           namespace: sourcePackage.id,
           ...(stored.headers ? { headers: stored.headers } : {}),
+          ...(stored.composio ? { composio: stored.composio } : {}),
+          ...(stored.auth ? { auth: stored.auth } : {}),
         }),
       );
     } else if (sourcePackage.kind === "googleDiscovery" && executor.googleDiscovery) {
+      const googleConfig = asRecord(stored.config);
       await run(
         executor.googleDiscovery.addSource({
           scope: scopeId,
-          discoveryUrl: stored.discoveryUrl,
+          discoveryUrl: googleConfig.discoveryUrl ?? stored.discoveryUrl,
           name: stored.name ?? sourcePackage.name,
           namespace: sourcePackage.id,
-          auth: stored.auth ?? { kind: "none" },
+          auth: googleConfig.auth ?? stored.auth ?? { kind: "none" },
+          ...(googleConfig.managedAuth ? { managedAuth: googleConfig.managedAuth } : {}),
         }),
       );
     } else if (sourcePackage.kind === "mcp" && executor.mcp) {

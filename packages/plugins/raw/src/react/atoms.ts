@@ -13,3 +13,5 @@ export const rawSourceAtom = (scopeId: ScopeId, namespace: string) =>
 export const addRawSource = RawClient.mutation("raw", "addSource");
 
 export const updateRawSource = RawClient.mutation("raw", "updateSource");
+
+export const startRawComposioConnect = RawClient.mutation("raw", "startComposioConnect");

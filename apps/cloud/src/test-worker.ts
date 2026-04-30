@@ -29,6 +29,7 @@ import {
 import { organizations } from "./services/schema";
 import { parseTestBearer } from "./test-bearer";
 import { DoTelemetryLive } from "./services/telemetry";
+import { AutumnService } from "./services/autumn";
 
 export { DeviceSessionDO } from "./device-session";
 export { McpSessionDO } from "./mcp-session";
@@ -45,6 +46,12 @@ const TestMcpAuthLive = Layer.succeed(McpAuth, {
 const TestMcpOrganizationAuthLive = Layer.succeed(McpOrganizationAuth, {
   authorize: (_accountId, organizationId) =>
     Effect.succeed(!organizationId.startsWith("revoked_")),
+});
+
+const TestAutumnLive = Layer.succeed(AutumnService, {
+  use: () => Effect.die(new Error("Test Autumn client is not available")),
+  isFeatureAllowed: () => Effect.succeed(true),
+  trackExecution: () => Effect.void,
 });
 
 // ---------------------------------------------------------------------------
@@ -101,13 +108,17 @@ const handleSeedOrg = async (
 const testMcpFetch = HttpApp.toWebHandler(
   mcpApp.pipe(
     Effect.provide(
-      Layer.mergeAll(TestMcpAuthLive, TestMcpOrganizationAuthLive, DoTelemetryLive),
+      Layer.mergeAll(TestMcpAuthLive, TestMcpOrganizationAuthLive, TestAutumnLive, DoTelemetryLive),
     ),
   ),
 );
 
 const realAuthMcpFetch = HttpApp.toWebHandler(
-  mcpApp.pipe(Effect.provide(Layer.mergeAll(McpAuthLive, McpOrganizationAuthLive, DoTelemetryLive))),
+  mcpApp.pipe(
+    Effect.provide(
+      Layer.mergeAll(McpAuthLive, McpOrganizationAuthLive, TestAutumnLive, DoTelemetryLive),
+    ),
+  ),
 );
 
 export default {

@@ -20,6 +20,7 @@ import {
   OpenApiSourceBindingValue,
   OperationBinding,
 } from "./types";
+import { ManagedAuthConfig } from "@executor/plugin-managed-auth";
 
 // ---------------------------------------------------------------------------
 // Schema — three tables:
@@ -43,6 +44,7 @@ export const openapiSchema = defineSchema({
       base_url: { type: "string", required: false },
       headers: { type: "json", required: false },
       oauth2: { type: "json", required: false },
+      managed_auth: { type: "json", required: false },
       invocation_config: { type: "json", required: true },
     },
   },
@@ -96,6 +98,7 @@ export interface SourceConfig {
   readonly namespace?: string;
   readonly headers?: Record<string, ConfiguredHeaderValue>;
   readonly oauth2?: OAuth2SourceConfig;
+  readonly managedAuth?: ManagedAuthConfig;
 }
 
 export interface StoredSource {
@@ -133,6 +136,7 @@ export class StoredSourceSchema extends Schema.Class<StoredSourceSchema>(
     // Canonical source-owned OAuth config. Concrete client credentials
     // and connection ids live in OpenAPI-owned scoped binding rows.
     oauth2: Schema.optional(OAuth2SourceConfig),
+    managedAuth: Schema.optional(ManagedAuthConfig),
   }),
 }) {}
 
@@ -156,6 +160,8 @@ const decodeOAuth2 = Schema.decodeUnknownSync(OAuth2Auth);
 const encodeOAuth2SourceConfig = Schema.encodeSync(OAuth2SourceConfig);
 const encodeSourceBindingValue = Schema.encodeSync(OpenApiSourceBindingValue);
 const decodeSourceBindingValue = Schema.decodeUnknownSync(OpenApiSourceBindingValue);
+const decodeManagedAuth = Schema.decodeUnknownSync(ManagedAuthConfig);
+const encodeManagedAuth = Schema.encodeSync(ManagedAuthConfig);
 
 const encodeOAuthSession = Schema.encodeSync(OpenApiOAuthSession);
 const decodeOAuthSession = Schema.decodeUnknownSync(OpenApiOAuthSession);
@@ -291,6 +297,7 @@ export interface OpenapiStore {
       readonly baseUrl?: string;
       readonly headers?: Record<string, ConfiguredHeaderValue>;
       readonly oauth2?: OAuth2SourceConfig;
+      readonly managedAuth?: ManagedAuthConfig;
     },
   ) => Effect.Effect<void, StorageFailure>;
 
@@ -468,6 +475,9 @@ export const makeDefaultOpenapiStore = ({
         baseUrl: (row.base_url as string | null | undefined) ?? undefined,
         headers: normalizedHeaders.headers,
         oauth2: normalizedOAuth2.oauth2,
+        ...(row.managed_auth
+          ? { managedAuth: decodeManagedAuth(asJsonObject(row.managed_auth)) }
+          : {}),
       },
       legacy:
         Object.keys(normalizedHeaders.legacy).length > 0 || normalizedOAuth2.legacy
@@ -544,6 +554,9 @@ export const makeDefaultOpenapiStore = ({
             oauth2: input.config.oauth2
               ? (encodeOAuth2SourceConfig(input.config.oauth2) as unknown as Record<string, unknown>)
               : undefined,
+            managed_auth: input.config.managedAuth
+              ? (encodeManagedAuth(input.config.managedAuth) as unknown as Record<string, unknown>)
+              : undefined,
             invocation_config: {},
           },
           forceAllowId: true,
@@ -581,6 +594,8 @@ export const makeDefaultOpenapiStore = ({
           patch.headers !== undefined ? patch.headers : existing.config.headers ?? {};
         const nextOAuth2 =
           patch.oauth2 !== undefined ? patch.oauth2 : existing.config.oauth2;
+        const nextManagedAuth =
+          patch.managedAuth !== undefined ? patch.managedAuth : existing.config.managedAuth;
 
         yield* adapter.update({
           model: "openapi_source",
@@ -605,6 +620,9 @@ export const makeDefaultOpenapiStore = ({
             ) as Record<string, unknown>,
             oauth2: nextOAuth2
               ? (encodeOAuth2SourceConfig(nextOAuth2) as unknown as Record<string, unknown>)
+              : undefined,
+            managed_auth: nextManagedAuth
+              ? (encodeManagedAuth(nextManagedAuth) as unknown as Record<string, unknown>)
               : undefined,
             invocation_config: asJsonObject(existingRow.invocation_config),
           },

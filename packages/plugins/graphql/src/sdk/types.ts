@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { ManagedAuthConfig } from "@executor/plugin-managed-auth";
 
 // ---------------------------------------------------------------------------
 // GraphQL operation kind
@@ -70,6 +71,7 @@ export class InvocationConfig extends Schema.Class<InvocationConfig>("Invocation
   headers: Schema.optionalWith(Schema.Record({ key: Schema.String, value: HeaderValue }), {
     default: () => ({}),
   }),
+  managedAuth: Schema.optional(ManagedAuthConfig),
 }) {}
 
 export class InvocationResult extends Schema.Class<InvocationResult>("InvocationResult")({

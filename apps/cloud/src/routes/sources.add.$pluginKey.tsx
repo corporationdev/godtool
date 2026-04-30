@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import { createFileRoute } from "@tanstack/react-router";
+import { useCustomer } from "autumn-js/react";
 import { useEffect, useState } from "react";
 import { SourcesAddPage } from "@executor/react/pages/sources-add";
 import { openApiSourcePlugin } from "@executor/plugin-openapi/react";
@@ -30,6 +31,12 @@ export const Route = createFileRoute("/sources/add/$pluginKey")({
     const { pluginKey } = Route.useParams();
     const { url, preset, namespace } = Route.useSearch();
     const localDeviceAvailable = useLocalDeviceAvailable();
+    const { check, isLoading: customerLoading } = useCustomer();
+    const managedAuthAccess = customerLoading
+      ? { state: "loading" as const }
+      : check({ featureId: "managed-auth" }).allowed
+        ? { state: "allowed" as const }
+        : { state: "upgrade" as const, href: "/billing/plans" };
     return (
       <SourcesAddPage
         pluginKey={pluginKey}
@@ -39,6 +46,7 @@ export const Route = createFileRoute("/sources/add/$pluginKey")({
         sourcePlugins={sourcePlugins}
         nativePlacement="cloud"
         signedIn
+        managedAuthAccess={managedAuthAccess}
         localDeviceAvailable={localDeviceAvailable}
         syncToLocal={(sourceId) => sourceSync("to-local", { sourceIds: [sourceId] })}
         syncToCloud={(sourceId) => sourceSync("to-cloud", { sourceIds: [sourceId] })}

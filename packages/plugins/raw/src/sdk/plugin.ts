@@ -1,11 +1,18 @@
 import { Effect } from "effect";
 import { FetchHttpClient, HttpClient } from "@effect/platform";
+import { randomUUID } from "node:crypto";
 import type { Layer } from "effect";
 
 import {
+  ConnectionId,
+  CreateConnectionInput,
   SecretOwnedByConnectionError,
+  ScopeId,
+  SecretId,
+  TokenMaterial,
   definePlugin,
   FormElicitation,
+  type ConnectionProvider,
   type StorageFailure,
 } from "@executor/sdk";
 
@@ -16,10 +23,19 @@ import {
 } from "@executor/config";
 
 import {
+  ComposioClientError,
+  createComposioConnectLink,
+  ensureComposioManagedAuthConfig,
+  executeComposioProxy,
+  getComposioConnectedAccount,
+} from "../composio/client";
+import { RawComposioError } from "./errors";
+import {
   invokeWithLayer,
   normalizeMethod,
   requiresApprovalForMethod,
   resolveHeaders,
+  buildRequestUrl,
 } from "./invoke";
 import {
   makeDefaultRawStore,
@@ -27,7 +43,13 @@ import {
   type RawStore,
   type StoredRawSource,
 } from "./store";
-import { type HeaderValue as HeaderValueValue } from "./types";
+import {
+  ComposioSourceConfig,
+  RawComposioSession,
+  RawFetchResult,
+  type HeaderValue as HeaderValueValue,
+  type RawInvocationAuth,
+} from "./types";
 
 export type HeaderValue = HeaderValueValue;
 
@@ -37,12 +59,45 @@ export interface RawSourceConfig {
   readonly name?: string;
   readonly namespace?: string;
   readonly headers?: Record<string, HeaderValue>;
+  readonly composio?: ComposioSourceConfig;
+  readonly auth?: RawInvocationAuth;
 }
 
 export interface RawUpdateSourceInput {
   readonly name?: string;
   readonly baseUrl?: string;
   readonly headers?: Record<string, HeaderValue>;
+  readonly composio?: ComposioSourceConfig | null;
+  readonly auth?: RawInvocationAuth | null;
+}
+
+export type StartComposioConnectInput =
+  | {
+      readonly scopeId: string;
+      readonly sourceId: string;
+      readonly callbackUrl: string;
+    }
+  | {
+      readonly scopeId: string;
+      readonly callbackUrl: string;
+      readonly app: string;
+      readonly authConfigId?: string | null;
+      readonly connectionId: string;
+      readonly displayName?: string;
+    };
+
+export interface StartComposioConnectResponse {
+  readonly redirectUrl: string;
+}
+
+export interface CompleteComposioConnectInput {
+  readonly state: string;
+  readonly connectedAccountId: string;
+}
+
+export interface CompleteComposioConnectResponse {
+  readonly connectionId: string;
+  readonly authConfigId: string | null;
 }
 
 export interface RawPluginExtension {
@@ -65,11 +120,18 @@ export interface RawPluginExtension {
     scope: string,
     input: RawUpdateSourceInput,
   ) => Effect.Effect<void, StorageFailure>;
+  readonly startComposioConnect: (
+    input: StartComposioConnectInput,
+  ) => Effect.Effect<StartComposioConnectResponse, RawComposioError>;
+  readonly completeComposioConnect: (
+    input: CompleteComposioConnectInput,
+  ) => Effect.Effect<CompleteComposioConnectResponse, RawComposioError>;
 }
 
 export interface RawPluginOptions {
   readonly httpClientLayer?: Layer.Layer<HttpClient.HttpClient>;
   readonly configFile?: ConfigFileSink;
+  readonly composioApiKey?: string;
 }
 
 const namespaceFromBaseUrl = (baseUrl: string): string => {
@@ -99,8 +161,31 @@ const asRecord = (value: unknown): Record<string, unknown> =>
     ? (value as Record<string, unknown>)
     : {};
 
+const composioAliasForAttempt = (displayName: string, sessionId: string): string =>
+  `${displayName} (${sessionId.slice(0, 8)})`;
+
+const toHeaderParameterList = (
+  headers: Record<string, string>,
+): ReadonlyArray<{
+  readonly name: string;
+  readonly value: string;
+  readonly type: "header";
+}> =>
+  Object.entries(headers).map(([name, value]) => ({
+    name,
+    value,
+    type: "header" as const,
+  }));
+
+const toComposioError = (fallback: string) => (err: unknown) =>
+  new RawComposioError({
+    message: err instanceof ComposioClientError ? err.message : fallback,
+  });
+
 export const rawPlugin = definePlugin((options?: RawPluginOptions) => {
   const httpClientLayer = options?.httpClientLayer ?? FetchHttpClient.layer;
+  const composioApiKey = options?.composioApiKey;
+  const COMPOSIO_PROVIDER_KEY = "raw-composio" as const;
 
   return {
     id: "raw" as const,
@@ -119,6 +204,8 @@ export const rawPlugin = definePlugin((options?: RawPluginOptions) => {
               name: toSourceName(config, namespace),
               baseUrl: config.baseUrl,
               headers: config.headers ?? {},
+              composio: config.composio,
+              auth: config.auth,
             };
 
             yield* ctx.storage.upsertSource(source);
@@ -183,7 +270,7 @@ export const rawPlugin = definePlugin((options?: RawPluginOptions) => {
         addSource: (config) =>
           addSourceInternal(config).pipe(
             Effect.tap((result) =>
-              configFile
+              configFile && !config.composio && !config.auth
                 ? configFile.upsertSource(
                     toRawConfigEntry(result.sourceId, config),
                   )
@@ -213,12 +300,19 @@ export const rawPlugin = definePlugin((options?: RawPluginOptions) => {
               name: input.name?.trim() || undefined,
               baseUrl: input.baseUrl,
               headers: input.headers,
+              composio: input.composio,
+              auth: input.auth,
             });
 
             if (!configFile) return;
 
             const source = yield* ctx.storage.getSource(namespace, scope);
             if (!source) return;
+
+            if (source.composio || source.auth) {
+              yield* configFile.removeSource(namespace);
+              return;
+            }
 
             yield* configFile.upsertSource({
               kind: "raw",
@@ -227,6 +321,160 @@ export const rawPlugin = definePlugin((options?: RawPluginOptions) => {
               headers: headersToConfigValues(source.headers),
             });
           }),
+
+        startComposioConnect: (input) =>
+          Effect.gen(function* () {
+            if (!composioApiKey) {
+              return yield* new RawComposioError({
+                message: "Managed auth is not configured",
+              });
+            }
+
+            const tokenScope = input.scopeId;
+            const connectConfig =
+              "sourceId" in input
+                ? yield* Effect.gen(function* () {
+                    const source = yield* ctx.storage.getSource(input.sourceId, tokenScope).pipe(
+                      Effect.mapError((err) => new RawComposioError({ message: err.message })),
+                    );
+                    if (!source) {
+                      return yield* new RawComposioError({
+                        message: `Source "${input.sourceId}" not found`,
+                      });
+                    }
+                    if (!source.composio) {
+                      return yield* new RawComposioError({
+                        message: `Source "${input.sourceId}" does not have managed auth configured`,
+                      });
+                    }
+                    return {
+                      sourceId: input.sourceId,
+                      app: source.composio.app,
+                      authConfigId: source.composio.authConfigId,
+                      connectionId: source.composio.connectionId,
+                      displayName: source.name,
+                    } as const;
+                  })
+                : {
+                    sourceId: null,
+                    app: input.app,
+                    authConfigId: input.authConfigId ?? null,
+                    connectionId: input.connectionId,
+                    displayName: input.displayName ?? input.app,
+                  };
+
+            const authConfigId =
+              connectConfig.authConfigId ??
+              (yield* Effect.tryPromise({
+                try: () => ensureComposioManagedAuthConfig(composioApiKey, connectConfig.app),
+                catch: toComposioError("Failed to resolve managed auth config"),
+              }));
+
+            const sessionId = randomUUID();
+            yield* ctx.storage
+              .putComposioSession(
+                sessionId,
+                new RawComposioSession({
+                  tokenScope,
+                  sourceId: connectConfig.sourceId,
+                  connectionId: connectConfig.connectionId,
+                  displayName: connectConfig.displayName,
+                  app: connectConfig.app,
+                  authConfigId,
+                }),
+              )
+              .pipe(Effect.mapError((err) => new RawComposioError({ message: err.message })));
+
+            const callbackUrl = `${input.callbackUrl}${input.callbackUrl.includes("?") ? "&" : "?"}state=${encodeURIComponent(sessionId)}`;
+            const link = yield* Effect.tryPromise({
+              try: () =>
+                createComposioConnectLink({
+                  apiKey: composioApiKey,
+                  app: connectConfig.app,
+                  authConfigId,
+                  userId: tokenScope,
+                  callbackUrl,
+                  alias: composioAliasForAttempt(connectConfig.displayName, sessionId),
+                }),
+              catch: toComposioError("Failed to create managed auth link"),
+            });
+
+            return { redirectUrl: link.redirectUrl };
+          }),
+
+        completeComposioConnect: (input) =>
+          ctx
+            .transaction(
+              Effect.gen(function* () {
+                const session = yield* ctx.storage.getComposioSession(input.state).pipe(
+                  Effect.mapError((err) => new RawComposioError({ message: err.message })),
+                );
+                if (!session) {
+                  return yield* new RawComposioError({
+                    message: "Managed auth session not found or has expired",
+                  });
+                }
+                yield* ctx.storage.deleteComposioSession(input.state).pipe(
+                  Effect.mapError((err) => new RawComposioError({ message: err.message })),
+                );
+                if (!composioApiKey) {
+                  return yield* new RawComposioError({
+                    message: "Managed auth is not configured",
+                  });
+                }
+
+                const account = yield* Effect.tryPromise({
+                  try: () => getComposioConnectedAccount(composioApiKey, input.connectedAccountId),
+                  catch: toComposioError("Failed to verify managed account"),
+                });
+                if (account.status !== "ACTIVE") {
+                  return yield* new RawComposioError({
+                    message: `Managed account is not active yet (status: ${account.status})`,
+                  });
+                }
+                if (account.appName && account.appName !== session.app) {
+                  return yield* new RawComposioError({
+                    message: `Managed account app mismatch: expected "${session.app}" but got "${account.appName}"`,
+                  });
+                }
+
+                yield* ctx.connections
+                  .create(
+                    new CreateConnectionInput({
+                      id: ConnectionId.make(session.connectionId),
+                      scope: ScopeId.make(session.tokenScope),
+                      provider: COMPOSIO_PROVIDER_KEY,
+                      identityLabel: account.displayName ?? session.displayName,
+                      accessToken: new TokenMaterial({
+                        secretId: SecretId.make(`${session.connectionId}.managed`),
+                        name: `${session.displayName} Managed Auth`,
+                        value: "managed-by-composio",
+                      }),
+                      refreshToken: null,
+                      expiresAt: null,
+                      oauthScope: null,
+                      providerState: {
+                        connectedAccountId: input.connectedAccountId,
+                        app: session.app,
+                        authConfigId: session.authConfigId,
+                      },
+                    }),
+                  )
+                  .pipe(Effect.mapError((err) => new RawComposioError({ message: err.message })));
+
+                return {
+                  connectionId: session.connectionId,
+                  authConfigId: session.authConfigId,
+                };
+              }),
+            )
+            .pipe(
+              Effect.mapError((err) =>
+                err instanceof RawComposioError
+                  ? err
+                  : new RawComposioError({ message: err.message }),
+              ),
+            ),
       } satisfies RawPluginExtension;
     },
 
@@ -304,6 +552,119 @@ export const rawPlugin = definePlugin((options?: RawPluginOptions) => {
             ),
         });
 
+        if (source.auth?.kind === "composio") {
+          if (method === "OPTIONS") {
+            return yield* Effect.fail(
+              new Error("Managed auth requests do not support OPTIONS"),
+            );
+          }
+          const connection = yield* ctx.connections.get(source.auth.connectionId);
+          if (!connection) {
+            return yield* Effect.fail(
+              new Error(`Managed connection "${source.auth.connectionId}" was not found.`),
+            );
+          }
+          if (connection.provider !== COMPOSIO_PROVIDER_KEY) {
+            return yield* Effect.fail(
+              new Error(
+                `Connection "${source.auth.connectionId}" is provider "${connection.provider}", expected "${COMPOSIO_PROVIDER_KEY}".`,
+              ),
+            );
+          }
+
+          const input = asRecord(args);
+          const url = buildRequestUrl(
+            source.baseUrl,
+            String(input.path ?? ""),
+            input.query as
+              | Record<
+                  string,
+                  | string
+                  | number
+                  | boolean
+                  | null
+                  | readonly (string | number | boolean)[]
+                >
+              | undefined,
+          );
+          const mergedHeaders = {
+            ...resolvedHeaders,
+            ...((input.headers ?? {}) as Record<string, string>),
+          };
+          const providerState = connection.providerState ?? {};
+          const connectedAccountId = providerState.connectedAccountId;
+
+          const proxyResponse =
+            typeof providerState.brokerUrl === "string"
+              ? yield* Effect.gen(function* () {
+                  const brokerToken = yield* ctx.connections.accessToken(source.auth!.connectionId);
+                  return yield* Effect.tryPromise({
+                  try: async () => {
+                    const response = await fetch(providerState.brokerUrl as string, {
+                      method: "POST",
+                      headers: {
+                        authorization: `Bearer ${brokerToken}`,
+                        "content-type": "application/json",
+                      },
+                      body: JSON.stringify({
+                        endpoint: url.toString(),
+                        method,
+                        body: input.body,
+                        parameters: toHeaderParameterList(mergedHeaders),
+                      }),
+                    });
+                    if (!response.ok) throw new Error(await response.text());
+                    return (await response.json()) as {
+                      status: number;
+                      headers: Record<string, string>;
+                      data: unknown | null;
+                      error: unknown | null;
+                      binaryData: unknown | null;
+                    };
+                  },
+                  catch: (err) =>
+                    new Error(
+                      err instanceof Error ? err.message : "Managed broker request failed",
+                    ),
+                  });
+                })
+              : yield* Effect.tryPromise({
+                  try: () => {
+                    if (!composioApiKey) {
+                      throw new Error("Managed auth is not configured");
+                    }
+                    if (typeof connectedAccountId !== "string" || !connectedAccountId) {
+                      throw new Error(
+                        `Managed connection "${source.auth!.connectionId}" is missing connectedAccountId.`,
+                      );
+                    }
+                    return executeComposioProxy({
+                      apiKey: composioApiKey,
+                      connectedAccountId,
+                      endpoint: url.toString(),
+                      method,
+                      body: input.body,
+                      parameters: toHeaderParameterList(mergedHeaders),
+                    });
+                  },
+                  catch: (err) =>
+                    new Error(
+                      err instanceof ComposioClientError
+                        ? `Managed request failed: ${err.message}`
+                        : err instanceof Error
+                          ? err.message
+                          : "Managed request failed",
+                    ),
+                });
+
+          return new RawFetchResult({
+            ok: proxyResponse.status >= 200 && proxyResponse.status < 300,
+            status: proxyResponse.status,
+            headers: proxyResponse.headers,
+            body: proxyResponse.data ?? proxyResponse.error ?? proxyResponse.binaryData,
+          });
+        }
+
         return yield* invokeWithLayer(
           source.baseUrl,
           input,
@@ -311,5 +672,10 @@ export const rawPlugin = definePlugin((options?: RawPluginOptions) => {
           httpClientLayer,
         );
       }),
+    connectionProviders: [
+      {
+        key: COMPOSIO_PROVIDER_KEY,
+      } satisfies ConnectionProvider,
+    ],
   };
 });

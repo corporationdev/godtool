@@ -13,6 +13,16 @@ import {
   type OperationParameter,
 } from "./types";
 
+export interface PreparedInvocationRequest {
+  readonly method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD" | "OPTIONS" | "TRACE";
+  readonly path: string;
+  readonly queryParams: ReadonlyArray<{ readonly name: string; readonly value: string }>;
+  readonly headers: Record<string, string>;
+  readonly bodyKind: "none" | "json" | "text" | "urlencoded" | "multipart";
+  readonly bodyValue?: unknown;
+  readonly bodyContentType: string | null;
+}
+
 // ---------------------------------------------------------------------------
 // Parameter reading
 // ---------------------------------------------------------------------------
@@ -186,22 +196,6 @@ const isFormUrlEncoded = (ct: string | null | undefined): boolean =>
 
 const isMultipartFormData = (ct: string | null | undefined): boolean =>
   normalizeContentType(ct).startsWith("multipart/form-data");
-
-const isXmlContentType = (ct: string | null | undefined): boolean => {
-  const normalized = normalizeContentType(ct);
-  if (!normalized) return false;
-  return (
-    normalized === "application/xml" ||
-    normalized === "text/xml" ||
-    normalized.endsWith("+xml")
-  );
-};
-
-const isTextContentType = (ct: string | null | undefined): boolean =>
-  normalizeContentType(ct).startsWith("text/");
-
-const isOctetStream = (ct: string | null | undefined): boolean =>
-  normalizeContentType(ct) === "application/octet-stream";
 
 const toUint8Array = (value: unknown): Uint8Array | null => {
   if (value instanceof Uint8Array) return value;
@@ -430,85 +424,125 @@ const coerceFormDataRecord = (
 // — never `String(body)` (which produces the useless `[object Object]`).
 // ---------------------------------------------------------------------------
 
-const applyRequestBody = (
+const prepareRequest = Effect.fn("OpenApi.prepareRequest")(function* (
+  operation: OperationBinding,
+  args: Record<string, unknown>,
+  resolvedHeaders: Record<string, string>,
+) {
+  const resolvedPath = yield* resolvePath(operation.pathTemplate, args, operation.parameters);
+  const path = resolvedPath.startsWith("/") ? resolvedPath : `/${resolvedPath}`;
+
+  const queryParams: Array<{ readonly name: string; readonly value: string }> = [];
+  for (const param of operation.parameters) {
+    if (param.location !== "query") continue;
+    const value = readParamValue(args, param);
+    if (value === undefined || value === null) continue;
+    queryParams.push({ name: param.name, value: String(value) });
+  }
+
+  const headers: Record<string, string> = { ...resolvedHeaders };
+  for (const param of operation.parameters) {
+    if (param.location !== "header") continue;
+    const value = readParamValue(args, param);
+    if (value === undefined || value === null) continue;
+    headers[param.name] = String(value);
+  }
+
+  let bodyKind: PreparedInvocationRequest["bodyKind"] = "none";
+  let bodyValue: unknown = undefined;
+  let bodyContentType: string | null = null;
+
+  if (Option.isSome(operation.requestBody)) {
+    const rb = operation.requestBody.value;
+    const inputBody = args.body ?? args.input;
+    if (inputBody !== undefined) {
+      const contentsOpt = Option.getOrUndefined(rb.contents);
+      const requestedCt =
+        typeof args.contentType === "string" ? args.contentType : undefined;
+      const selected: MediaBinding | undefined =
+        contentsOpt && requestedCt
+          ? contentsOpt.find((c) => c.contentType === requestedCt)
+          : undefined;
+      const defaultMedia = contentsOpt?.[0];
+      const chosenCt = selected?.contentType ?? defaultMedia?.contentType ?? rb.contentType;
+      const chosenEncoding = selected
+        ? Option.getOrUndefined(selected.encoding)
+        : defaultMedia
+          ? Option.getOrUndefined(defaultMedia.encoding)
+          : undefined;
+
+      bodyContentType = chosenCt;
+      if (isJsonContentType(chosenCt)) {
+        bodyKind = "json";
+        bodyValue = inputBody;
+      } else if (isFormUrlEncoded(chosenCt)) {
+        bodyKind = "urlencoded";
+        bodyValue =
+          typeof inputBody === "string"
+            ? inputBody
+            : typeof inputBody === "object" && inputBody !== null && !Array.isArray(inputBody)
+              ? serializeFormUrlEncoded(inputBody as Record<string, unknown>, chosenEncoding)
+              : String(inputBody);
+      } else if (isMultipartFormData(chosenCt)) {
+        bodyKind = "multipart";
+        bodyValue =
+          inputBody instanceof FormData
+            ? inputBody
+            : typeof inputBody === "object" && inputBody !== null
+              ? coerceFormDataRecord(inputBody as Record<string, unknown>, chosenEncoding)
+              : inputBody;
+      } else if (typeof inputBody === "string") {
+        bodyKind = "text";
+        bodyValue = inputBody;
+      } else {
+        const bytes = toUint8Array(inputBody);
+        bodyKind = "text";
+        bodyValue = bytes ? Array.from(bytes) : JSON.stringify(inputBody);
+      }
+    }
+  }
+
+  return {
+    method: operation.method.toUpperCase() as PreparedInvocationRequest["method"],
+    path,
+    queryParams,
+    headers,
+    bodyKind,
+    bodyValue,
+    bodyContentType,
+  } satisfies PreparedInvocationRequest;
+});
+
+const applyPreparedBody = (
   request: HttpClientRequest.HttpClientRequest,
-  contentType: string,
-  bodyValue: unknown,
-  encoding: Record<string, EncodingObject> | undefined,
+  prepared: PreparedInvocationRequest,
 ): HttpClientRequest.HttpClientRequest => {
-  if (isJsonContentType(contentType)) {
-    // Pre-serialized JSON strings pass through with the declared media
-    // type preserved (important for `application/vnd.foo+json` etc.).
-    if (typeof bodyValue === "string") {
-      return HttpClientRequest.bodyText(request, bodyValue, contentType);
-    }
-    return HttpClientRequest.bodyUnsafeJson(request, bodyValue);
-  }
-
-  if (isFormUrlEncoded(contentType)) {
-    if (typeof bodyValue === "string") {
-      return HttpClientRequest.bodyText(request, bodyValue, contentType);
-    }
-    if (typeof bodyValue === "object" && bodyValue !== null && !Array.isArray(bodyValue)) {
-      // Serialize ourselves so OAS3 encoding (style/explode/deepObject)
-      // is honored. bodyUrlParams doesn't know about per-field style.
-      const serialized = serializeFormUrlEncoded(
-        bodyValue as Record<string, unknown>,
-        encoding,
-      );
-      return HttpClientRequest.bodyText(request, serialized, contentType);
-    }
-    // Non-object body — fall back to platform helper (handles URLSearchParams).
-    return HttpClientRequest.bodyUrlParams(
-      request,
-      bodyValue as Parameters<typeof HttpClientRequest.bodyUrlParams>[1],
-    );
-  }
-
-  if (isMultipartFormData(contentType)) {
-    if (bodyValue instanceof FormData) {
-      return HttpClientRequest.bodyFormData(request, bodyValue);
-    }
-    if (typeof bodyValue === "object" && bodyValue !== null) {
-      return HttpClientRequest.bodyFormDataRecord(
+  switch (prepared.bodyKind) {
+    case "none":
+      return request;
+    case "json":
+      return typeof prepared.bodyValue === "string"
+        ? HttpClientRequest.bodyText(
+            request,
+            prepared.bodyValue,
+            prepared.bodyContentType ?? undefined,
+          )
+        : HttpClientRequest.bodyUnsafeJson(request, prepared.bodyValue);
+    case "text":
+    case "urlencoded":
+      return HttpClientRequest.bodyText(
         request,
-        coerceFormDataRecord(bodyValue as Record<string, unknown>, encoding),
+        String(prepared.bodyValue ?? ""),
+        prepared.bodyContentType ?? undefined,
       );
-    }
-    // String / primitive under multipart is almost certainly wrong on the
-    // caller's end — send it as text with their declared content type and
-    // let the server produce a useful error.
-    return HttpClientRequest.bodyText(request, String(bodyValue), contentType);
+    case "multipart":
+      return prepared.bodyValue instanceof FormData
+        ? HttpClientRequest.bodyFormData(request, prepared.bodyValue)
+        : HttpClientRequest.bodyFormDataRecord(
+            request,
+            prepared.bodyValue as Parameters<typeof HttpClientRequest.bodyFormDataRecord>[1],
+          );
   }
-
-  if (isOctetStream(contentType)) {
-    const bytes = toUint8Array(bodyValue);
-    if (bytes) return HttpClientRequest.bodyUint8Array(request, bytes, contentType);
-    if (typeof bodyValue === "string") {
-      return HttpClientRequest.bodyText(request, bodyValue, contentType);
-    }
-    // Unknown shape — serialize as JSON so at least the payload is visible.
-    return HttpClientRequest.bodyText(request, JSON.stringify(bodyValue), contentType);
-  }
-
-  if (isXmlContentType(contentType) || isTextContentType(contentType)) {
-    if (typeof bodyValue === "string") {
-      return HttpClientRequest.bodyText(request, bodyValue, contentType);
-    }
-    const bytes = toUint8Array(bodyValue);
-    if (bytes) return HttpClientRequest.bodyUint8Array(request, bytes, contentType);
-    // Object body under text/xml is unusual — stringify so the caller sees
-    // their own payload instead of `[object Object]`.
-    return HttpClientRequest.bodyText(request, JSON.stringify(bodyValue), contentType);
-  }
-
-  // Unknown content type: respect what the caller supplied.
-  if (typeof bodyValue === "string") {
-    return HttpClientRequest.bodyText(request, bodyValue, contentType);
-  }
-  const bytes = toUint8Array(bodyValue);
-  if (bytes) return HttpClientRequest.bodyUint8Array(request, bytes, contentType);
-  return HttpClientRequest.bodyText(request, JSON.stringify(bodyValue), contentType);
 };
 
 // ---------------------------------------------------------------------------
@@ -530,51 +564,16 @@ export const invoke = Effect.fn("OpenApi.invoke")(function* (
     "plugin.openapi.headers.resolved_count": Object.keys(resolvedHeaders).length,
   });
 
-  const resolvedPath = yield* resolvePath(operation.pathTemplate, args, operation.parameters);
+  const prepared = yield* prepareRequest(operation, args, resolvedHeaders);
 
-  const path = resolvedPath.startsWith("/") ? resolvedPath : `/${resolvedPath}`;
+  let request = HttpClientRequest.make(prepared.method as "GET")(prepared.path);
 
-  let request = HttpClientRequest.make(operation.method.toUpperCase() as "GET")(path);
-
-  for (const param of operation.parameters) {
-    if (param.location !== "query") continue;
-    const value = readParamValue(args, param);
-    if (value === undefined || value === null) continue;
-    request = HttpClientRequest.setUrlParam(request, param.name, String(value));
+  for (const param of prepared.queryParams) {
+    request = HttpClientRequest.setUrlParam(request, param.name, param.value);
   }
 
-  for (const param of operation.parameters) {
-    if (param.location !== "header") continue;
-    const value = readParamValue(args, param);
-    if (value === undefined || value === null) continue;
-    request = HttpClientRequest.setHeader(request, param.name, String(value));
-  }
-
-  if (Option.isSome(operation.requestBody)) {
-    const rb = operation.requestBody.value;
-    const bodyValue = args.body ?? args.input;
-    if (bodyValue !== undefined) {
-      // Resolve which declared media type to use. When the spec declares
-      // multiple, the caller can override via `args.contentType`; otherwise
-      // we use the first-declared (spec author's preferred ordering).
-      const contentsOpt = Option.getOrUndefined(rb.contents);
-      const requestedCt =
-        typeof args.contentType === "string" ? args.contentType : undefined;
-      const selected: MediaBinding | undefined =
-        contentsOpt && requestedCt
-          ? contentsOpt.find((c) => c.contentType === requestedCt)
-          : undefined;
-      const chosenCt = selected?.contentType ?? rb.contentType;
-      const chosenEncoding = selected
-        ? Option.getOrUndefined(selected.encoding)
-        : contentsOpt && contentsOpt[0]
-          ? Option.getOrUndefined(contentsOpt[0].encoding)
-          : undefined;
-      request = applyRequestBody(request, chosenCt, bodyValue, chosenEncoding);
-    }
-  }
-
-  request = applyHeaders(request, resolvedHeaders);
+  request = applyHeaders(request, prepared.headers);
+  request = applyPreparedBody(request, prepared);
 
   const response = yield* client.execute(request).pipe(
     Effect.mapError(
@@ -654,6 +653,74 @@ export const invokeWithLayer = (
     }),
   );
 };
+
+export const prepareInvocationRequest = (
+  operation: OperationBinding,
+  args: Record<string, unknown>,
+  resolvedHeaders: Record<string, string>,
+) => prepareRequest(operation, args, resolvedHeaders);
+
+export const buildInvocationEndpoint = (
+  baseUrl: string,
+  prepared: Pick<PreparedInvocationRequest, "path" | "queryParams">,
+): string => {
+  const pathWithBase = baseUrl
+    ? `${baseUrl.replace(/\/+$/, "")}${prepared.path.startsWith("/") ? prepared.path : `/${prepared.path}`}`
+    : prepared.path;
+
+  if (prepared.queryParams.length === 0) return pathWithBase;
+
+  const url = new URL(pathWithBase, "http://openapi.local");
+  for (const param of prepared.queryParams) {
+    url.searchParams.append(param.name, param.value);
+  }
+
+  return baseUrl
+    ? url.toString().replace("http://openapi.local", "")
+    : `${url.pathname}${url.search}`;
+};
+
+export const buildManagedHttpRequest = Effect.fn("OpenApi.buildManagedHttpRequest")(function* (
+  operation: OperationBinding,
+  args: Record<string, unknown>,
+  baseUrl: string,
+  resolvedHeaders: Record<string, string>,
+) {
+  const prepared = yield* prepareRequest(operation, args, resolvedHeaders);
+  if (prepared.bodyKind === "multipart") {
+    return yield* new OpenApiInvocationError({
+      message: "Multipart form-data requests are not implemented for managed auth yet.",
+      statusCode: Option.none(),
+    });
+  }
+
+  const parameters: Array<{ name: string; value: string; type: "header" | "query" }> = [];
+  for (const [name, value] of Object.entries(prepared.headers)) {
+    parameters.push({ name, value, type: "header" });
+  }
+  if (
+    prepared.bodyKind !== "none" &&
+    prepared.bodyContentType &&
+    !Object.keys(prepared.headers).some((name) => name.toLowerCase() === "content-type")
+  ) {
+    parameters.push({ name: "content-type", value: prepared.bodyContentType, type: "header" });
+  }
+
+  const method = prepared.method;
+  if (method === "OPTIONS" || method === "TRACE") {
+    return yield* new OpenApiInvocationError({
+      message: `Managed auth does not support ${method} requests`,
+      statusCode: Option.none(),
+    });
+  }
+
+  return {
+    endpoint: buildInvocationEndpoint(baseUrl, prepared),
+    method: method as "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD",
+    ...(prepared.bodyKind !== "none" ? { body: prepared.bodyValue } : {}),
+    parameters,
+  };
+});
 
 // ---------------------------------------------------------------------------
 // Derive annotations from HTTP method

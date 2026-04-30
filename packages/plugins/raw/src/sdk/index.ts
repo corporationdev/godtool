@@ -13,8 +13,11 @@ export {
   type StoredRawSource,
 } from "./store";
 export { invoke, invokeWithLayer, resolveHeaders, buildRequestUrl } from "./invoke";
-export { RawInvocationError } from "./errors";
+export { RawComposioError, RawInvocationError } from "./errors";
 export {
+  ComposioSourceConfig,
   HeaderValue,
+  RawComposioSession,
   RawFetchResult,
+  RawInvocationAuth,
 } from "./types";

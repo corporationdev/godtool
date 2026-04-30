@@ -6,7 +6,7 @@ import { sourceWriteKeys } from "../api/reactivity-keys";
 import { Checkbox } from "../components/checkbox";
 import { Label } from "../components/label";
 import { useScope } from "../hooks/use-scope";
-import type { SourcePlugin } from "../plugins/source-plugin";
+import type { ManagedAuthAccess, SourcePlugin } from "../plugins/source-plugin";
 
 type SourcePlacement = "local" | "cloud";
 
@@ -23,6 +23,7 @@ export function SourcesAddPage(props: {
   nativePlacement?: SourcePlacement;
   signedIn?: boolean;
   localDeviceAvailable?: boolean;
+  managedAuthAccess?: ManagedAuthAccess;
   syncToCloud?: (sourceId: string) => Promise<void>;
   syncToLocal?: (sourceId: string) => Promise<void>;
 }) {
@@ -135,6 +136,7 @@ export function SourcesAddPage(props: {
             initialUrl={url}
             initialPreset={preset}
             initialNamespace={namespace}
+            managedAuthAccess={props.managedAuthAccess}
             placement={
               <PlacementSelector
                 supportsCloud={supportsCloud}

@@ -41,6 +41,7 @@
     "@executor/plugin-google-discovery": "workspace:*",
     "@executor/plugin-graphql": "workspace:*",
     "@executor/plugin-mcp": "workspace:*",
+    "@executor/plugin-managed-auth": "workspace:*",
     "@executor/plugin-openapi": "workspace:*",
     "@executor/plugin-raw": "workspace:*",
     "@executor/plugin-workos-vault": "workspace:*",

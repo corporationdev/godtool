@@ -4,6 +4,7 @@ import { Context, Effect } from "effect";
 import { runOAuthCallback } from "@executor/plugin-oauth2/http";
 
 import { addGroup, capture, InternalError } from "@executor/api";
+import { ManagedAuthBillingService } from "@executor/plugin-managed-auth";
 import { OpenApiOAuthError } from "../sdk/errors";
 import type {
   ConfiguredHeaderValue,
@@ -42,6 +43,16 @@ export class OpenApiExtensionService extends Context.Tag("OpenApiExtensionServic
 // ---------------------------------------------------------------------------
 
 const ExecutorApiWithOpenApi = addGroup(OpenApiGroup);
+const requireManagedAuth = (scopeId: string) =>
+  Effect.gen(function* () {
+    const billing = yield* ManagedAuthBillingService;
+    const allowed = yield* billing.canUseManagedAuth(scopeId);
+    if (!allowed) {
+      return yield* new OpenApiOAuthError({
+        message: "Managed OAuth requires the Pro plan",
+      });
+    }
+  });
 
 // ---------------------------------------------------------------------------
 // Handlers
@@ -63,6 +74,9 @@ export const OpenApiHandlers = HttpApiBuilder.group(ExecutorApiWithOpenApi, "ope
     )
     .handle("addSpec", ({ path, payload }) =>
       capture(Effect.gen(function* () {
+        if (payload.managedAuth) {
+          yield* requireManagedAuth(path.scopeId);
+        }
         const ext = yield* OpenApiExtensionService;
         const result = yield* ext.addSpec({
           spec: payload.spec,
@@ -74,6 +88,7 @@ export const OpenApiHandlers = HttpApiBuilder.group(ExecutorApiWithOpenApi, "ope
             | Record<string, HeaderValue | ConfiguredHeaderValue>
             | undefined,
           oauth2: payload.oauth2,
+          managedAuth: payload.managedAuth,
         });
         return {
           toolCount: result.toolCount,
@@ -89,6 +104,9 @@ export const OpenApiHandlers = HttpApiBuilder.group(ExecutorApiWithOpenApi, "ope
     )
     .handle("updateSource", ({ path, payload }) =>
       capture(Effect.gen(function* () {
+        if (payload.managedAuth) {
+          yield* requireManagedAuth(path.scopeId);
+        }
         const ext = yield* OpenApiExtensionService;
         yield* ext.updateSource(path.namespace, path.scopeId, {
           name: payload.name,
@@ -97,6 +115,7 @@ export const OpenApiHandlers = HttpApiBuilder.group(ExecutorApiWithOpenApi, "ope
             | Record<string, HeaderValue | ConfiguredHeaderValue>
             | undefined,
           oauth2: payload.oauth2,
+          managedAuth: payload.managedAuth,
         } as OpenApiUpdateSourceInput);
         return { updated: true };
       })),

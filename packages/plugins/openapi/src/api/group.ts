@@ -2,6 +2,7 @@ import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from "@effect/platform";
 import { Schema } from "effect";
 import { ScopeId } from "@executor/sdk";
 import { InternalError } from "@executor/api";
+import { ManagedAuthConfig } from "@executor/plugin-managed-auth";
 
 import {
   OpenApiParseError,
@@ -36,6 +37,7 @@ const AddSpecPayload = Schema.Struct({
   namespace: Schema.optional(Schema.String),
   headers: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
   oauth2: Schema.optional(Schema.Union(OAuth2Auth, OAuth2SourceConfig)),
+  managedAuth: Schema.optional(ManagedAuthConfig),
 });
 
 const PreviewSpecPayload = Schema.Struct({
@@ -49,6 +51,7 @@ const UpdateSourcePayload = Schema.Struct({
   // Set after a successful re-authenticate to refresh the source's
   // stored OAuth2 metadata.
   oauth2: Schema.optional(Schema.Union(OAuth2Auth, OAuth2SourceConfig)),
+  managedAuth: Schema.optional(ManagedAuthConfig),
 });
 
 const UpdateSourceResponse = Schema.Struct({

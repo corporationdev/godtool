@@ -4,6 +4,7 @@ import { handleApiRequest } from "./api";
 import { deviceFetch } from "./devices";
 import { mcpFetch } from "./mcp";
 import { sourceSyncFetch } from "./source-sync";
+import { composioProxyFetch } from "./composio-proxy";
 
 // ---------------------------------------------------------------------------
 // MCP middleware — routes /mcp and /.well-known/* to the MCP handler
@@ -89,6 +90,16 @@ const sourceSyncRequestMiddleware = createMiddleware({ type: "request" }).server
   },
 );
 
+const composioProxyRequestMiddleware = createMiddleware({ type: "request" }).server(
+  async ({ pathname, request, next }) => {
+    if (pathname.startsWith("/api/composio-proxy/")) {
+      const response = await composioProxyFetch(request);
+      if (response) return response;
+    }
+    return next();
+  },
+);
+
 // ---------------------------------------------------------------------------
 // API middleware — routes /api/* to the Effect HTTP layer
 // ---------------------------------------------------------------------------
@@ -110,6 +121,7 @@ export const startInstance = createStart(() => ({
     sentryTunnelMiddleware,
     deviceRequestMiddleware,
     sourceSyncRequestMiddleware,
+    composioProxyRequestMiddleware,
     apiRequestMiddleware,
   ],
 }));

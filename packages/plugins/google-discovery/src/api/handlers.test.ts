@@ -13,6 +13,7 @@ import { Effect, Layer } from "effect";
 
 import { addGroup, observabilityMiddleware } from "@executor/api";
 import { CoreHandlers, ExecutionEngineService, ExecutorService } from "@executor/api/server";
+import { ManagedAuthBillingService } from "@executor/plugin-managed-auth";
 import type { GoogleDiscoveryPluginExtension } from "../sdk/plugin";
 import { GoogleDiscoveryExtensionService, GoogleDiscoveryHandlers } from "./handlers";
 import { GoogleDiscoveryGroup } from "./group";
@@ -39,7 +40,9 @@ const WebHandler = Effect.acquireRelease(
     HttpApiBuilder.toWebHandler(
       HttpApiBuilder.api(Api).pipe(
         Layer.provide(CoreHandlers),
-        Layer.provide(GoogleDiscoveryHandlers),
+        Layer.provide(
+          GoogleDiscoveryHandlers.pipe(Layer.provide(ManagedAuthBillingService.AllowAll)),
+        ),
         Layer.provide(observabilityMiddleware(Api)),
         Layer.provide(Layer.succeed(ExecutorService, {} as never)),
         Layer.provide(Layer.succeed(ExecutionEngineService, {} as never)),

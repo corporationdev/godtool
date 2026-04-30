@@ -68,6 +68,7 @@
         "@executor/host-mcp": "workspace:*",
         "@executor/plugin-google-discovery": "workspace:*",
         "@executor/plugin-graphql": "workspace:*",
+        "@executor/plugin-managed-auth": "workspace:*",
         "@executor/plugin-mcp": "workspace:*",
         "@executor/plugin-openapi": "workspace:*",
         "@executor/plugin-raw": "workspace:*",
@@ -157,6 +158,7 @@
         "@executor/plugin-google-discovery": "workspace:*",
         "@executor/plugin-graphql": "workspace:*",
         "@executor/plugin-keychain": "workspace:*",
+        "@executor/plugin-managed-auth": "workspace:*",
         "@executor/plugin-mcp": "workspace:*",
         "@executor/plugin-onepassword": "workspace:*",
         "@executor/plugin-openapi": "workspace:*",
@@ -612,6 +614,7 @@
       "dependencies": {
         "@effect/platform": "catalog:",
         "@executor/api": "workspace:*",
+        "@executor/plugin-managed-auth": "workspace:*",
         "@executor/plugin-oauth2": "workspace:*",
         "@executor/sdk": "workspace:*",
         "effect": "catalog:",
@@ -647,6 +650,7 @@
         "@effect/platform": "catalog:",
         "@effect/platform-node": "catalog:",
         "@executor/config": "workspace:*",
+        "@executor/plugin-managed-auth": "workspace:*",
         "@executor/sdk": "workspace:*",
         "effect": "catalog:",
       },
@@ -687,6 +691,20 @@
       },
       "devDependencies": {
         "@effect/vitest": "catalog:",
+        "@types/node": "catalog:",
+        "bun-types": "catalog:",
+        "tsup": "catalog:",
+        "vitest": "catalog:",
+      },
+    },
+    "packages/plugins/managed-auth": {
+      "name": "@executor/plugin-managed-auth",
+      "version": "0.0.1",
+      "dependencies": {
+        "@executor/sdk": "workspace:*",
+        "effect": "catalog:",
+      },
+      "devDependencies": {
         "@types/node": "catalog:",
         "bun-types": "catalog:",
         "tsup": "catalog:",
@@ -786,6 +804,7 @@
         "@effect/platform": "catalog:",
         "@effect/platform-node": "catalog:",
         "@executor/config": "workspace:*",
+        "@executor/plugin-managed-auth": "workspace:*",
         "@executor/plugin-oauth2": "workspace:*",
         "@executor/sdk": "workspace:*",
         "effect": "catalog:",
@@ -827,6 +846,7 @@
         "@effect/platform": "catalog:",
         "@effect/platform-node": "catalog:",
         "@executor/config": "workspace:*",
+        "@executor/plugin-managed-auth": "workspace:*",
         "@executor/sdk": "workspace:*",
         "effect": "catalog:",
       },
@@ -1482,6 +1502,8 @@
     "@executor/plugin-graphql": ["@executor/plugin-graphql@workspace:packages/plugins/graphql"],
 
     "@executor/plugin-keychain": ["@executor/plugin-keychain@workspace:packages/plugins/keychain"],
+
+    "@executor/plugin-managed-auth": ["@executor/plugin-managed-auth@workspace:packages/plugins/managed-auth"],
 
     "@executor/plugin-mcp": ["@executor/plugin-mcp@workspace:packages/plugins/mcp"],
 

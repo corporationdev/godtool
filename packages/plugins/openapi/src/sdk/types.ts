@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import { ConnectionId, ScopeId, SecretId } from "@executor/sdk";
+import { ManagedAuthConfig } from "@executor/plugin-managed-auth";
 
 // ---------------------------------------------------------------------------
 // Branded IDs
@@ -280,6 +281,7 @@ export class InvocationConfig extends Schema.Class<InvocationConfig>("Invocation
    * request. Coexists with `headers` but wins for the Authorization header.
    */
   oauth2: Schema.optionalWith(OAuth2Auth, { as: "Option" }),
+  managedAuth: Schema.optional(ManagedAuthConfig),
 }) {}
 
 // ---------------------------------------------------------------------------

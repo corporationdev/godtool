@@ -7,6 +7,8 @@ type CloudAuthApi = {
   readonly signOut: () => Promise<AccountAuthState>;
   readonly getCloudUrl: () => Promise<string>;
   readonly getDeviceId: () => Promise<string>;
+  readonly getEntitlements?: () => Promise<CloudEntitlements>;
+  readonly openBillingPlans?: () => Promise<void>;
   readonly listSources: () => Promise<readonly CloudSource[]>;
   readonly syncSourcesToCloud: (sourceIds: readonly string[]) => Promise<unknown>;
   readonly syncSourcesToLocal: (sourceIds: readonly string[]) => Promise<unknown>;
@@ -35,6 +37,12 @@ export type SourceImportCandidate = {
   readonly pluginId: string;
 };
 
+export type CloudEntitlements = {
+  readonly managedAuth: boolean;
+  readonly cloudMcp: boolean;
+  readonly hostedWorkerFallback: boolean;
+};
+
 type ElectronWindow = Window & {
   readonly electronAPI?: {
     readonly cloudAuth?: CloudAuthApi;
@@ -45,8 +53,11 @@ type LocalAuthContextValue = {
   readonly auth: AccountAuthState;
   readonly available: boolean;
   readonly deviceId: string | null;
+  readonly entitlements: CloudEntitlements | null;
   readonly signIn: () => Promise<void>;
   readonly signOut: () => Promise<void>;
+  readonly refreshEntitlements: () => Promise<void>;
+  readonly openBillingPlans: () => Promise<void>;
   readonly listCloudSources: () => Promise<readonly CloudSource[]>;
   readonly syncSourcesToCloud: (sourceIds: readonly string[]) => Promise<void>;
   readonly syncSourcesToLocal: (sourceIds: readonly string[]) => Promise<void>;
@@ -61,8 +72,11 @@ const LocalAuthContext = createContext<LocalAuthContextValue>({
   auth: { status: "loading" },
   available: false,
   deviceId: null,
+  entitlements: null,
   signIn: async () => {},
   signOut: async () => {},
+  refreshEntitlements: async () => {},
+  openBillingPlans: async () => {},
   listCloudSources: async () => [],
   syncSourcesToCloud: async () => {},
   syncSourcesToLocal: async () => {},
@@ -78,6 +92,7 @@ const getCloudAuthApi = (): CloudAuthApi | null => {
 export function LocalAuthProvider(props: React.PropsWithChildren) {
   const [auth, setAuth] = useState<AccountAuthState>({ status: "loading" });
   const [deviceId, setDeviceId] = useState<string | null>(null);
+  const [entitlements, setEntitlements] = useState<CloudEntitlements | null>(null);
   const api = useMemo(getCloudAuthApi, []);
   const available = api !== null;
 
@@ -93,9 +108,29 @@ export function LocalAuthProvider(props: React.PropsWithChildren) {
     }
   }, [api]);
 
+  const refreshEntitlements = useCallback(async () => {
+    if (!api?.getEntitlements) {
+      setEntitlements(null);
+      return;
+    }
+    try {
+      setEntitlements(await api.getEntitlements());
+    } catch {
+      setEntitlements(null);
+    }
+  }, [api]);
+
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (auth.status !== "authenticated") {
+      setEntitlements(null);
+      return;
+    }
+    void refreshEntitlements();
+  }, [auth.status, refreshEntitlements]);
 
   useEffect(() => {
     if (!api) return;
@@ -107,12 +142,21 @@ export function LocalAuthProvider(props: React.PropsWithChildren) {
 
   const signIn = useCallback(async () => {
     if (!api) return;
-    setAuth(await api.signIn());
-  }, [api]);
+    const nextAuth = await api.signIn();
+    setAuth(nextAuth);
+    if (nextAuth.status === "authenticated") {
+      await refreshEntitlements();
+    }
+  }, [api, refreshEntitlements]);
 
   const signOut = useCallback(async () => {
     if (!api) return;
     setAuth(await api.signOut());
+    setEntitlements(null);
+  }, [api]);
+
+  const openBillingPlans = useCallback(async () => {
+    await api?.openBillingPlans?.();
   }, [api]);
 
   const listCloudSources = useCallback(async () => {
@@ -155,8 +199,11 @@ export function LocalAuthProvider(props: React.PropsWithChildren) {
         auth,
         available,
         deviceId,
+        entitlements,
         signIn,
         signOut,
+        refreshEntitlements,
+        openBillingPlans,
         listCloudSources,
         syncSourcesToCloud,
         syncSourcesToLocal,

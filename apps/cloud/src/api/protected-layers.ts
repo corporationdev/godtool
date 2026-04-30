@@ -4,7 +4,7 @@
 // `@tanstack/react-start`, unresolvable in the Workers test runtime).
 
 import { HttpApiBuilder, HttpRouter, HttpServer } from "@effect/platform";
-import { Layer } from "effect";
+import { Effect, Layer } from "effect";
 
 import { CoreExecutorApi, InternalError, observabilityMiddleware } from "@executor/api";
 import { CoreHandlers } from "@executor/api/server";
@@ -15,9 +15,10 @@ import {
   GoogleDiscoveryHandlers,
 } from "@executor/plugin-google-discovery/api";
 import { GraphqlGroup, GraphqlHandlers } from "@executor/plugin-graphql/api";
-import { RawGroup, RawHandlers } from "@executor/plugin-raw/api";
+import { RawBillingService, RawGroup, RawHandlers } from "@executor/plugin-raw/api";
+import { ManagedAuthBillingService } from "@executor/plugin-managed-auth";
 
-import { OrgAuth } from "../auth/middleware";
+import { AuthContext, OrgAuth } from "../auth/middleware";
 import { OrgAuthLive } from "../auth/middleware-live";
 import { UserStoreService } from "../auth/context";
 import { WorkOSAuth } from "../auth/workos";
@@ -38,6 +39,24 @@ const ObservabilityLive = observabilityMiddleware(ProtectedCloudApi);
 const DbLive = DbService.Live;
 const UserStoreLive = UserStoreService.Live.pipe(Layer.provide(DbLive));
 
+const CloudRawBillingLive = Layer.succeed(RawBillingService, {
+  canUseManagedAuth: () =>
+    Effect.gen(function* () {
+      const auth = yield* AuthContext;
+      const autumn = yield* AutumnService;
+      return yield* autumn.isFeatureAllowed(auth.organizationId, "managed-auth");
+    }) as Effect.Effect<boolean, never, never>,
+});
+
+const CloudManagedAuthBillingLive = Layer.succeed(ManagedAuthBillingService, {
+  canUseManagedAuth: () =>
+    Effect.gen(function* () {
+      const auth = yield* AuthContext;
+      const autumn = yield* AutumnService;
+      return yield* autumn.isFeatureAllowed(auth.organizationId, "managed-auth");
+    }) as Effect.Effect<boolean, never, never>,
+});
+
 export const SharedServices = Layer.mergeAll(
   DbLive,
   UserStoreLive,
@@ -53,11 +72,11 @@ export const RouterConfig = HttpRouter.setRouterConfig({ maxParamLength: 1000 })
 // layer; prod merges it with OrgAuthLive below.
 export const ProtectedCloudApiHandlers = Layer.mergeAll(
   CoreHandlers,
-  OpenApiHandlers,
+  OpenApiHandlers.pipe(Layer.provide(CloudManagedAuthBillingLive)),
   McpHandlers,
-  GoogleDiscoveryHandlers,
-  GraphqlHandlers,
-  RawHandlers,
+  GoogleDiscoveryHandlers.pipe(Layer.provide(CloudManagedAuthBillingLive)),
+  GraphqlHandlers.pipe(Layer.provide(CloudManagedAuthBillingLive)),
+  RawHandlers.pipe(Layer.provide(CloudRawBillingLive)),
 );
 
 // `ErrorCaptureLive` is provided above the handler + middleware layers

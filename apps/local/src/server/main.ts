@@ -11,6 +11,7 @@ import { addGroup, observabilityMiddleware } from "@executor/api";
 import { CoreHandlers, ExecutorService, ExecutionEngineService } from "@executor/api/server";
 import { createExecutionEngine } from "@executor/execution";
 import { makeQuickJsExecutor } from "@executor/runtime-quickjs";
+import { ManagedAuthBillingService } from "@executor/plugin-managed-auth";
 import {
   OpenApiGroup,
   OpenApiHandlers,
@@ -32,7 +33,12 @@ import {
   GraphqlHandlers,
   GraphqlExtensionService,
 } from "@executor/plugin-graphql/api";
-import { RawGroup, RawHandlers, RawExtensionService } from "@executor/plugin-raw/api";
+import {
+  RawBillingService,
+  RawGroup,
+  RawHandlers,
+  RawExtensionService,
+} from "@executor/plugin-raw/api";
 import {
   ComputerUseGroup,
   ComputerUseHandlers,
@@ -73,12 +79,12 @@ const LocalApiBase = HttpApiBuilder.api(LocalApi).pipe(
   Layer.provide(CoreHandlers),
   Layer.provide(
     Layer.mergeAll(
-      OpenApiHandlers,
+      OpenApiHandlers.pipe(Layer.provide(ManagedAuthBillingService.AllowAll)),
       McpHandlers,
-      GoogleDiscoveryHandlers,
+      GoogleDiscoveryHandlers.pipe(Layer.provide(ManagedAuthBillingService.AllowAll)),
       OnePasswordHandlers,
-      GraphqlHandlers,
-      RawHandlers,
+      GraphqlHandlers.pipe(Layer.provide(ManagedAuthBillingService.AllowAll)),
+      RawHandlers.pipe(Layer.provide(RawBillingService.AllowAll)),
       ComputerUseHandlers,
     ),
   ),

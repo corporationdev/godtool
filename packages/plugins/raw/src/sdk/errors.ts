@@ -1,5 +1,14 @@
-import { Data } from "effect";
+import { HttpApiSchema } from "@effect/platform";
+import { Data, Schema } from "effect";
 import type { Option } from "effect";
+
+export class RawComposioError extends Schema.TaggedError<RawComposioError>()(
+  "RawComposioError",
+  {
+    message: Schema.String,
+  },
+  HttpApiSchema.annotations({ status: 400 }),
+) {}
 
 export class RawInvocationError extends Data.TaggedError("RawInvocationError")<{
   readonly message: string;

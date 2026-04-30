@@ -24,6 +24,7 @@ import {
   type StorageFailure,
   type ToolAnnotations,
 } from "@executor/sdk";
+import { type ManagedAuthConfig } from "@executor/plugin-managed-auth";
 
 import {
   googleDiscoverySchema,
@@ -80,6 +81,7 @@ export interface GoogleDiscoveryAddSourceInput {
   readonly discoveryUrl: string;
   readonly namespace?: string;
   readonly auth: GoogleDiscoveryAuth;
+  readonly managedAuth?: ManagedAuthConfig;
 }
 
 export interface GoogleDiscoveryUpdateSourceInput {
@@ -87,6 +89,7 @@ export interface GoogleDiscoveryUpdateSourceInput {
   /** Rewrite the source's auth — typically after a successful
    *  re-authenticate, to point at a freshly minted Connection. */
   readonly auth?: GoogleDiscoveryAuth;
+  readonly managedAuth?: ManagedAuthConfig;
 }
 
 export interface GoogleDiscoveryOAuthStartInput {
@@ -271,6 +274,7 @@ const deriveNamespace = (input: { name: string; service: string; version: string
 // ---------------------------------------------------------------------------
 
 const GOOGLE_DISCOVERY_OAUTH2_PROVIDER_KEY = "google-discovery:oauth2" as const;
+const GOOGLE_DISCOVERY_COMPOSIO_PROVIDER_KEY = "google-discovery-composio" as const;
 
 const OAuth2ProviderState = Schema.Struct({
   clientIdSecretId: Schema.String,
@@ -354,7 +358,11 @@ const registerManifest = (
 // Plugin
 // ---------------------------------------------------------------------------
 
-export const googleDiscoveryPlugin = definePlugin(() => ({
+export interface GoogleDiscoveryPluginOptions {
+  readonly composioApiKey?: string;
+}
+
+export const googleDiscoveryPlugin = definePlugin((options?: GoogleDiscoveryPluginOptions) => ({
   id: "googleDiscovery" as const,
   schema: googleDiscoverySchema,
   storage: (deps) => makeGoogleDiscoveryStore(deps),
@@ -407,6 +415,7 @@ export const googleDiscoveryPlugin = definePlugin(() => ({
             rootUrl: manifest.rootUrl,
             servicePath: manifest.servicePath,
             auth: input.auth,
+            managedAuth: input.managedAuth,
           });
           const toolCount = yield* registerManifest(
             ctx,
@@ -588,6 +597,7 @@ export const googleDiscoveryPlugin = definePlugin(() => ({
       ctx.storage.updateSourceMeta(namespace, scope, {
         name: input.name?.trim() || undefined,
         auth: input.auth,
+        managedAuth: input.managedAuth,
       }),
   } satisfies GoogleDiscoveryPluginExtension),
 
@@ -597,6 +607,7 @@ export const googleDiscoveryPlugin = definePlugin(() => ({
       toolId: toolRow.id,
       toolScope: toolRow.scope_id as string,
       args,
+      composioApiKey: options?.composioApiKey,
     }),
 
   resolveAnnotations: ({ ctx, sourceId, toolRows }) =>
@@ -787,6 +798,9 @@ export const googleDiscoveryPlugin = definePlugin(() => ({
           };
           return result;
         }),
+    },
+    {
+      key: GOOGLE_DISCOVERY_COMPOSIO_PROVIDER_KEY,
     },
   ],
 }));

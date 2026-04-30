@@ -69,7 +69,8 @@
     "@effect/platform-node": "catalog:",
     "@executor/config": "workspace:*",
     "@executor/sdk": "workspace:*",
-    "effect": "catalog:"
+    "effect": "catalog:",
+    "@executor/plugin-managed-auth": "workspace:*"
   },
   "devDependencies": {
     "@effect-atom/atom-react": "^0.5.0",

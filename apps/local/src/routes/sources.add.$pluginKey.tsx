@@ -33,7 +33,16 @@ export const Route = createFileRoute("/sources/add/$pluginKey")({
   component: () => {
     const { pluginKey } = Route.useParams();
     const { url, preset, namespace } = Route.useSearch();
-    const { auth, syncSourcesToCloud, syncSourcesToLocal } = useLocalAuth();
+    const { auth, entitlements, signIn, openBillingPlans, syncSourcesToCloud, syncSourcesToLocal } =
+      useLocalAuth();
+    const managedAuthAccess =
+      auth.status === "loading"
+        ? { state: "loading" as const }
+        : auth.status !== "authenticated"
+          ? { state: "sign-in" as const, onSignIn: signIn }
+          : entitlements?.managedAuth
+            ? { state: "allowed" as const }
+            : { state: "upgrade" as const, onUpgrade: openBillingPlans };
     return (
       <SourcesAddPage
         pluginKey={pluginKey}
@@ -43,8 +52,12 @@ export const Route = createFileRoute("/sources/add/$pluginKey")({
         sourcePlugins={sourcePlugins}
         nativePlacement="local"
         signedIn={auth.status === "authenticated"}
+        managedAuthAccess={managedAuthAccess}
         localDeviceAvailable
-        syncToCloud={(sourceId) => syncSourcesToCloud([sourceId])}
+        syncToCloud={async (sourceId) => {
+          await syncSourcesToCloud([sourceId]);
+          await syncSourcesToLocal([sourceId]);
+        }}
         syncToLocal={(sourceId) => syncSourcesToLocal([sourceId])}
       />
     );

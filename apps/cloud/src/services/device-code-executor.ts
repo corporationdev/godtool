@@ -29,8 +29,8 @@ type DeviceExecuteResponse =
       readonly error?: string;
     };
 
-type DeviceCodeExecutorOptions<E extends Cause.YieldableError> = {
-  readonly fallback: CodeExecutor<E>;
+type DeviceCodeExecutorOptions = {
+  readonly fallback: CodeExecutor<Cause.YieldableError>;
   readonly organizationId: string;
   readonly organizationName: string;
   readonly userId: string;
@@ -60,7 +60,7 @@ const responseError = (body: DeviceExecuteResponse | null): string | null =>
   body && "error" in body && typeof body.error === "string" ? body.error : null;
 
 const executeOnDevice = (
-  options: DeviceCodeExecutorOptions<Cause.YieldableError>,
+  options: DeviceCodeExecutorOptions,
   code: string,
 ): Effect.Effect<ExecuteResult | null, DeviceExecutionError> =>
   Effect.tryPromise({
@@ -104,8 +104,8 @@ const executeOnDevice = (
         : new DeviceExecutionError({ message: renderErrorMessage(cause) }),
   });
 
-export const makeDeviceFirstCodeExecutor = <E extends Cause.YieldableError>(
-  options: DeviceCodeExecutorOptions<E>,
+export const makeDeviceFirstCodeExecutor = (
+  options: DeviceCodeExecutorOptions,
 ): CodeExecutor<DeviceExecutionError> => ({
   execute: (code: string, toolInvoker: SandboxToolInvoker) =>
     Effect.gen(function* () {

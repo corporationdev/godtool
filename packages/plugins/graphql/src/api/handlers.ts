@@ -2,12 +2,14 @@ import { HttpApiBuilder } from "@effect/platform";
 import { Context, Effect } from "effect";
 
 import { addGroup, capture } from "@executor/api";
+import { ManagedAuthBillingService } from "@executor/plugin-managed-auth";
 import type {
   GraphqlPluginExtension,
   HeaderValue,
   GraphqlUpdateSourceInput,
 } from "../sdk/plugin";
 import { GraphqlGroup } from "./group";
+import { GraphqlExtractionError } from "../sdk/errors";
 
 // ---------------------------------------------------------------------------
 // Service tag
@@ -30,6 +32,16 @@ export class GraphqlExtensionService extends Context.Tag("GraphqlExtensionServic
 // ---------------------------------------------------------------------------
 
 const ExecutorApiWithGraphql = addGroup(GraphqlGroup);
+const requireManagedAuth = (scopeId: string) =>
+  Effect.gen(function* () {
+    const billing = yield* ManagedAuthBillingService;
+    const allowed = yield* billing.canUseManagedAuth(scopeId);
+    if (!allowed) {
+      return yield* new GraphqlExtractionError({
+        message: "Managed OAuth requires the Pro plan",
+      });
+    }
+  });
 
 // ---------------------------------------------------------------------------
 // Handlers
@@ -45,6 +57,9 @@ export const GraphqlHandlers = HttpApiBuilder.group(ExecutorApiWithGraphql, "gra
   handlers
     .handle("addSource", ({ path, payload }) =>
       capture(Effect.gen(function* () {
+        if (payload.managedAuth) {
+          yield* requireManagedAuth(path.scopeId);
+        }
         const ext = yield* GraphqlExtensionService;
         const result = yield* ext.addSource({
           endpoint: payload.endpoint,
@@ -53,6 +68,7 @@ export const GraphqlHandlers = HttpApiBuilder.group(ExecutorApiWithGraphql, "gra
           introspectionJson: payload.introspectionJson,
           namespace: payload.namespace,
           headers: payload.headers as Record<string, HeaderValue> | undefined,
+          managedAuth: payload.managedAuth,
         });
         return {
           toolCount: result.toolCount,
@@ -68,11 +84,15 @@ export const GraphqlHandlers = HttpApiBuilder.group(ExecutorApiWithGraphql, "gra
     )
     .handle("updateSource", ({ path, payload }) =>
       capture(Effect.gen(function* () {
+        if (payload.managedAuth) {
+          yield* requireManagedAuth(path.scopeId);
+        }
         const ext = yield* GraphqlExtensionService;
         yield* ext.updateSource(path.namespace, path.scopeId, {
           name: payload.name,
           endpoint: payload.endpoint,
           headers: payload.headers as Record<string, HeaderValue> | undefined,
+          managedAuth: payload.managedAuth,
         } as GraphqlUpdateSourceInput);
         return { updated: true };
       })),

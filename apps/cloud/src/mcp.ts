@@ -30,6 +30,7 @@ import { UserStoreService } from "./auth/context";
 import { WorkOSAuth, type WorkOSAuthService } from "./auth/workos";
 import { CoreSharedServices } from "./api/core-shared-services";
 import { DbService } from "./services/db";
+import { AutumnService } from "./services/autumn";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -745,12 +746,26 @@ const authorizeMcpOrganization = (
     return jsonRpcError(403, -32001, "No organization in session — log in via the web app first");
   });
 
+const requireCloudMcp = (request: Request, organizationId: string, sessionId: string | null) =>
+  Effect.gen(function* () {
+    const autumn = yield* AutumnService;
+    const allowed = yield* autumn.isFeatureAllowed(organizationId, "cloud-mcp");
+    if (allowed) return null;
+
+    if (sessionId) {
+      yield* clearExistingSession(request, sessionId);
+    }
+    return jsonRpcError(403, -32001, "Cloud HTTP MCP requires the Pro plan");
+  });
+
 const dispatchPost = (request: Request, token: VerifiedToken) =>
   Effect.gen(function* () {
     const sessionId = request.headers.get("mcp-session-id");
     const authError = yield* authorizeMcpOrganization(request, token, sessionId);
     if (authError) return authError;
     const organizationId = token.organizationId!;
+    const billingError = yield* requireCloudMcp(request, organizationId, sessionId);
+    if (billingError) return billingError;
 
     if (sessionId) return yield* forwardToExistingSession(request, sessionId, true, token);
 
@@ -789,6 +804,9 @@ const dispatchGet = (request: Request, token: VerifiedToken) => {
   return Effect.gen(function* () {
     const authError = yield* authorizeMcpOrganization(request, token, sessionId);
     if (authError) return authError;
+    const organizationId = token.organizationId!;
+    const billingError = yield* requireCloudMcp(request, organizationId, sessionId);
+    if (billingError) return billingError;
     return yield* forwardToExistingSession(request, sessionId, false, token);
   });
 };
@@ -799,6 +817,9 @@ const dispatchDelete = (request: Request, token: VerifiedToken) => {
   return Effect.gen(function* () {
     const authError = yield* authorizeMcpOrganization(request, token, sessionId);
     if (authError) return authError;
+    const organizationId = token.organizationId!;
+    const billingError = yield* requireCloudMcp(request, organizationId, sessionId);
+    if (billingError) return billingError;
     return yield* forwardToExistingSession(request, sessionId, true, token);
   });
 };
@@ -837,7 +858,7 @@ export const classifyMcpPath = (pathname: string): McpRoute => {
 export const mcpApp: Effect.Effect<
   HttpServerResponse.HttpServerResponse,
   never,
-  HttpServerRequest.HttpServerRequest | McpAuth | McpOrganizationAuth
+  HttpServerRequest.HttpServerRequest | McpAuth | McpOrganizationAuth | AutumnService
 > = Effect.gen(function* () {
   const httpRequest = yield* HttpServerRequest.HttpServerRequest;
   const request = httpRequest.source as Request;
@@ -878,7 +899,9 @@ export const mcpApp: Effect.Effect<
 );
 
 const rawMcpFetch = HttpApp.toWebHandler(
-  mcpApp.pipe(Effect.provide(Layer.mergeAll(McpAuthLive, McpOrganizationAuthLive))),
+  mcpApp.pipe(
+    Effect.provide(Layer.mergeAll(McpAuthLive, McpOrganizationAuthLive, AutumnService.Default)),
+  ),
 );
 
 /**

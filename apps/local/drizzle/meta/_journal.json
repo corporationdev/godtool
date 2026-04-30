@@ -36,6 +36,20 @@
       "when": 1777507944848,
       "tag": "0004_mighty_captain_midlands",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1777535591631,
+      "tag": "0005_slow_tattoo",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1777549900000,
+      "tag": "0006_managed_auth_http",
+      "breakpoints": true
     }
   ]
 }

@@ -91,11 +91,11 @@ const makeScopeId = (cwd: string): string => {
 
 const createLocalPlugins = (configFile: ConfigFileSink) =>
   [
-    openApiPlugin({ configFile }),
+    openApiPlugin({ configFile, composioApiKey: process.env.COMPOSIO_API_KEY || undefined }),
     mcpPlugin({ dangerouslyAllowStdioMCP: true, configFile }),
-    googleDiscoveryPlugin(),
-    graphqlPlugin({ configFile }),
-    rawPlugin({ configFile }),
+    googleDiscoveryPlugin({ composioApiKey: process.env.COMPOSIO_API_KEY || undefined }),
+    graphqlPlugin({ configFile, composioApiKey: process.env.COMPOSIO_API_KEY || undefined }),
+    rawPlugin({ configFile, composioApiKey: process.env.COMPOSIO_API_KEY || undefined }),
     browserPlugin(),
     computerUsePlugin(),
     workspacePlugin(),

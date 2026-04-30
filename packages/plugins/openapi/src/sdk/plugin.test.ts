@@ -1,4 +1,5 @@
 import { expect, layer } from "@effect/vitest";
+import { vi } from "vitest";
 import { Effect, Layer, Schema } from "effect";
 import {
   HttpApi,
@@ -12,6 +13,8 @@ import {
 import { NodeHttpServer } from "@effect/platform-node";
 
 import {
+  ConnectionId,
+  CreateConnectionInput,
   createExecutor,
   type DBAdapter,
   definePlugin,
@@ -20,6 +23,7 @@ import {
   ScopeId,
   SecretId,
   SetSecretInput,
+  TokenMaterial,
   type InvokeOptions,
   type SecretProvider,
   type Where,
@@ -30,6 +34,9 @@ import { openApiPlugin } from "./plugin";
 import { OAuth2Auth } from "./types";
 
 const autoApprove: InvokeOptions = { onElicitation: "accept-all" };
+
+const toRequest = (input: RequestInfo | URL, init?: RequestInit): Request =>
+  input instanceof Request ? input : new Request(input, init);
 
 type FindManyCall = {
   readonly model: string;
@@ -451,6 +458,93 @@ layer(TestLayer)("OpenAPI Plugin", (it) => {
       )) as { data: unknown; error: unknown };
       expect(result.error).toBeNull();
       expect(result.data).toEqual({ id: 2, name: "Gadget" });
+    }),
+  );
+
+  it.effect("invokes managed auth sources through the Composio proxy", () =>
+    Effect.gen(function* () {
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+        const request = toRequest(input, init);
+        expect(request.url).toBe("https://backend.composio.dev/api/v3/tools/execute/proxy");
+        expect(request.headers.get("x-api-key")).toBe("composio-test-key");
+        const body = await request.json();
+        expect(body).toMatchObject({
+          connected_account_id: "ca_openapi_123",
+          endpoint: "https://api.example.com/items/2",
+          method: "GET",
+          parameters: [{ name: "X-Static", value: "hello", type: "header" }],
+        });
+        return new Response(
+          JSON.stringify({
+            status: 200,
+            headers: { "content-type": "application/json" },
+            data: { id: 2, name: "Managed Gadget" },
+            error: null,
+            binaryData: null,
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      });
+
+      try {
+        const executor = yield* createExecutor(
+          makeTestConfig({
+            plugins: [
+              openApiPlugin({ composioApiKey: "composio-test-key" }),
+              memorySecretsPlugin(),
+            ] as const,
+          }),
+        );
+
+        yield* executor.connections.create(
+          new CreateConnectionInput({
+            id: ConnectionId.make("openapi-composio-example"),
+            scope: ScopeId.make(TEST_SCOPE),
+            provider: "openapi-composio",
+            identityLabel: "Example",
+            accessToken: new TokenMaterial({
+              secretId: SecretId.make("openapi-composio-example.managed"),
+              name: "Example Managed Auth",
+              value: "not-used-for-direct-cloud",
+            }),
+            refreshToken: null,
+            expiresAt: null,
+            oauthScope: null,
+            providerState: {
+              connectedAccountId: "ca_openapi_123",
+              app: "github",
+              authConfigId: "ac_openapi_123",
+            },
+          }),
+        );
+
+        yield* executor.openapi.addSpec({
+          spec: specJson,
+          scope: TEST_SCOPE,
+          namespace: "managed",
+          baseUrl: "https://api.example.com",
+          headers: { "X-Static": "hello" },
+          managedAuth: {
+            kind: "composio",
+            app: "github",
+            authConfigId: "ac_openapi_123",
+            connectionId: "openapi-composio-example",
+          },
+        });
+        const stored = yield* executor.openapi.getSource("managed", TEST_SCOPE);
+        expect(stored?.config.managedAuth?.connectionId).toBe("openapi-composio-example");
+
+        const result = (yield* executor.tools.invoke(
+          "managed.items.getItem",
+          { itemId: "2" },
+          autoApprove,
+        )) as { data: unknown; error: unknown };
+
+        expect(result.error).toBeNull();
+        expect(result.data).toEqual({ id: 2, name: "Managed Gadget" });
+      } finally {
+        fetchSpy.mockRestore();
+      }
     }),
   );
 

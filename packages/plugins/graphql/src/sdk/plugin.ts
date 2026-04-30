@@ -5,10 +5,15 @@ import type { Layer } from "effect";
 import {
   definePlugin,
   SourceDetectionResult,
+  type ConnectionProvider,
   type StorageFailure,
   type ToolAnnotations,
   type ToolRow,
 } from "@executor/sdk";
+import {
+  invokeManagedHttp,
+  type ManagedAuthConfig,
+} from "@executor/plugin-managed-auth";
 
 import {
   headersToConfigValues,
@@ -36,6 +41,7 @@ import {
 } from "./store";
 import {
   ExtractedField,
+  InvocationResult,
   OperationBinding,
   type HeaderValue as HeaderValueValue,
   type GraphqlOperationKind,
@@ -65,6 +71,7 @@ export interface GraphqlSourceConfig {
   readonly namespace?: string;
   /** Headers applied to every request. Values can reference secrets. */
   readonly headers?: Record<string, HeaderValue>;
+  readonly managedAuth?: ManagedAuthConfig;
 }
 
 // ---------------------------------------------------------------------------
@@ -75,6 +82,7 @@ export interface GraphqlUpdateSourceInput {
   readonly name?: string;
   readonly endpoint?: string;
   readonly headers?: Record<string, HeaderValue>;
+  readonly managedAuth?: ManagedAuthConfig;
 }
 
 /**
@@ -141,6 +149,8 @@ const namespaceFromEndpoint = (endpoint: string): string => {
     return "graphql";
   }
 };
+
+const GRAPHQL_COMPOSIO_PROVIDER_KEY = "graphql-composio" as const;
 
 const formatTypeRef = (ref: IntrospectionTypeRef): string => {
   switch (ref.kind) {
@@ -293,6 +303,7 @@ const annotationsFor = (binding: OperationBinding): ToolAnnotations => {
 
 export interface GraphqlPluginOptions {
   readonly httpClientLayer?: Layer.Layer<HttpClient.HttpClient>;
+  readonly composioApiKey?: string;
   /** If provided, source add/remove is mirrored to godtool.jsonc
    *  (best-effort — file errors are logged, not raised). */
   readonly configFile?: ConfigFileSink;
@@ -311,7 +322,8 @@ const toGraphqlConfigEntry = (
 
 export const graphqlPlugin = definePlugin(
   (options?: GraphqlPluginOptions) => {
-    const httpClientLayer = options?.httpClientLayer ?? FetchHttpClient.layer;
+  const httpClientLayer = options?.httpClientLayer ?? FetchHttpClient.layer;
+  const composioApiKey = options?.composioApiKey;
 
     return {
       id: "graphql" as const,
@@ -364,6 +376,7 @@ export const graphqlPlugin = definePlugin(
                 name: displayName,
                 endpoint: config.endpoint,
                 headers: config.headers ?? {},
+                managedAuth: config.managedAuth,
               };
 
               const storedOps: StoredOperation[] = prepared.map((p) => ({
@@ -437,6 +450,7 @@ export const graphqlPlugin = definePlugin(
               name: input.name?.trim() || undefined,
               endpoint: input.endpoint,
               headers: input.headers,
+              managedAuth: input.managedAuth,
             }),
         } satisfies GraphqlPluginExtension;
       },
@@ -513,13 +527,60 @@ export const graphqlPlugin = definePlugin(
             ctx.secrets,
           );
 
-          const result = yield* invokeWithLayer(
-            op.binding,
-            (args ?? {}) as Record<string, unknown>,
-            source.endpoint,
-            resolvedHeaders,
-            httpClientLayer,
-          );
+          const invocationArgs = (args ?? {}) as Record<string, unknown>;
+          const result = source.managedAuth
+            ? yield* invokeManagedHttp({
+                config: source.managedAuth,
+                composioApiKey,
+                connections: ctx.connections,
+                request: {
+                  endpoint: source.endpoint,
+                  method: "POST",
+                  parameters: [
+                    { name: "content-type", value: "application/json", type: "header" },
+                    ...Object.entries(resolvedHeaders).map(([name, value]) => ({
+                      name,
+                      value,
+                      type: "header" as const,
+                    })),
+                  ],
+                  body: {
+                    query: op.binding.operationString,
+                    variables: Object.fromEntries(
+                      op.binding.variableNames
+                        .filter((name) => invocationArgs[name] !== undefined)
+                        .map((name) => [name, invocationArgs[name]]),
+                    ),
+                  },
+                },
+              }).pipe(
+                Effect.map((response) => new InvocationResult({
+                  status: response.status,
+                  data:
+                    response.error == null &&
+                    typeof response.data === "object" &&
+                    response.data !== null &&
+                    "data" in response.data
+                      ? (response.data as { data?: unknown }).data ?? null
+                      : response.error == null
+                        ? response.data
+                        : null,
+                  errors:
+                    response.error ??
+                    (typeof response.data === "object" &&
+                    response.data !== null &&
+                    "errors" in response.data
+                      ? (response.data as { errors?: unknown }).errors ?? null
+                      : null),
+                })),
+              )
+            : yield* invokeWithLayer(
+                op.binding,
+                invocationArgs,
+                source.endpoint,
+                resolvedHeaders,
+                httpClientLayer,
+              );
 
           return result;
         }),
@@ -593,6 +654,11 @@ export const graphqlPlugin = definePlugin(
             namespace: name,
           });
         }),
+      connectionProviders: [
+        {
+          key: GRAPHQL_COMPOSIO_PROVIDER_KEY,
+        } satisfies ConnectionProvider,
+      ],
     };
   },
 );

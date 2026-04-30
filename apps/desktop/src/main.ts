@@ -263,6 +263,24 @@ type CloudSourceImportCandidate = {
   readonly pluginId: string;
 };
 
+type CloudEntitlements = {
+  readonly managedAuth: boolean;
+  readonly cloudMcp: boolean;
+  readonly hostedWorkerFallback: boolean;
+};
+
+type RawComposioConnectPayload = {
+  readonly callbackBaseUrl?: string;
+  readonly app?: string;
+  readonly authConfigId?: string | null;
+  readonly connectionId?: string;
+  readonly displayName?: string;
+};
+
+type RawComposioConnectResponse = {
+  readonly redirectUrl: string;
+};
+
 type WorkspaceFileNode = {
   readonly type: "file" | "directory";
   readonly name: string;
@@ -1079,6 +1097,86 @@ const fetchCloudSources = async (): Promise<readonly CloudSource[]> => {
   return (await sourcesResponse.json()) as readonly CloudSource[];
 };
 
+const hasAutumnFeature = (customer: unknown, featureId: string): boolean => {
+  if (typeof customer !== "object" || customer === null) return false;
+  const { flags, balances } = customer as {
+    readonly flags?: Record<string, unknown>;
+    readonly balances?: Record<string, unknown>;
+  };
+  return Boolean(flags?.[featureId] || balances?.[featureId]);
+};
+
+const fetchCloudEntitlements = async (): Promise<CloudEntitlements> => {
+  const authState = await fetchCloudAuthState();
+  if (authState.status !== "authenticated" || authState.organization === null) {
+    return { managedAuth: false, cloudMcp: false, hostedWorkerFallback: false };
+  }
+
+  const cookie = await getCloudCookieHeader();
+  if (!cookie) return { managedAuth: false, cloudMcp: false, hostedWorkerFallback: false };
+
+  const response = await fetch(cloudUrl("/api/autumn/getOrCreateCustomer"), {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      cookie,
+    },
+    body: JSON.stringify({}),
+  });
+  if (response.status === 401 || response.status === 403) {
+    return { managedAuth: false, cloudMcp: false, hostedWorkerFallback: false };
+  }
+  const customer = await readJsonResponse<unknown>(response);
+  return {
+    managedAuth: hasAutumnFeature(customer, "managed-auth"),
+    cloudMcp: hasAutumnFeature(customer, "cloud-mcp"),
+    hostedWorkerFallback: hasAutumnFeature(customer, "hosted-worker-fallback"),
+  };
+};
+
+const fetchCloudScopeId = async (cookie: string): Promise<string> => {
+  const scopeResponse = await fetch(cloudUrl("/api/scope"), {
+    headers: { accept: "application/json", cookie },
+  });
+  if (scopeResponse.status === 401 || scopeResponse.status === 403) {
+    throw new Error("Not signed in");
+  }
+  const scope = await readJsonResponse<{ readonly id?: unknown }>(scopeResponse);
+  if (typeof scope.id !== "string" || scope.id.length === 0) {
+    throw new Error("Cloud scope is not available");
+  }
+  return scope.id;
+};
+
+const startCloudRawComposioConnect = async (
+  payload: RawComposioConnectPayload,
+): Promise<RawComposioConnectResponse> => {
+  const cookie = await getCloudCookieHeader();
+  if (!cookie) throw new Error("Not signed in");
+  const scopeId = await fetchCloudScopeId(cookie);
+  if (!payload.app || !payload.connectionId) {
+    throw new Error("Managed auth request is missing app or connection id");
+  }
+
+  const response = await fetch(
+    cloudUrl(`/api/scopes/${encodeURIComponent(scopeId)}/raw/composio/start`),
+    {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+        cookie,
+      },
+      body: JSON.stringify({
+        ...payload,
+        callbackBaseUrl: cloudUrl("/api/raw/composio/callback"),
+      }),
+    },
+  );
+  return readJsonResponse<RawComposioConnectResponse>(response);
+};
+
 const callCloudSourceSync = async <T>(
   route: "to-cloud" | "to-local" | "delete" | "import-candidates",
   payload: unknown,
@@ -1721,6 +1819,13 @@ const setupIPC = (): void => {
   ipcMain.handle("cloud-auth:sign-out", () => signOutCloud());
   ipcMain.handle("cloud-auth:get-cloud-url", () => CLOUD_APP_URL);
   ipcMain.handle("cloud-auth:get-device-id", () => ensureDeviceIdentity().deviceId);
+  ipcMain.handle("cloud-auth:get-entitlements", () => fetchCloudEntitlements());
+  ipcMain.handle("cloud-auth:open-billing-plans", () =>
+    shell.openExternal(cloudUrl("/billing/plans")),
+  );
+  ipcMain.handle("cloud-auth:start-raw-composio-connect", (_event, payload: unknown) =>
+    startCloudRawComposioConnect((payload ?? {}) as RawComposioConnectPayload),
+  );
   ipcMain.handle("cloud-auth:list-sources", () => fetchCloudSources());
   ipcMain.handle("cloud-auth:source-sync-to-cloud", (_event, sourceIds: readonly string[]) =>
     syncSourcesToCloud(Array.isArray(sourceIds) ? sourceIds : []),

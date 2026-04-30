@@ -57,6 +57,20 @@
       "when": 1777541700000,
       "tag": "0007_google_discovery_raw",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1777548821000,
+      "tag": "0008_raw_composio",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1777549900000,
+      "tag": "0009_managed_auth_http",
+      "breakpoints": true
     }
   ]
 }

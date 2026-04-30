@@ -1,0 +1,24 @@
+{
+  "name": "@executor/plugin-managed-auth",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsgo --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@executor/sdk": "workspace:*",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "bun-types": "catalog:",
+    "tsup": "catalog:",
+    "vitest": "catalog:"
+  }
+}

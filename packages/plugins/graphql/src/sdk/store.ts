@@ -1,6 +1,7 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
 import { defineSchema, type StorageDeps, type StorageFailure } from "@executor/sdk";
+import { ManagedAuthConfig, type ManagedAuthConfig as ManagedAuthConfigType } from "@executor/plugin-managed-auth";
 
 import { OperationBinding, type HeaderValue } from "./types";
 
@@ -18,6 +19,7 @@ export const graphqlSchema = defineSchema({
       name: { type: "string", required: true },
       endpoint: { type: "string", required: true },
       headers: { type: "json", required: false },
+      managed_auth: { type: "json", required: false },
     },
   },
   graphql_operation: {
@@ -45,6 +47,7 @@ export interface StoredGraphqlSource {
   readonly name: string;
   readonly endpoint: string;
   readonly headers: Record<string, HeaderValue>;
+  readonly managedAuth?: ManagedAuthConfigType;
 }
 
 export interface StoredOperation {
@@ -84,6 +87,8 @@ const decodeHeaders = (value: unknown): Record<string, HeaderValue> => {
   if (typeof value === "string") return JSON.parse(value) as Record<string, HeaderValue>;
   return value as Record<string, HeaderValue>;
 };
+const decodeManagedAuth = Schema.decodeUnknownSync(ManagedAuthConfig);
+const encodeManagedAuth = Schema.encodeSync(ManagedAuthConfig);
 
 // ---------------------------------------------------------------------------
 // Store interface
@@ -109,7 +114,7 @@ export interface GraphqlStore {
   readonly updateSourceMeta: (
     namespace: string,
     scope: string,
-    patch: { readonly name?: string; readonly endpoint?: string; readonly headers?: Record<string, HeaderValue> },
+    patch: { readonly name?: string; readonly endpoint?: string; readonly headers?: Record<string, HeaderValue>; readonly managedAuth?: ManagedAuthConfigType },
   ) => Effect.Effect<void, StorageFailure>;
 
   readonly getSource: (
@@ -148,6 +153,9 @@ export const makeDefaultGraphqlStore = ({
     name: row.name as string,
     endpoint: row.endpoint as string,
     headers: decodeHeaders(row.headers),
+    ...(row.managed_auth
+      ? { managedAuth: decodeManagedAuth(typeof row.managed_auth === "string" ? JSON.parse(row.managed_auth) : row.managed_auth) }
+      : {}),
   });
 
   const rowToOperation = (row: Record<string, unknown>): StoredOperation => ({
@@ -186,6 +194,9 @@ export const makeDefaultGraphqlStore = ({
             name: input.name,
             endpoint: input.endpoint,
             headers: input.headers as unknown as Record<string, unknown>,
+            managed_auth: input.managedAuth
+              ? (encodeManagedAuth(input.managedAuth) as unknown as Record<string, unknown>)
+              : undefined,
           },
           forceAllowId: true,
         });
@@ -218,6 +229,11 @@ export const makeDefaultGraphqlStore = ({
         if (patch.endpoint !== undefined) update.endpoint = patch.endpoint;
         if (patch.headers !== undefined) {
           update.headers = patch.headers as unknown as Record<string, unknown>;
+        }
+        if (patch.managedAuth !== undefined) {
+          update.managed_auth = patch.managedAuth
+            ? (encodeManagedAuth(patch.managedAuth) as unknown as Record<string, unknown>)
+            : undefined;
         }
         if (Object.keys(update).length === 0) return;
         yield* db.update({

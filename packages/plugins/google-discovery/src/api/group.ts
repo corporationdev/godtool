@@ -1,6 +1,7 @@
 import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from "@effect/platform";
 import { Schema } from "effect";
 import { ScopeId } from "@executor/sdk";
+import { ManagedAuthConfig } from "@executor/plugin-managed-auth";
 import { InternalError } from "@executor/api";
 
 import {
@@ -54,6 +55,7 @@ const AddSourcePayload = Schema.Struct({
   discoveryUrl: Schema.String,
   namespace: Schema.optional(Schema.String),
   auth: AuthPayload,
+  managedAuth: Schema.optional(ManagedAuthConfig),
 });
 
 const AddSourceResponse = Schema.Struct({
@@ -64,6 +66,7 @@ const AddSourceResponse = Schema.Struct({
 const UpdateSourcePayload = Schema.Struct({
   name: Schema.optional(Schema.String),
   auth: Schema.optional(AuthPayload),
+  managedAuth: Schema.optional(ManagedAuthConfig),
 });
 
 const UpdateSourceResponse = Schema.Struct({

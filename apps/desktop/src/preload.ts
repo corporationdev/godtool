@@ -8,6 +8,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
     signOut: () => ipcRenderer.invoke("cloud-auth:sign-out"),
     getCloudUrl: () => ipcRenderer.invoke("cloud-auth:get-cloud-url"),
     getDeviceId: () => ipcRenderer.invoke("cloud-auth:get-device-id"),
+    getEntitlements: () => ipcRenderer.invoke("cloud-auth:get-entitlements"),
+    openBillingPlans: () => ipcRenderer.invoke("cloud-auth:open-billing-plans"),
+    startRawComposioConnect: (payload: unknown) =>
+      ipcRenderer.invoke("cloud-auth:start-raw-composio-connect", payload),
     listSources: () => ipcRenderer.invoke("cloud-auth:list-sources"),
     syncSourcesToCloud: (sourceIds: string[]) =>
       ipcRenderer.invoke("cloud-auth:source-sync-to-cloud", sourceIds),

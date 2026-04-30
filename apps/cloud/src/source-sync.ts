@@ -12,6 +12,7 @@ import { authorizeOrganization } from "./auth/authorize-organization";
 import { WorkOSAuth } from "./auth/workos";
 import { SharedServices } from "./api/layers";
 import { createScopedExecutor } from "./services/executor";
+import { createComposioBrokerToken } from "./composio-proxy";
 
 type DeviceSessionBinding = DurableObjectNamespace<import("./device-session").DeviceSessionDO>;
 
@@ -114,6 +115,34 @@ const placementsFromPayload = (payload: {
   return new Set(placements.length > 0 ? placements : ["local", "cloud"]);
 };
 
+const attachManagedAuthBrokers = async (
+  auth: SourceSyncAuth,
+  request: Request,
+  sources: readonly PortableSourcePackage[],
+): Promise<readonly PortableSourcePackage[]> => {
+  const brokerUrl = new URL("/api/composio-proxy/http", request.url).toString();
+  const out: PortableSourcePackage[] = [];
+  for (const source of sources) {
+    const connections = [];
+    for (const connection of source.connections) {
+      if (!connection.provider.endsWith("-composio")) {
+        connections.push(connection);
+        continue;
+      }
+      connections.push({
+        ...connection,
+        accessToken: await createComposioBrokerToken(auth, connection.id),
+        providerState: {
+          ...(connection.providerState ?? {}),
+          brokerUrl,
+        },
+      });
+    }
+    out.push({ ...source, connections });
+  }
+  return out;
+};
+
 const sourceSyncEffect = (auth: SourceSyncAuth, request: Request, route: string) =>
   Effect.gen(function* () {
     const payload = yield* Effect.promise(() => readPayload(request));
@@ -158,8 +187,12 @@ const sourceSyncEffect = (auth: SourceSyncAuth, request: Request, route: string)
 
     if (route === "to-local") {
       const sourceIds = sourceIdsFromPayload(payload);
-      const sources = yield* Effect.promise(() =>
-        exportSourcePackages(executor, sourceIds, scopeId),
+      const sources = yield* Effect.promise(async () =>
+        attachManagedAuthBrokers(
+          auth,
+          request,
+          await exportSourcePackages(executor, sourceIds, scopeId),
+        ),
       );
       return yield* Effect.promise(() => deviceRequest(auth, request, "import", { sources }));
     }

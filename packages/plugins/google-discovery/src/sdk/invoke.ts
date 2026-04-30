@@ -2,6 +2,7 @@ import { Effect, Layer, Option } from "effect";
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "@effect/platform";
 
 import type { PluginCtx, StorageFailure } from "@executor/sdk";
+import { invokeManagedHttp } from "@executor/plugin-managed-auth";
 
 import {
   GoogleDiscoveryInvocationError,
@@ -87,6 +88,10 @@ const performRequest = Effect.fn("GoogleDiscovery.invoke")(function* (input: {
   source: GoogleDiscoveryStoredSourceData;
   args: Record<string, unknown>;
   authorizationHeader?: string;
+  managed?: {
+    readonly composioApiKey?: string;
+    readonly connections: PluginCtx<GoogleDiscoveryStore>["connections"];
+  };
 }) {
   const client = yield* HttpClient.HttpClient;
 
@@ -96,6 +101,7 @@ const performRequest = Effect.fn("GoogleDiscovery.invoke")(function* (input: {
     parameters: input.parameters,
   });
   const requestUrl = new URL(resolvedPath.replace(/^\//, ""), resolveBaseUrl(input.source));
+  const managedParameters: Array<{ name: string; value: string; type: "header" | "query" }> = [];
 
   for (const parameter of input.parameters) {
     if (parameter.location === "path") continue;
@@ -112,6 +118,7 @@ const performRequest = Effect.fn("GoogleDiscovery.invoke")(function* (input: {
     if (parameter.location === "query") {
       for (const value of values) {
         requestUrl.searchParams.append(parameter.name, value);
+        managedParameters.push({ name: parameter.name, value, type: "query" });
       }
     }
   }
@@ -127,14 +134,59 @@ const performRequest = Effect.fn("GoogleDiscovery.invoke")(function* (input: {
       parameter.name,
       parameter.repeated ? values.join(",") : values[0]!,
     );
+    managedParameters.push({
+      name: parameter.name,
+      value: parameter.repeated ? values.join(",") : values[0]!,
+      type: "header",
+    });
   }
 
   if (input.authorizationHeader) {
     request = HttpClientRequest.setHeader(request, "Authorization", input.authorizationHeader);
   }
 
-  if (input.hasBody && input.args.body !== undefined) {
-    request = HttpClientRequest.bodyUnsafeJson(request, input.args.body);
+  const body = input.hasBody && input.args.body !== undefined ? input.args.body : undefined;
+  if (body !== undefined) {
+    request = HttpClientRequest.bodyUnsafeJson(request, body);
+  }
+
+  if (input.source.managedAuth) {
+    if (body !== undefined) {
+      managedParameters.push({ name: "content-type", value: "application/json", type: "header" });
+    }
+    const managed = input.managed;
+    if (!managed) {
+      return yield* new GoogleDiscoveryInvocationError({
+        message: "Managed auth is not configured",
+        statusCode: Option.none(),
+      });
+    }
+    const response = yield* invokeManagedHttp({
+      config: input.source.managedAuth,
+      composioApiKey: managed.composioApiKey,
+      connections: managed.connections,
+      request: {
+        endpoint: requestUrl.toString(),
+        method: input.method.toUpperCase() as "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD",
+        ...(body !== undefined ? { body } : {}),
+        parameters: managedParameters,
+      },
+    }).pipe(
+      Effect.mapError(
+        (err) =>
+          new GoogleDiscoveryInvocationError({
+            message: err.message,
+            statusCode: Option.none(),
+            cause: err,
+          }),
+      ),
+    );
+    return new GoogleDiscoveryInvocationResult({
+      status: response.status,
+      headers: response.headers,
+      data: response.error == null ? response.data : null,
+      error: response.error,
+    });
   }
 
   const response = yield* client.execute(request).pipe(
@@ -157,7 +209,7 @@ const performRequest = Effect.fn("GoogleDiscovery.invoke")(function* (input: {
         cause: err,
       }),
   );
-  const body =
+  const responseBody =
     response.status === 204
       ? null
       : isJsonContentType(contentType)
@@ -165,14 +217,14 @@ const performRequest = Effect.fn("GoogleDiscovery.invoke")(function* (input: {
             Effect.catchAll(() => response.text),
             mapBodyError,
           )
-        : yield* response.text.pipe(mapBodyError);
+      : yield* response.text.pipe(mapBodyError);
 
   const ok = response.status >= 200 && response.status < 300;
   return new GoogleDiscoveryInvocationResult({
     status: response.status,
     headers: { ...response.headers },
-    data: ok ? body : null,
-    error: ok ? null : body,
+    data: ok ? responseBody : null,
+    error: ok ? null : responseBody,
   });
 });
 
@@ -187,6 +239,7 @@ export const invokeGoogleDiscoveryTool = (input: {
   toolScope: string;
   args: unknown;
   httpClientLayer?: Layer.Layer<HttpClient.HttpClient>;
+  composioApiKey?: string;
 }): Effect.Effect<
   GoogleDiscoveryInvocationResult,
   | GoogleDiscoveryInvocationError
@@ -241,5 +294,9 @@ export const invokeGoogleDiscoveryTool = (input: {
       source,
       args: (input.args ?? {}) as Record<string, unknown>,
       authorizationHeader: authHeader,
+      managed: {
+        composioApiKey: input.composioApiKey,
+        connections: input.ctx.connections,
+      },
     }).pipe(Effect.provide(layer));
   });

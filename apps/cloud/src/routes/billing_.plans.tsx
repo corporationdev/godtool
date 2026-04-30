@@ -14,24 +14,13 @@ const PLAN_META: Record<
   string,
   { tagline: string; inherits?: string; features: string[] }
 > = {
-  hobby: {
-    tagline: "For individuals and small teams",
+  pro: {
+    tagline: "For cloud-managed integrations",
     features: [
-      "50,000 included executions per seat",
-      "Up to 5 seats",
-      "60s execution timeout",
-      "Unlimited sources",
-      "$0.30 per 1,000 extra executions",
-    ],
-  },
-  professional: {
-    tagline: "For teams that need more",
-    inherits: "Hobby",
-    features: [
-      "100,000 included executions per seat",
-      "Unlimited seats",
-      "5 minute execution timeout",
-      "Join by team domain",
+      "Managed OAuth for popular integrations",
+      "Cloud HTTP MCP from anywhere",
+      "Hosted worker fallback when your Mac is offline",
+      "Unlimited local execution",
     ],
   },
 };
@@ -75,7 +64,7 @@ function PlansPage() {
   const isLoading = customerLoading || plansLoading;
 
   const paidPlans = (plans ?? ([] as Plan[])).filter(
-    (p: Plan) => p.id === "hobby" || p.id === "professional",
+    (p: Plan) => p.id === "pro",
   );
 
   return (
@@ -171,7 +160,7 @@ function PlansPage() {
                     </span>
                     {plan.price?.interval && (
                       <span className="text-sm text-muted-foreground">
-                        USD / seat / {plan.price.interval}
+                        USD / {plan.price.interval}
                       </span>
                     )}
                   </div>
@@ -275,7 +264,7 @@ function PlansPage() {
               </div>
 
               <p className="mt-5 text-xs font-medium text-foreground">
-                Everything in Professional, plus
+                Everything in Pro, plus
               </p>
               <ul role="list" className="mt-2 space-y-2">
                 {ENTERPRISE_FEATURES.map((f) => (

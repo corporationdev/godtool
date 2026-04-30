@@ -10,9 +10,8 @@ export const Route = createFileRoute("/billing")({
 });
 
 const PLAN_TAGLINES: Record<string, string> = {
-  free: "For trying things out",
-  hobby: "For individuals and small teams",
-  professional: "For teams that need more",
+  free: "Unlimited local usage",
+  pro: "Managed auth, Cloud HTTP MCP, and hosted worker fallback",
 };
 
 function BillingPage() {
@@ -51,8 +50,6 @@ function BillingPage() {
     (s) =>
       s.planId === (activePlan?.id ?? "free") && (s.status === "active" || s.status === "trialing"),
   );
-
-  const executions = customer?.balances?.executions;
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
@@ -112,34 +109,9 @@ function BillingPage() {
         {/* Divider */}
         <div className="h-px bg-border/50 my-2" />
 
-        {/* Usage */}
-        {executions && (
-          <div className="py-4">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-sm font-medium text-foreground">Executions</p>
-              <p className="text-sm tabular-nums text-muted-foreground">
-                {executions.usage.toLocaleString()}
-                <span className="text-muted-foreground">
-                  {" / "}
-                  {executions.granted.toLocaleString()} this month
-                </span>
-              </p>
-            </div>
-            {!executions.unlimited && executions.granted > 0 && (
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-border">
-                <div
-                  className="h-full rounded-full bg-primary transition-all duration-300"
-                  style={
-                    {
-                      "--progress": `${Math.min(100, (executions.usage / executions.granted) * 100)}%`,
-                      width: "var(--progress)",
-                    } as React.CSSProperties
-                  }
-                />
-              </div>
-            )}
-          </div>
-        )}
+        <div className="py-4 text-sm text-muted-foreground">
+          Local execution is unlimited. Pro unlocks cloud-managed features, not local usage.
+        </div>
       </div>
     </div>
   );

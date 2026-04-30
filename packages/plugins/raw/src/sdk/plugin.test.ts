@@ -3,9 +3,12 @@ import { Effect } from "effect";
 import { vi } from "vitest";
 
 import {
+  ConnectionId,
+  CreateConnectionInput,
   ScopeId,
   SecretId,
   SetSecretInput,
+  TokenMaterial,
   createExecutor,
   definePlugin,
   makeTestConfig,
@@ -162,6 +165,91 @@ describe("rawPlugin", () => {
     }),
   );
 
+  it.effect("invokes managed auth sources through a cloud broker token when imported locally", () =>
+    Effect.gen(function* () {
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+        const request = toRequest(input, init);
+        expect(request.url).toBe("https://cloud.test/api/composio-proxy/raw");
+        expect(request.headers.get("authorization")).toBe("Bearer broker-token");
+        const body = await request.json();
+        expect(body).toMatchObject({
+          endpoint: "https://slack.com/api/users.list",
+          method: "GET",
+          parameters: [{ name: "X-Test", value: "yes", type: "header" }],
+        });
+        return new Response(
+          JSON.stringify({
+            status: 200,
+            headers: { "content-type": "application/json" },
+            data: { ok: true },
+            error: null,
+            binaryData: null,
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      });
+
+      try {
+        const executor = yield* makeExecutor();
+        yield* executor.connections.create(
+          new CreateConnectionInput({
+            id: ConnectionId.make("raw-composio-slack"),
+            scope: ScopeId.make(TEST_SCOPE),
+            provider: "raw-composio",
+            identityLabel: "Slack",
+            accessToken: new TokenMaterial({
+              secretId: SecretId.make("raw-composio-slack.managed"),
+              name: "Slack Managed Auth",
+              value: "broker-token",
+            }),
+            refreshToken: null,
+            expiresAt: null,
+            oauthScope: null,
+            providerState: {
+              brokerUrl: "https://cloud.test/api/composio-proxy/raw",
+              connectedAccountId: "ca_123",
+              app: "slack",
+              authConfigId: "ac_123",
+            },
+          }),
+        );
+        yield* executor.raw.addSource({
+          baseUrl: "https://slack.com/api",
+          scope: TEST_SCOPE,
+          namespace: "slack",
+          headers: { "X-Test": "yes" },
+          composio: {
+            kind: "composio",
+            app: "slack",
+            authConfigId: "ac_123",
+            connectionId: "raw-composio-slack",
+          },
+          auth: {
+            kind: "composio",
+            app: "slack",
+            authConfigId: "ac_123",
+            connectionId: "raw-composio-slack",
+          },
+        });
+
+        const result = yield* executor.tools.invoke(
+          "slack.fetch",
+          { path: "users.list" },
+          autoApprove,
+        );
+
+        expect(result).toEqual({
+          ok: true,
+          status: 200,
+          headers: { "content-type": "application/json" },
+          body: { ok: true },
+        });
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    }),
+  );
+
   it("keeps request paths inside the configured base URL", () => {
     expect(
       buildRequestUrl("https://api.example.com/v1", "users", {
@@ -177,16 +265,30 @@ describe("rawPlugin", () => {
     ).toThrow(/escapes/);
   });
 
-  it("ships only the Slack and Notion raw HTTP presets", () => {
-    expect(rawPresets.map((preset) => preset.id)).toEqual(["slack", "notion"]);
+  it("ships the popular managed-auth raw HTTP presets", () => {
+    expect(rawPresets.map((preset) => preset.id)).toEqual([
+      "gmail",
+      "googlesheets",
+      "googledrive",
+      "googlecalendar",
+      "slack",
+      "notion",
+      "github",
+      "linear",
+    ]);
+    for (const preset of rawPresets) {
+      expect(preset.composio?.app).toBeTruthy();
+    }
     expect(rawPresets.find((preset) => preset.id === "slack")).toMatchObject({
       baseUrl: "https://slack.com/api",
+      composio: { app: "slack" },
     });
     expect(rawPresets.find((preset) => preset.id === "notion")).toMatchObject({
       baseUrl: "https://api.notion.com",
       defaultHeaders: {
         "Notion-Version": "2022-06-28",
       },
+      composio: { app: "notion" },
     });
   });
 });

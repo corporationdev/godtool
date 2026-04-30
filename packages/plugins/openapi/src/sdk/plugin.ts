@@ -31,6 +31,7 @@ import {
   type ToolAnnotations,
   type ToolRow,
 } from "@executor/sdk";
+import { invokeManagedHttp, type ManagedAuthConfig } from "@executor/plugin-managed-auth";
 
 import {
   headersToConfigValues,
@@ -49,6 +50,7 @@ import { compileToolDefinitions, type ToolDefinition } from "./definitions";
 import {
   annotationsForOperation,
   invokeWithLayer,
+  buildManagedHttpRequest,
   resolveHeaders,
 } from "./invoke";
 import { resolveBaseUrl } from "./openapi-utils";
@@ -70,6 +72,7 @@ import {
   OpenApiSourceBindingInput,
   type OpenApiSourceBindingRef,
   type OpenApiSourceBindingValue,
+  InvocationResult,
   OperationBinding,
   type ConfiguredHeaderValue as ConfiguredHeaderValueValue,
   type HeaderValue as HeaderValueValue,
@@ -98,6 +101,7 @@ export interface OpenApiSpecConfig {
   readonly namespace?: string;
   readonly headers?: Record<string, OpenApiHeaderInput>;
   readonly oauth2?: OpenApiOAuthInput;
+  readonly managedAuth?: ManagedAuthConfig;
 }
 
 export interface OpenApiUpdateSourceInput {
@@ -107,6 +111,7 @@ export interface OpenApiUpdateSourceInput {
   /** Refresh the source's stored OAuth2 metadata after a successful
    *  re-authenticate. */
   readonly oauth2?: OpenApiOAuthInput;
+  readonly managedAuth?: ManagedAuthConfig;
 }
 
 // ---------------------------------------------------------------------------
@@ -496,6 +501,7 @@ const resolveEffectiveSourceConfig = (
         namespace: base.config.namespace ?? fallback.config.namespace,
         headers: hasBaseHeaders ? base.config.headers : fallback.config.headers,
         oauth2: base.config.oauth2 ?? fallback.config.oauth2,
+        managedAuth: base.config.managedAuth ?? fallback.config.managedAuth,
       },
       headersSource: hasBaseHeaders ? base : fallback,
       oauth2Source: base.config.oauth2 ? base : fallback,
@@ -600,6 +606,7 @@ const resolveOAuthConnectionId = (
 // ---------------------------------------------------------------------------
 
 const OPENAPI_OAUTH2_PROVIDER_KEY = "openapi:oauth2" as const;
+const OPENAPI_COMPOSIO_PROVIDER_KEY = "openapi-composio" as const;
 
 const OAuth2ProviderState = Schema.Struct({
   flow: Schema.Literal("authorizationCode", "clientCredentials"),
@@ -624,6 +631,7 @@ const toProviderStateRecord = (
 
 export interface OpenApiPluginOptions {
   readonly httpClientLayer?: Layer.Layer<HttpClient.HttpClient>;
+  readonly composioApiKey?: string;
   /** If provided, source add/remove is mirrored to godtool.jsonc
    *  (best-effort — file errors are logged, not raised). */
   readonly configFile?: ConfigFileSink;
@@ -656,6 +664,7 @@ const isHttpUrl = (s: string): boolean =>
 export const openApiPlugin = definePlugin(
   (options?: OpenApiPluginOptions) => {
     const httpClientLayer = options?.httpClientLayer ?? FetchHttpClient.layer;
+    const composioApiKey = options?.composioApiKey;
 
     type RebuildInput = {
       readonly specText: string;
@@ -666,6 +675,7 @@ export const openApiPlugin = definePlugin(
       readonly namespace?: string;
       readonly headers?: Record<string, OpenApiHeaderInput>;
       readonly oauth2?: OpenApiOAuthInput;
+      readonly managedAuth?: ManagedAuthConfig;
     };
 
     // ctx comes from the plugin runtime — the same instance is passed to
@@ -707,6 +717,7 @@ export const openApiPlugin = definePlugin(
           namespace: input.namespace,
           headers: canonicalHeaders.headers,
           oauth2: canonicalOAuth2.oauth2,
+          managedAuth: input.managedAuth,
         };
 
         const storedSource: StoredSource = {
@@ -806,6 +817,7 @@ export const openApiPlugin = definePlugin(
           namespace: existing.namespace,
           headers: existing.legacy?.headers ?? existing.config.headers,
           oauth2: existing.legacy?.oauth2 ?? existing.config.oauth2,
+          managedAuth: existing.config.managedAuth,
         });
       });
 
@@ -832,6 +844,7 @@ export const openApiPlugin = definePlugin(
               namespace: config.namespace,
               headers: config.headers,
               oauth2: config.oauth2,
+              managedAuth: config.managedAuth,
             });
           });
 
@@ -897,6 +910,7 @@ export const openApiPlugin = definePlugin(
                 baseUrl: input.baseUrl,
                 headers: canonicalHeaders?.headers,
                 oauth2: canonicalOAuth2?.oauth2,
+                managedAuth: input.managedAuth,
               });
               for (const set of [canonicalHeaders?.bindings, canonicalOAuth2?.bindings]) {
                 for (const binding of set ?? []) {
@@ -1350,13 +1364,38 @@ export const openApiPlugin = definePlugin(
             resolvedHeaders["Authorization"] = `Bearer ${accessToken}`;
           }
 
-          const result = yield* invokeWithLayer(
-            op.binding,
-            (args ?? {}) as Record<string, unknown>,
-            config.baseUrl ?? "",
-            resolvedHeaders,
-            httpClientLayer,
-          );
+          const result = config.managedAuth
+            ? yield* buildManagedHttpRequest(
+                op.binding,
+                (args ?? {}) as Record<string, unknown>,
+                config.baseUrl ?? "",
+                resolvedHeaders,
+              ).pipe(
+                Effect.flatMap((request) =>
+                  invokeManagedHttp({
+                    config: config.managedAuth!,
+                    request,
+                    composioApiKey,
+                    connections: ctx.connections,
+                  }),
+                ),
+                Effect.map(
+                  (response) =>
+                    new InvocationResult({
+                      status: response.status,
+                      headers: response.headers,
+                      data: response.error == null ? response.data : null,
+                      error: response.error,
+                    }),
+                ),
+              )
+            : yield* invokeWithLayer(
+                op.binding,
+                (args ?? {}) as Record<string, unknown>,
+                config.baseUrl ?? "",
+                resolvedHeaders,
+                httpClientLayer,
+              );
 
           return result;
         }),
@@ -1572,6 +1611,9 @@ export const openApiPlugin = definePlugin(
               };
               return result;
             }),
+        },
+        {
+          key: OPENAPI_COMPOSIO_PROVIDER_KEY,
         },
       ],
     };

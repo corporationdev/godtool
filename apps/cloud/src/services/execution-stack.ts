@@ -12,7 +12,7 @@ import { makeDynamicWorkerExecutor } from "@executor/runtime-dynamic-worker";
 
 import { withExecutionUsageTracking } from "../api/execution-usage";
 import { AutumnService } from "./autumn";
-import { makeDeviceFirstCodeExecutor } from "./device-code-executor";
+import { DeviceExecutionError, makeDeviceFirstCodeExecutor } from "./device-code-executor";
 import { createScopedExecutor } from "./executor";
 
 export const makeExecutionStack = (
@@ -26,14 +26,28 @@ export const makeExecutionStack = (
       organizationId,
       organizationName,
     ).pipe(Effect.withSpan("McpSessionDO.createScopedExecutor"));
-    const fallbackCodeExecutor = makeDynamicWorkerExecutor({ loader: env.LOADER });
+    const autumn = yield* AutumnService;
+    const hostedFallbackAllowed = yield* autumn.isFeatureAllowed(
+      organizationId,
+      "hosted-worker-fallback",
+    );
+    const fallbackCodeExecutor = hostedFallbackAllowed
+      ? makeDynamicWorkerExecutor({ loader: env.LOADER })
+      : {
+          execute: () =>
+            Effect.fail(
+              new DeviceExecutionError({
+                message: "Hosted worker fallback requires the Pro plan",
+                status: 402,
+              }),
+            ),
+        };
     const codeExecutor = makeDeviceFirstCodeExecutor({
       fallback: fallbackCodeExecutor,
       organizationId,
       organizationName,
       userId,
     });
-    const autumn = yield* AutumnService;
     const engine = withExecutionUsageTracking(
       organizationId,
       createExecutionEngine({ executor, codeExecutor }),

@@ -4,12 +4,13 @@ import { Context, Effect } from "effect";
 import { runOAuthCallback } from "@executor/plugin-oauth2/http";
 
 import { addGroup, capture } from "@executor/api";
+import { ManagedAuthBillingService } from "@executor/plugin-managed-auth";
 import type {
   GoogleDiscoveryAddSourceInput,
   GoogleDiscoveryOAuthAuthResult,
   GoogleDiscoveryPluginExtension,
 } from "../sdk/plugin";
-import { GoogleDiscoveryOAuthError } from "../sdk/errors";
+import { GoogleDiscoveryOAuthError, GoogleDiscoverySourceError } from "../sdk/errors";
 import { GoogleDiscoveryGroup } from "./group";
 
 // ---------------------------------------------------------------------------
@@ -39,6 +40,17 @@ const GOOGLE_DISCOVERY_OAUTH_CHANNEL = "executor:google-discovery-oauth-result";
 const toPopupErrorMessage = (error: unknown): string =>
   error instanceof GoogleDiscoveryOAuthError ? error.message : "Authentication failed";
 
+const requireManagedAuth = (scopeId: string) =>
+  Effect.gen(function* () {
+    const billing = yield* ManagedAuthBillingService;
+    const allowed = yield* billing.canUseManagedAuth(scopeId);
+    if (!allowed) {
+      return yield* new GoogleDiscoverySourceError({
+        message: "Managed OAuth requires the Pro plan",
+      });
+    }
+  });
+
 // ---------------------------------------------------------------------------
 // Handlers
 //
@@ -67,6 +79,9 @@ export const GoogleDiscoveryHandlers = HttpApiBuilder.group(
       )
       .handle("addSource", ({ path, payload }) =>
         capture(Effect.gen(function* () {
+          if (payload.managedAuth) {
+            yield* requireManagedAuth(path.scopeId);
+          }
           const ext = yield* GoogleDiscoveryExtensionService;
           return yield* ext.addSource({
             ...(payload as Omit<GoogleDiscoveryAddSourceInput, "scope">),
@@ -106,10 +121,14 @@ export const GoogleDiscoveryHandlers = HttpApiBuilder.group(
       )
       .handle("updateSource", ({ path, payload }) =>
         capture(Effect.gen(function* () {
+          if (payload.managedAuth) {
+            yield* requireManagedAuth(path.scopeId);
+          }
           const ext = yield* GoogleDiscoveryExtensionService;
           yield* ext.updateSource(path.namespace, path.scopeId, {
             name: payload.name,
             auth: payload.auth,
+            managedAuth: payload.managedAuth,
           });
           return { updated: true };
         })),

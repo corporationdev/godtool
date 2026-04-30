@@ -35,11 +35,11 @@ import { DbService } from "./db";
 
 const createOrgPlugins = () =>
   [
-    openApiPlugin(),
+    openApiPlugin({ composioApiKey: env.COMPOSIO_API_KEY || undefined }),
     mcpPlugin({ dangerouslyAllowStdioMCP: false }),
-    googleDiscoveryPlugin(),
-    graphqlPlugin(),
-    rawPlugin(),
+    googleDiscoveryPlugin({ composioApiKey: env.COMPOSIO_API_KEY || undefined }),
+    graphqlPlugin({ composioApiKey: env.COMPOSIO_API_KEY || undefined }),
+    rawPlugin({ composioApiKey: env.COMPOSIO_API_KEY || undefined }),
     workosVaultPlugin({
       credentials: {
         apiKey: env.WORKOS_API_KEY,

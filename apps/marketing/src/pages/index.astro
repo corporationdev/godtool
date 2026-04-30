@@ -504,96 +504,243 @@ for (const issue of issues.filter(isStale)) &#123;
   <script>
     const sources = {
       github: {
-        name: 'GitHub',
-        count: 347,
-        tools: [
-          ['issues.list', 'List repository issues', 'read', 'GET'],
-          ['issues.create', 'Create a new issue', 'write', 'POST'],
-          ['pulls.create', 'Open a pull request', 'write', 'POST'],
-          ['pulls.merge', 'Merge a pull request', 'destructive', 'PUT'],
-          ['actions.runs.list', 'List workflow runs', 'read', 'GET'],
-          ['actions.runs.cancel', 'Cancel a workflow run', 'destructive', 'POST'],
-        ],
+        name: 'GitHub', count: 347, tools: [
+          { name: 'issues.list', desc: 'List repository issues', policy: 'read', method: 'GET' },
+          { name: 'issues.create', desc: 'Create a new issue', policy: 'write', method: 'POST' },
+          { name: 'issues.get', desc: 'Get a single issue', policy: 'read', method: 'GET' },
+          { name: 'issues.update', desc: 'Update an issue', policy: 'write', method: 'PATCH' },
+          { name: 'issues.lock', desc: 'Lock an issue conversation', policy: 'write', method: 'PUT' },
+          { name: 'issues.comments.list', desc: 'List issue comments', policy: 'read', method: 'GET' },
+          { name: 'issues.comments.create', desc: 'Create an issue comment', policy: 'write', method: 'POST' },
+          { name: 'issues.labels.list', desc: 'List labels on an issue', policy: 'read', method: 'GET' },
+          { name: 'issues.labels.add', desc: 'Add labels to an issue', policy: 'write', method: 'POST' },
+          { name: 'pulls.list', desc: 'List pull requests', policy: 'read', method: 'GET' },
+          { name: 'pulls.get', desc: 'Get a pull request', policy: 'read', method: 'GET' },
+          { name: 'pulls.create', desc: 'Create a pull request', policy: 'write', method: 'POST' },
+          { name: 'pulls.merge', desc: 'Merge a pull request', policy: 'destructive', method: 'PUT' },
+          { name: 'pulls.reviews.list', desc: 'List reviews on a PR', policy: 'read', method: 'GET' },
+          { name: 'pulls.reviews.create', desc: 'Create a PR review', policy: 'write', method: 'POST' },
+          { name: 'repos.get', desc: 'Get a repository', policy: 'read', method: 'GET' },
+          { name: 'repos.list', desc: 'List user repositories', policy: 'read', method: 'GET' },
+          { name: 'repos.create', desc: 'Create a repository', policy: 'write', method: 'POST' },
+          { name: 'repos.delete', desc: 'Delete a repository', policy: 'destructive', method: 'DELETE' },
+          { name: 'actions.workflows.list', desc: 'List repository workflows', policy: 'read', method: 'GET' },
+          { name: 'actions.workflows.dispatch', desc: 'Trigger a workflow run', policy: 'write', method: 'POST' },
+          { name: 'actions.runs.list', desc: 'List workflow runs', policy: 'read', method: 'GET' },
+          { name: 'actions.runs.cancel', desc: 'Cancel a workflow run', policy: 'destructive', method: 'POST' },
+        ]
       },
       slack: {
-        name: 'Slack',
-        count: 42,
-        tools: [
-          ['chat.postMessage', 'Send a message to a channel', 'write', 'POST'],
-          ['conversations.history', 'Read channel history', 'read', 'GET'],
-          ['files.upload', 'Upload a file', 'write', 'POST'],
-          ['reactions.add', 'Add a reaction', 'write', 'POST'],
-        ],
+        name: 'Slack', count: 42, tools: [
+          { name: 'chat.postMessage', desc: 'Send a message to a channel', policy: 'write', method: 'POST' },
+          { name: 'chat.update', desc: 'Update an existing message', policy: 'write', method: 'POST' },
+          { name: 'chat.delete', desc: 'Delete a message', policy: 'destructive', method: 'POST' },
+          { name: 'conversations.list', desc: 'List all channels', policy: 'read', method: 'GET' },
+          { name: 'conversations.history', desc: 'Fetch message history', policy: 'read', method: 'GET' },
+          { name: 'conversations.create', desc: 'Create a new channel', policy: 'write', method: 'POST' },
+          { name: 'conversations.archive', desc: 'Archive a channel', policy: 'destructive', method: 'POST' },
+          { name: 'conversations.members', desc: 'List channel members', policy: 'read', method: 'GET' },
+          { name: 'users.list', desc: 'List all users in workspace', policy: 'read', method: 'GET' },
+          { name: 'users.info', desc: 'Get user profile info', policy: 'read', method: 'GET' },
+          { name: 'reactions.add', desc: 'Add a reaction to a message', policy: 'write', method: 'POST' },
+          { name: 'reactions.remove', desc: 'Remove a reaction', policy: 'write', method: 'POST' },
+          { name: 'files.upload', desc: 'Upload a file to a channel', policy: 'write', method: 'POST' },
+          { name: 'files.list', desc: 'List files in workspace', policy: 'read', method: 'GET' },
+        ]
       },
       calendar: {
-        name: 'Calendar',
-        count: 18,
-        tools: [
-          ['events.list', 'List upcoming events', 'read', 'GET'],
-          ['events.insert', 'Create a new event', 'write', 'POST'],
-          ['freebusy.query', 'Check availability', 'read', 'POST'],
-        ],
+        name: 'Google Calendar', count: 18, tools: [
+          { name: 'events.list', desc: 'List upcoming events', policy: 'read', method: 'GET' },
+          { name: 'events.get', desc: 'Get a single event', policy: 'read', method: 'GET' },
+          { name: 'events.insert', desc: 'Create a new event', policy: 'write', method: 'POST' },
+          { name: 'events.update', desc: 'Update an existing event', policy: 'write', method: 'PATCH' },
+          { name: 'events.delete', desc: 'Delete an event', policy: 'destructive', method: 'DELETE' },
+          { name: 'events.move', desc: 'Move event to another calendar', policy: 'write', method: 'POST' },
+          { name: 'calendars.get', desc: 'Get calendar metadata', policy: 'read', method: 'GET' },
+          { name: 'calendars.insert', desc: 'Create a secondary calendar', policy: 'write', method: 'POST' },
+          { name: 'calendars.delete', desc: 'Delete a calendar', policy: 'destructive', method: 'DELETE' },
+          { name: 'calendarList.list', desc: 'List calendars on user list', policy: 'read', method: 'GET' },
+          { name: 'freebusy.query', desc: 'Check availability', policy: 'read', method: 'POST' },
+          { name: 'acl.list', desc: 'List access control rules', policy: 'read', method: 'GET' },
+          { name: 'acl.insert', desc: 'Add an access control rule', policy: 'write', method: 'POST' },
+        ]
       },
       linear: {
-        name: 'Linear',
-        count: 56,
-        tools: [
-          ['issues.list', 'List issues with filters', 'read', 'query'],
-          ['issues.create', 'Create a new issue', 'write', 'mutation'],
-          ['comments.create', 'Add a comment', 'write', 'mutation'],
-        ],
+        name: 'Linear', count: 56, tools: [
+          { name: 'issues.list', desc: 'List issues with filters', policy: 'read', method: 'query' },
+          { name: 'issues.get', desc: 'Get a single issue', policy: 'read', method: 'query' },
+          { name: 'issues.create', desc: 'Create a new issue', policy: 'write', method: 'mutation' },
+          { name: 'issues.update', desc: 'Update issue status or fields', policy: 'write', method: 'mutation' },
+          { name: 'issues.delete', desc: 'Delete an issue permanently', policy: 'destructive', method: 'mutation' },
+          { name: 'issues.archive', desc: 'Archive an issue', policy: 'write', method: 'mutation' },
+          { name: 'projects.list', desc: 'List all projects', policy: 'read', method: 'query' },
+          { name: 'projects.create', desc: 'Create a new project', policy: 'write', method: 'mutation' },
+          { name: 'projects.update', desc: 'Update project details', policy: 'write', method: 'mutation' },
+          { name: 'comments.list', desc: 'List comments on an issue', policy: 'read', method: 'query' },
+          { name: 'comments.create', desc: 'Add a comment to an issue', policy: 'write', method: 'mutation' },
+          { name: 'cycles.list', desc: 'List all cycles', policy: 'read', method: 'query' },
+          { name: 'teams.list', desc: 'List all teams', policy: 'read', method: 'query' },
+          { name: 'labels.list', desc: 'List all labels', policy: 'read', method: 'query' },
+        ]
       },
       resend: {
-        name: 'Resend',
-        count: 19,
-        tools: [
-          ['emails.send', 'Send a transactional email', 'write', 'POST'],
-          ['domains.verify', 'Verify a domain', 'write', 'POST'],
-          ['contacts.list', 'List audience contacts', 'read', 'GET'],
-        ],
+        name: 'Resend', count: 19, tools: [
+          { name: 'emails.send', desc: 'Send a transactional email', policy: 'write', method: 'POST' },
+          { name: 'emails.get', desc: 'Get email delivery status', policy: 'read', method: 'GET' },
+          { name: 'emails.batch', desc: 'Send a batch of emails', policy: 'write', method: 'POST' },
+          { name: 'domains.list', desc: 'List verified domains', policy: 'read', method: 'GET' },
+          { name: 'domains.get', desc: 'Get domain details', policy: 'read', method: 'GET' },
+          { name: 'domains.create', desc: 'Add a new domain', policy: 'write', method: 'POST' },
+          { name: 'domains.verify', desc: 'Verify a domain', policy: 'write', method: 'POST' },
+          { name: 'domains.delete', desc: 'Remove a domain', policy: 'destructive', method: 'DELETE' },
+          { name: 'apiKeys.list', desc: 'List API keys', policy: 'read', method: 'GET' },
+          { name: 'apiKeys.create', desc: 'Create an API key', policy: 'write', method: 'POST' },
+          { name: 'contacts.list', desc: 'List contacts in audience', policy: 'read', method: 'GET' },
+          { name: 'contacts.create', desc: 'Create a new contact', policy: 'write', method: 'POST' },
+          { name: 'contacts.remove', desc: 'Remove a contact', policy: 'destructive', method: 'DELETE' },
+        ]
       },
       axiom: {
-        name: 'Axiom',
-        count: 17,
-        tools: [
-          ['datasets.query', 'Query logs with APL', 'read', 'tool'],
-          ['monitors.create', 'Create a monitor', 'write', 'tool'],
-          ['dashboards.get', 'Read dashboard metadata', 'read', 'tool'],
-        ],
+        name: 'Axiom', count: 17, tools: [
+          { name: 'datasets.query', desc: 'Query datasets using APL', policy: 'read', method: 'tool' },
+          { name: 'datasets.list', desc: 'List all available datasets', policy: 'read', method: 'tool' },
+          { name: 'datasets.fields', desc: 'List all fields in a dataset', policy: 'read', method: 'tool' },
+          { name: 'datasets.info', desc: 'Get dataset metadata and stats', policy: 'read', method: 'tool' },
+          { name: 'datasets.create', desc: 'Create a new dataset', policy: 'write', method: 'tool' },
+          { name: 'datasets.trim', desc: 'Trim data from a dataset', policy: 'destructive', method: 'tool' },
+          { name: 'monitors.list', desc: 'List all monitors', policy: 'read', method: 'tool' },
+          { name: 'monitors.check', desc: 'Check monitor statuses', policy: 'read', method: 'tool' },
+          { name: 'monitors.create', desc: 'Create a new monitor', policy: 'write', method: 'tool' },
+          { name: 'dashboards.list', desc: 'List all dashboards', policy: 'read', method: 'tool' },
+          { name: 'dashboards.get', desc: 'Get dashboard by ID', policy: 'read', method: 'tool' },
+          { name: 'dashboards.create', desc: 'Create a new dashboard', policy: 'write', method: 'tool' },
+          { name: 'dashboards.delete', desc: 'Delete a dashboard by UID', policy: 'destructive', method: 'tool' },
+          { name: 'annotations.list', desc: 'List all annotations', policy: 'read', method: 'tool' },
+          { name: 'annotations.create', desc: 'Create an annotation', policy: 'write', method: 'tool' },
+        ]
       },
     };
 
     const policyClass = {
-      read: 'text-teal/70 bg-teal/[0.06]',
-      write: 'text-amber-300/70 bg-amber-300/[0.06]',
-      destructive: 'text-red-400/70 bg-red-400/[0.06]',
+      read: 'text-teal/60 bg-teal/[0.06]',
+      write: 'text-amber-300/60 bg-amber-300/[0.06]',
+      destructive: 'text-red-400/60 bg-red-400/[0.06]',
+    };
+
+    const methodClass = {
+      GET: 'text-teal/60',
+      POST: 'text-amber-300/60',
+      PUT: 'text-amber-300/60',
+      PATCH: 'text-amber-300/60',
+      DELETE: 'text-red-400/60',
+      query: 'text-teal/60',
+      mutation: 'text-amber-300/60',
+      tool: 'text-ink-faint',
     };
 
     const catalog = document.getElementById('catalog-demo');
     const toolList = catalog?.querySelector('[data-tool-list]');
+    const fadeEl = catalog?.querySelector('[data-fade]');
     const breadcrumb = catalog?.querySelector('[data-breadcrumb]');
     const totalTools = catalog?.querySelector('[data-total-tools]');
-    const searchLabel = catalog?.querySelector('[data-search-label]');
+    const toolSearch = catalog?.querySelector('[data-tool-search]');
+    let activeSourceId = 'github';
 
-    function renderTools(sourceId) {
+    function updateCatalogFade() {
+      if (!toolList || !fadeEl) return;
+      const atBottom = toolList.scrollHeight - toolList.scrollTop - toolList.clientHeight < 8;
+      const noOverflow = toolList.scrollHeight <= toolList.clientHeight;
+      fadeEl.style.opacity = atBottom || noOverflow ? '0' : '1';
+    }
+
+    toolList?.addEventListener('scroll', updateCatalogFade);
+
+    function renderTools(sourceId, query = '') {
       const source = sources[sourceId] || sources.github;
       if (!toolList) return;
+      activeSourceId = sourceId;
       if (breadcrumb) breadcrumb.textContent = source.name;
       if (totalTools) totalTools.textContent = `${source.count} actions available`;
-      if (searchLabel) searchLabel.textContent = `Search ${source.count} actions...`;
-      toolList.innerHTML = source.tools
-        .concat(source.tools, source.tools)
-        .map(([name, desc, policy, method]) => `
-          <div class="grid grid-cols-[1fr_auto_auto] gap-3 border-b border-rule px-4 py-3">
-            <div class="min-w-0">
-              <div class="truncate font-mono text-[12px] text-ink">${name}</div>
-              <div class="mt-0.5 truncate text-[12px] text-ink-faint">${desc}</div>
-            </div>
-            <span class="self-center rounded px-2 py-1 font-mono text-[10px] ${policyClass[policy] || policyClass.read}">${policy}</span>
-            <span class="hidden self-center font-mono text-[10px] text-ink-faint sm:block">${method}</span>
+      if (toolSearch instanceof HTMLInputElement) {
+        toolSearch.placeholder = `Search ${source.count} actions...`;
+      }
+
+      const normalizedQuery = query.trim().toLowerCase();
+      const matchingTools = source.tools.filter((tool) => {
+        if (!normalizedQuery) return true;
+        return `${tool.name} ${tool.desc} ${tool.policy} ${tool.method}`.toLowerCase().includes(normalizedQuery);
+      });
+
+      const renderRow = (tool) => `
+        <div class="grid grid-cols-[1fr_auto_auto] gap-3 border-b border-rule px-4 py-3 transition-colors hover:bg-surface-overlay/50">
+          <div class="min-w-0">
+            <div class="truncate font-mono text-[12px] text-ink">${tool.name}</div>
+            <div class="mt-0.5 truncate text-[12px] text-ink-faint">${tool.desc}</div>
           </div>
-        `)
-        .join('');
+          <span class="self-center rounded px-2 py-1 font-mono text-[10px] ${policyClass[tool.policy] || policyClass.read}">${tool.policy}</span>
+          <span class="hidden self-center font-mono text-[10px] ${methodClass[tool.method] || 'text-ink-faint'} sm:block">${tool.method}</span>
+        </div>
+      `;
+
+      if (matchingTools.length === 0) {
+        toolList.innerHTML = '<div class="px-4 py-8 text-center text-[12px] text-ink-faint">No matching actions</div>';
+        updateCatalogFade();
+        return;
+      }
+
+      if (normalizedQuery) {
+        toolList.innerHTML = matchingTools.map(renderRow).join('');
+        toolList.scrollTop = 0;
+        updateCatalogFade();
+        return;
+      }
+
+      const tree = {};
+      for (const tool of source.tools) {
+        const parts = tool.name.split('.');
+        let node = tree;
+        for (let i = 0; i < parts.length - 1; i++) {
+          if (!node[parts[i]]) node[parts[i]] = { _children: {} };
+          node = node[parts[i]]._children;
+        }
+        node[parts[parts.length - 1]] = { _tool: tool };
+      }
+
+      function renderTree(node, depth = 0) {
+        let html = '';
+        const keys = Object.keys(node);
+        keys.forEach((key, index) => {
+          const entry = node[key];
+          const connector = index === keys.length - 1 ? '└' : '├';
+          const indent = depth * 20;
+
+          if (entry._tool) {
+            const tool = entry._tool;
+            html += `<div class="flex items-center gap-3 py-1.5 pr-4 transition-colors hover:bg-surface-overlay/50" style="padding-left:${16 + indent}px">
+              <span class="w-3 shrink-0 select-none font-mono text-[11px] text-ink-faint">${depth > 0 ? connector : '·'}</span>
+              <div class="min-w-0 flex-1">
+                <div class="truncate font-mono text-[12px] text-ink">${key}</div>
+                <div class="truncate text-[11px] text-ink-faint">${tool.desc}</div>
+              </div>
+              <span class="shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px] ${policyClass[tool.policy] || policyClass.read}">${tool.policy}</span>
+              <span class="hidden w-14 shrink-0 text-right font-mono text-[10px] ${methodClass[tool.method] || 'text-ink-faint'} sm:block">${tool.method}</span>
+            </div>`;
+          } else {
+            const childCount = Object.keys(entry._children).length;
+            html += `<div class="flex items-center gap-3 py-1.5 pr-4" style="padding-left:${16 + indent}px">
+              <span class="w-3 shrink-0 select-none font-mono text-[11px] text-ink-faint">${depth > 0 ? connector : '▸'}</span>
+              <span class="font-mono text-[12px] text-ink-muted">${key}</span>
+              <span class="text-[10px] text-ink-faint">${childCount}</span>
+            </div>`;
+            html += renderTree(entry._children, depth + 1);
+          }
+        });
+        return html;
+      }
+
+      toolList.innerHTML = renderTree(tree);
+      toolList.scrollTop = 0;
+      updateCatalogFade();
     }
 
     document.querySelectorAll('.catalog-source').forEach((button) => {
@@ -604,9 +751,15 @@ for (const issue of issues.filter(isStale)) &#123;
         });
         button.classList.add('border-teal/15', 'bg-teal/[0.08]');
         button.classList.remove('border-transparent');
-        renderTools(button.dataset.source);
+        if (toolSearch instanceof HTMLInputElement) toolSearch.value = '';
+        renderTools(button.dataset.source || 'github');
       });
     });
+
+    toolSearch?.addEventListener('input', () => {
+      renderTools(activeSourceId, toolSearch instanceof HTMLInputElement ? toolSearch.value : '');
+    });
+
     renderTools('github');
 
     const detectInput = document.getElementById('detect-input');

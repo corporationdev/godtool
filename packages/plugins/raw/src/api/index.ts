@@ -1,2 +1,2 @@
 export { RawGroup } from "./group";
-export { RawHandlers, RawExtensionService } from "./handlers";
+export { RawHandlers, RawExtensionService, RawBillingService } from "./handlers";

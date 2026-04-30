@@ -1,5 +1,15 @@
 import type { ComponentType, ReactNode } from "react";
 
+export type ManagedAuthAccess =
+  | { readonly state: "loading" }
+  | { readonly state: "allowed" }
+  | { readonly state: "sign-in"; readonly onSignIn?: () => void | Promise<void> }
+  | {
+      readonly state: "upgrade";
+      readonly href?: string;
+      readonly onUpgrade?: () => void | Promise<void>;
+    };
+
 /**
  * A curated preset — a well-known API/service that can be added with one click.
  * Each plugin provides its own presets.
@@ -62,6 +72,7 @@ export interface SourcePlugin {
     readonly initialPreset?: string;
     readonly initialNamespace?: string;
     readonly placement?: ReactNode;
+    readonly managedAuthAccess?: ManagedAuthAccess;
   }>;
 
   /**
