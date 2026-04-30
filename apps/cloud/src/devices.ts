@@ -172,7 +172,7 @@ const persistCatalog = (auth: DeviceAuth, request: Request) =>
     if (!payload) return json({ error: "invalid_request" }, { status: 400 });
 
     const { sql } = yield* DbService;
-    const now = new Date();
+    const now = new Date().toISOString();
     yield* Effect.promise(() =>
       sql.begin(async (tx) => {
         await tx`

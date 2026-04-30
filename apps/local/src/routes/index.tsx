@@ -36,14 +36,8 @@ export const Route = createFileRoute("/")({
 });
 
 function SourcesRoute() {
-  const {
-    auth,
-    listCloudSources,
-    syncSourcesToCloud,
-    syncSourcesToLocal,
-    listImportCandidates,
-    deviceId,
-  } = useLocalAuth();
+  const { auth, listCloudSources, syncSourcesToCloud, listImportCandidates, deviceId } =
+    useLocalAuth();
   const [cloudSources, setCloudSources] = useState<readonly CloudSource[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
   const organizationId = auth.status === "authenticated" ? (auth.organization?.id ?? "") : "";
@@ -84,15 +78,6 @@ function SourcesRoute() {
         baseSourceAvailability="local"
         overlaySources={overlaySources}
         linkableSourceAvailabilities={["local", "both"]}
-        localDeviceAvailable
-        onSyncToCloud={async (sourceId) => {
-          await syncSourcesToCloud([sourceId]);
-          setRefreshKey((key) => key + 1);
-        }}
-        onSyncToLocal={async (sourceId) => {
-          await syncSourcesToLocal([sourceId]);
-          setRefreshKey((key) => key + 1);
-        }}
       />
       <InitialSourceSyncModal
         auth={auth}

@@ -21,6 +21,10 @@ import { Skeleton } from "../components/skeleton";
 export function SourceDetailPage(props: {
   namespace: string;
   sourcePlugins?: readonly SourcePlugin[];
+  availability?: "local" | "cloud" | "both";
+  localDeviceAvailable?: boolean;
+  onSyncToCloud?: (sourceId: string) => Promise<void>;
+  onSyncToLocal?: (sourceId: string) => Promise<void>;
   onDeleteSource?: (sourceId: string) => Promise<void>;
   deleteDisabledReason?: string | null;
 }) {
@@ -51,6 +55,7 @@ export function SourceDetailPage(props: {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [syncingPlacement, setSyncingPlacement] = useState<"cloud" | "local" | null>(null);
   const [editing, setEditing] = useState(false);
 
   const sourceData = Result.isSuccess(source) ? source.value : null;
@@ -63,6 +68,8 @@ export function SourceDetailPage(props: {
     if (!sourceData || !sourcePlugins) return null;
     return sourcePlugins.find((p) => p.key === sourceData.kind) ?? null;
   }, [sourceData, sourcePlugins]);
+  const supportsCloud = editPlugin?.supportsCloud === true;
+  const availability = props.availability;
 
   const sourceTools: ToolSummary[] = useMemo(() => {
     if (!Result.isSuccess(tools)) return [];
@@ -109,6 +116,20 @@ export function SourceDetailPage(props: {
     }
   };
 
+  const handleSyncPlacement = async (placement: "cloud" | "local") => {
+    setSyncingPlacement(placement);
+    try {
+      if (placement === "cloud") {
+        await props.onSyncToCloud?.(namespace);
+      } else {
+        await props.onSyncToLocal?.(namespace);
+      }
+      refreshSources();
+    } finally {
+      setSyncingPlacement(null);
+    }
+  };
+
   const handleEditSave = () => {
     setEditing(false);
   };
@@ -137,6 +158,33 @@ export function SourceDetailPage(props: {
             <Suspense fallback={null}>
               <editPlugin.signIn sourceId={namespace} />
             </Suspense>
+          )}
+
+          {supportsCloud && availability === "local" && props.onSyncToCloud && !editing && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void handleSyncPlacement("cloud")}
+              disabled={syncingPlacement !== null}
+            >
+              {syncingPlacement === "cloud" ? "Syncing..." : "Bring to cloud"}
+            </Button>
+          )}
+
+          {supportsCloud && availability === "cloud" && props.onSyncToLocal && !editing && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void handleSyncPlacement("local")}
+              disabled={syncingPlacement !== null || props.localDeviceAvailable === false}
+              title={
+                props.localDeviceAvailable === false
+                  ? "Connect the desktop app to save locally."
+                  : undefined
+              }
+            >
+              {syncingPlacement === "local" ? "Syncing..." : "Make local"}
+            </Button>
           )}
 
           {canEdit && editPlugin && !editing && (

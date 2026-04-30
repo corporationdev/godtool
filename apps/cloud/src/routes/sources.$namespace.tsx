@@ -23,6 +23,9 @@ export const Route = createFileRoute("/sources/$namespace")({
       <SourceDetailPage
         namespace={namespace}
         sourcePlugins={sourcePlugins}
+        availability={localPlacement.exists ? "both" : "cloud"}
+        localDeviceAvailable={localPlacement.online}
+        onSyncToLocal={(sourceId) => sourceSync("to-local", { sourceIds: [sourceId] })}
         deleteDisabledReason={
           localPlacement.exists && !localPlacement.online
             ? "Connect the Mac to delete the local copy."
@@ -39,7 +42,7 @@ export const Route = createFileRoute("/sources/$namespace")({
   },
 });
 
-const sourceSync = async (route: "delete", payload: unknown) => {
+const sourceSync = async (route: "to-local" | "delete", payload: unknown) => {
   const response = await fetch(`/api/source-sync/${route}`, {
     method: "POST",
     headers: { "content-type": "application/json", accept: "application/json" },
