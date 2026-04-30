@@ -28,6 +28,7 @@
   ],
   "type": "module",
   "scripts": {
+    "setup": "bun scripts/setup.ts",
     "dev": "bun run --cwd apps/cloud dev",
     "dev:desktop": "turbo run dev --filter='@executor/local' --filter='@executor/desktop'",
     "dev:local": "turbo run dev --filter='!@executor/desktop' --filter='!@executor/cloud'",

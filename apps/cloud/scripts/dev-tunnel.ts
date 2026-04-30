@@ -166,7 +166,7 @@ async function resolveZoneId(hostname: string): Promise<string> {
     return configuredZoneId;
   }
 
-  const rootDomain = hostname.split(".").slice(-2).join(".");
+  const rootDomain = normalizeEnvValue(process.env.CLOUDFLARE_ZONE_NAME) ?? "godtool.dev";
   const zones = await cloudflareRequest<Array<{ id: string; name: string }>>(
     `/zones?name=${encodeURIComponent(rootDomain)}`,
   );
@@ -176,7 +176,10 @@ async function resolveZoneId(hostname: string): Promise<string> {
     return zone.id;
   }
 
-  throw new Error(`Could not find a Cloudflare zone for ${rootDomain}.`);
+  throw new Error(
+    `Could not find a Cloudflare zone for ${rootDomain}. ` +
+      "Set CLOUDFLARE_ZONE_ID or CLOUDFLARE_ZONE_NAME in apps/cloud/.env.",
+  );
 }
 
 async function cloudflareRequest<Result>(

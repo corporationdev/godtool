@@ -15,7 +15,6 @@ declare namespace Cloudflare {
     APP_URL: string;
     WORKOS_CLAIM_TOKEN: string;
     MCP_SESSION: DurableObjectNamespace<import("./src/server").McpSessionDO>;
-    MARKETING: Fetcher /* executor-marketing */;
   }
 }
 interface Env extends Cloudflare.Env {}

@@ -45,7 +45,6 @@ const CreateOrganizationResponse = Schema.Struct({
 
 const AuthCallbackSearch = Schema.Struct({
   code: Schema.String,
-  state: Schema.String,
 });
 
 export const AUTH_PATHS = {

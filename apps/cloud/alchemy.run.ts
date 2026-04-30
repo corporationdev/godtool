@@ -48,10 +48,11 @@ const siteUrl = new URL(runtime.appUrl);
 const serverUrl = new URL(runtime.serverUrl);
 const marketingWorkerName =
   runtime.stageKind === "production"
-    ? "executor-marketing-production"
-    : `executor-marketing-${stage}`;
+    ? "godtool-marketing-production"
+    : `godtool-marketing-${stage}`;
+const marketingDomains = ["godtool.dev", "www.godtool.dev"];
 
-const app = await alchemy("executor-cloud", {
+const app = await alchemy("godtool-cloud", {
   adopt: true,
   stateStore: process.env.CI
     ? (scope) => new CloudflareStateStore(scope, { forceUpdate: true })
@@ -72,38 +73,10 @@ const mcpSession = DurableObjectNamespace("mcp-session", {
   className: "McpSessionDO",
 });
 
-const marketingAssets = await Assets({
-  path: "../marketing/dist/client",
-});
-
-const marketingSession = await KVNamespace("marketing-session", {
-  title: `${marketingWorkerName}-session`,
-  adopt: true,
-});
-
-const marketing = await Worker("marketing", {
-  name: marketingWorkerName,
-  adopt: true,
-  cwd: "../marketing/dist/server",
-  entrypoint: "./entry.mjs",
-  noBundle: true,
-  compatibilityDate: "2025-04-01",
-  compatibilityFlags: ["nodejs_compat"],
-  observability: {
-    enabled: true,
-  },
-  bindings: {
-    ASSETS: marketingAssets,
-    IMAGES: Images(),
-    SESSION: marketingSession,
-  },
-});
-
 const bindings: Bindings = {
   ASSETS: assets,
   HYPERDRIVE: hyperdrive,
   LOADER: WorkerLoader(),
-  MARKETING: marketing,
   MCP_SESSION: mcpSession,
   WORKOS_API_KEY: alchemy.secret(requireEnv("WORKOS_API_KEY")),
   WORKOS_CLIENT_ID: requireEnv("WORKOS_CLIENT_ID"),
@@ -141,5 +114,35 @@ export const cloud = await Worker("cloud", {
   domains: runtime.appHostname ? [runtime.appHostname] : undefined,
   bindings,
 });
+
+if (runtime.stageKind === "production") {
+  const marketingAssets = await Assets({
+    path: "../marketing/dist/client",
+  });
+
+  const marketingSession = await KVNamespace("marketing-session", {
+    title: `${marketingWorkerName}-session`,
+    adopt: true,
+  });
+
+  await Worker("marketing", {
+    name: marketingWorkerName,
+    adopt: true,
+    cwd: "../marketing/dist/server",
+    entrypoint: "./entry.mjs",
+    noBundle: true,
+    compatibilityDate: "2025-04-01",
+    compatibilityFlags: ["nodejs_compat"],
+    observability: {
+      enabled: true,
+    },
+    domains: marketingDomains.map((domainName) => ({ domainName, adopt: true })),
+    bindings: {
+      ASSETS: marketingAssets,
+      IMAGES: Images(),
+      SESSION: marketingSession,
+    },
+  });
+}
 
 await app.finalize();

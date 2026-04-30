@@ -35,8 +35,8 @@ import { DbService } from "./services/db";
 // Constants
 // ---------------------------------------------------------------------------
 
-const AUTHKIT_DOMAIN = env.MCP_AUTHKIT_DOMAIN ?? "https://signin.executor.sh";
-const RESOURCE_ORIGIN = env.MCP_RESOURCE_ORIGIN ?? "https://executor.sh";
+const AUTHKIT_DOMAIN = env.MCP_AUTHKIT_DOMAIN ?? "https://reverent-value-48.authkit.app";
+const RESOURCE_ORIGIN = env.MCP_RESOURCE_ORIGIN ?? "https://app.godtool.dev";
 const WORKOS_CLIENT_ID = env.WORKOS_CLIENT_ID;
 
 const jwks = createRemoteJWKSet(new URL(`${AUTHKIT_DOMAIN}/oauth2/jwks`));

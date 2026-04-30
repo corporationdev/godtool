@@ -6,7 +6,7 @@
   "main": "src/server.ts",
   "routes": [
     {
-      "pattern": "executor.sh",
+      "pattern": "app.godtool.dev",
       "custom_domain": true,
     },
   ],
@@ -30,12 +30,6 @@
       "new_classes": ["McpSessionDO"],
     },
   ],
-  "services": [
-    {
-      "binding": "MARKETING",
-      "service": "executor-marketing",
-    },
-  ],
   "hyperdrive": [
     {
       "binding": "HYPERDRIVE",
@@ -51,7 +45,4 @@
       "binding": "LOADER",
     },
   ],
-  "vars": {
-    "VITE_PUBLIC_SITE_URL": "https://executor.sh",
-  },
 }

@@ -112,12 +112,27 @@ function findEnvExamples(directoryPath: string): string[] {
   const envExamples: string[] = [];
 
   for (const entry of readdirSync(directoryPath)) {
-    if (entry === ".git" || entry === "node_modules") {
+    if (
+      entry === ".git" ||
+      entry === ".reference" ||
+      entry === ".turbo" ||
+      entry === ".wrangler" ||
+      entry === "dist" ||
+      entry === "node_modules"
+    ) {
       continue;
     }
 
     const entryPath = join(directoryPath, entry);
-    const entryStats = statSync(entryPath);
+    let entryStats;
+    try {
+      entryStats = statSync(entryPath);
+    } catch (cause) {
+      if ((cause as NodeJS.ErrnoException).code === "ENOENT") {
+        continue;
+      }
+      throw cause;
+    }
 
     if (entryStats.isDirectory()) {
       envExamples.push(...findEnvExamples(entryPath));

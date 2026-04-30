@@ -136,7 +136,7 @@ jobs:
           bun run build
           bun run --cwd ../marketing build
           bun --env-file=.env alchemy deploy --stage "$STAGE" --adopt
-          echo "frontend_url=https://preview-pr-${{ steps.clean-branch-name.outputs.clean_branch_name }}.executor.sh" >> "$GITHUB_OUTPUT"
+          echo "frontend_url=https://preview-pr-${{ steps.clean-branch-name.outputs.clean_branch_name }}.godtool.dev" >> "$GITHUB_OUTPUT"
 
       - name: Comment PR - Success
         if: ${{ github.event_name == 'pull_request' && success() }}

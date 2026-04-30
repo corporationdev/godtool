@@ -20,8 +20,8 @@ const stage = requireEnv("STAGE");
 const runtime = resolveRuntimeContext(stage);
 const marketingWorkerName =
   runtime.stageKind === "production"
-    ? "executor-marketing-production"
-    : `executor-marketing-${stage}`;
+    ? "godtool-marketing-production"
+    : undefined;
 
 const cloudflareFetch = async <Result>(path: string): Promise<Result> => {
   const response = await fetch(`https://api.cloudflare.com/client/v4${path}`, {
@@ -54,7 +54,7 @@ if (!workerScripts.some((script) => script.id === runtime.cloudWorkerName)) {
   throw new Error(`Expected deployed worker ${runtime.cloudWorkerName} to exist in Cloudflare`);
 }
 
-if (!workerScripts.some((script) => script.id === marketingWorkerName)) {
+if (marketingWorkerName && !workerScripts.some((script) => script.id === marketingWorkerName)) {
   throw new Error(`Expected deployed worker ${marketingWorkerName} to exist in Cloudflare`);
 }
 

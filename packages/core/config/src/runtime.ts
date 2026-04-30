@@ -1,12 +1,12 @@
 import { getStageKind, type StageKind } from "@executor/config/stage-kind";
 
 const previewSubdomainPrefix = "preview-pr-";
-const productionHostname = "executor.sh";
-const rootDomain = "executor.sh";
+const productionSubdomain = "app";
+const rootDomain = "godtool.dev";
 const serverSubdomainPrefix = "server-";
 const localCloudUrl = "http://localhost:3001";
-const productionAuthkitDomain = "https://signin.executor.sh";
-const stagingAuthkitDomain = "https://signin-staging.executor.sh";
+const productionAuthkitDomain = "https://reverent-value-48.authkit.app";
+const stagingAuthkitDomain = "https://balanced-mirage-25-staging.authkit.app";
 const maxDnsLabelLength = 63;
 const previewStagePrefixRegex = /^(preview-|pr-)/;
 
@@ -65,7 +65,7 @@ export function getStageAppHostname(stage: string): string | null {
     return `${getSingleLabelSubdomain(previewSubdomainPrefix, previewLabel)}.${rootDomain}`;
   }
   if (stageKind === "production") {
-    return productionHostname;
+    return `${productionSubdomain}.${rootDomain}`;
   }
 
   throw new Error(`Unsupported stage "${stage}" for app hostname resolution.`);
@@ -112,14 +112,14 @@ export function getStageCloudWorkerName(stage: string): string {
   const stageKind = getStageKind(stage);
 
   if (stageKind === "dev") {
-    return `executor-cloud-${stage}`;
+    return `godtool-web-${stage}`;
   }
   if (stageKind === "preview" || stageKind === "test") {
     const previewLabel = stage.replace(previewStagePrefixRegex, "");
-    return `executor-cloud-preview-${previewLabel}`;
+    return `godtool-web-preview-${previewLabel}`;
   }
   if (stageKind === "production") {
-    return "executor-cloud-production";
+    return "godtool-web-production";
   }
 
   throw new Error(`Unsupported stage "${stage}" for cloud worker resolution.`);

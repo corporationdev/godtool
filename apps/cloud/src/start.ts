@@ -4,52 +4,6 @@ import { handleApiRequest } from "./api";
 import { mcpFetch } from "./mcp";
 
 // ---------------------------------------------------------------------------
-// Marketing routes — proxied to the marketing worker via service binding
-// ---------------------------------------------------------------------------
-
-const MARKETING_PATHS = ["/home", "/setup", "/privacy", "/terms", "/api/detect", "/_astro"];
-
-const isMarketingPath = (pathname: string) =>
-  MARKETING_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
-
-const getMarketingWorker = () => env.MARKETING as { fetch: typeof fetch } | undefined;
-
-const marketingMiddleware = createMiddleware({ type: "request" }).server(
-  async ({ pathname, request, next }) => {
-    // Only proxy to the marketing worker on the production domain. In local
-    // dev we don't run `executor-marketing`, so unauthenticated visits fall
-    // through to the cloud app's routes (which show the sign-in page).
-    const host = new URL(request.url).hostname;
-    if (host !== "executor.sh") return next();
-
-    const shouldProxyToMarketing =
-      isMarketingPath(pathname) ||
-      (pathname === "/" && !parseCookie(request.headers.get("cookie"), "wos-session"));
-
-    if (!shouldProxyToMarketing) return next();
-
-    const marketing = getMarketingWorker();
-    if (!marketing) return next();
-
-    const url = new URL(request.url);
-    // Rewrite /home to / so marketing worker serves its homepage
-    if (pathname === "/home") {
-      url.pathname = "/";
-    }
-    return marketing.fetch(new Request(url, request));
-  },
-);
-
-const parseCookie = (cookieHeader: string | null, name: string): string | null => {
-  if (!cookieHeader) return null;
-  const match = cookieHeader
-    .split(";")
-    .map((v) => v.trim())
-    .find((v) => v.startsWith(`${name}=`));
-  return match ? match.slice(name.length + 1) || null : null;
-};
-
-// ---------------------------------------------------------------------------
 // MCP middleware — routes /mcp and /.well-known/* to the MCP handler
 // ---------------------------------------------------------------------------
 
@@ -121,10 +75,5 @@ const apiRequestMiddleware = createMiddleware({ type: "request" }).server(
 );
 
 export const startInstance = createStart(() => ({
-  requestMiddleware: [
-    marketingMiddleware,
-    mcpRequestMiddleware,
-    sentryTunnelMiddleware,
-    apiRequestMiddleware,
-  ],
+  requestMiddleware: [mcpRequestMiddleware, sentryTunnelMiddleware, apiRequestMiddleware],
 }));
