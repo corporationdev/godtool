@@ -11,7 +11,8 @@ import {
   type MenuItemConstructorOptions,
 } from "electron";
 import { spawn, type ChildProcess } from "node:child_process";
-import type { Server } from "node:http";
+import { randomUUID } from "node:crypto";
+import { createServer, type Server } from "node:http";
 import { join, resolve, basename, dirname, relative, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -35,6 +36,13 @@ import type { BrowserBounds } from "./browser/types";
 
 const DEFAULT_PORT = 14788;
 const DEV_SERVER_URL = process.env.GODTOOL_DEV_URL || "http://127.0.0.1:1355";
+const DESKTOP_STAGE =
+  process.env.STAGE ?? (process.env.NODE_ENV === "development" ? "dev" : "production");
+const CLOUD_APP_URL = process.env.GODTOOL_CLOUD_URL || getStageAppUrl(DESKTOP_STAGE);
+const DEEP_LINK_PROTOCOL = "godtool";
+const DESKTOP_AUTH_CALLBACK_PORT = Number(
+  process.env.GODTOOL_DESKTOP_AUTH_CALLBACK_PORT ?? "14791",
+);
 const BROWSER_HOST_PORT = Number(process.env.GODTOOL_BROWSER_HOST_PORT ?? "14789");
 const BROWSER_DEBUGGING_PORT = Number(process.env.GODTOOL_BROWSER_DEBUGGING_PORT ?? "9333");
 const BROWSER_MAX_SESSIONS = Number(process.env.GODTOOL_BROWSER_MAX_SESSIONS ?? "5");
@@ -63,6 +71,15 @@ protocol.registerSchemesAsPrivileged([
     },
   },
 ]);
+
+function getStageAppUrl(stage: string): string {
+  if (stage === "dev" || stage.startsWith("dev-")) return "http://localhost:3001";
+  if (stage === "preview" || stage.startsWith("preview-") || stage.startsWith("pr-")) {
+    const previewLabel = stage.replace(/^(preview-|pr-)/, "");
+    return `https://preview-pr-${previewLabel}.godtool.dev`;
+  }
+  return "https://app.godtool.dev";
+}
 
 // ---------------------------------------------------------------------------
 // CLI install — copy sidecar to ~/.godtool/bin and patch shell PATH
@@ -203,6 +220,26 @@ interface Settings {
   windowBounds?: { x: number; y: number; width: number; height: number };
 }
 
+type CloudAuthUser = {
+  readonly id: string;
+  readonly email: string;
+  readonly name: string | null;
+  readonly avatarUrl: string | null;
+};
+
+type CloudAuthOrganization = {
+  readonly id: string;
+  readonly name: string;
+};
+
+type CloudAuthState =
+  | { readonly status: "unauthenticated" }
+  | {
+      readonly status: "authenticated";
+      readonly user: CloudAuthUser;
+      readonly organization: CloudAuthOrganization | null;
+    };
+
 type WorkspaceFileNode = {
   readonly type: "file" | "directory";
   readonly name: string;
@@ -281,9 +318,10 @@ const isCommandAvailable = (command: string): boolean => {
 
 const isMacAppAvailable = (appName: string): boolean => {
   if (process.platform !== "darwin") return false;
-  return [join("/Applications", `${appName}.app`), join(homedir(), "Applications", `${appName}.app`)].some(
-    (appPath) => existsSync(appPath),
-  );
+  return [
+    join("/Applications", `${appName}.app`),
+    join(homedir(), "Applications", `${appName}.app`),
+  ].some((appPath) => existsSync(appPath));
 };
 
 const availableWorkspaceOpenTargets = async (): Promise<
@@ -923,11 +961,230 @@ const buildMenu = (): void => {
 };
 
 // ---------------------------------------------------------------------------
+// Cloud auth
+// ---------------------------------------------------------------------------
+
+const cloudUrl = (path: string): string => new URL(path, CLOUD_APP_URL).toString();
+
+const getCloudCookieHeader = async (): Promise<string> => {
+  const cookies = await session.defaultSession.cookies.get({ url: CLOUD_APP_URL });
+  return cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; ");
+};
+
+const fetchCloudAuthState = async (): Promise<CloudAuthState> => {
+  const cookie = await getCloudCookieHeader();
+  if (!cookie) return { status: "unauthenticated" };
+
+  const response = await fetch(cloudUrl("/api/auth/me"), {
+    headers: {
+      accept: "application/json",
+      cookie,
+    },
+  });
+
+  if (response.status === 401 || response.status === 403) {
+    return { status: "unauthenticated" };
+  }
+  if (!response.ok) {
+    throw new Error(`Cloud auth request failed: ${response.status}`);
+  }
+
+  const data = (await response.json()) as {
+    readonly user: CloudAuthUser;
+    readonly organization: CloudAuthOrganization | null;
+  };
+
+  return {
+    status: "authenticated",
+    user: data.user,
+    organization: data.organization,
+  };
+};
+
+const pendingDesktopAuth = new Map<
+  string,
+  {
+    readonly resolve: (state: CloudAuthState) => void;
+    readonly reject: (error: unknown) => void;
+    readonly timeout: ReturnType<typeof setTimeout>;
+  }
+>();
+let desktopAuthCallbackServer: Server | null = null;
+
+const setCloudSessionCookie = async (sealedSession: string): Promise<void> => {
+  await session.defaultSession.cookies.set({
+    url: CLOUD_APP_URL,
+    name: "wos-session",
+    value: sealedSession,
+    path: "/",
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    expirationDate: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7,
+  });
+};
+
+const resolveDesktopAuth = async (state: string, sealedSession: string): Promise<void> => {
+  const pending = pendingDesktopAuth.get(state);
+  if (!pending) return;
+  pendingDesktopAuth.delete(state);
+  clearTimeout(pending.timeout);
+
+  try {
+    await setCloudSessionCookie(sealedSession);
+    const authState = await fetchCloudAuthState();
+    pending.resolve(authState);
+  } catch (error) {
+    pending.reject(error);
+  }
+};
+
+const handleDeepLink = (rawUrl: string): void => {
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return;
+  }
+
+  if (url.protocol !== `${DEEP_LINK_PROTOCOL}:`) return;
+  if (url.hostname !== "auth" || url.pathname !== "/callback") return;
+
+  const sealedSession = url.searchParams.get("session");
+  const state = url.searchParams.get("state");
+  if (!sealedSession || !state) return;
+
+  void resolveDesktopAuth(state, sealedSession);
+};
+
+const desktopAuthCallbackHTML = (message: string): string => `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Godtool</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      background: #0a0a0a;
+      color: #f5f5f5;
+    }
+    main { max-width: 360px; padding: 32px; text-align: center; }
+    h1 { margin: 0 0 8px; font-size: 18px; font-weight: 600; }
+    p { margin: 0; color: #a1a1aa; font-size: 14px; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>${message}</h1>
+    <p>You can return to Godtool.</p>
+  </main>
+  <script>
+    try { history.replaceState(null, "", "/auth/complete"); } catch {}
+    setTimeout(() => window.close(), 1200);
+  </script>
+</body>
+</html>`;
+
+const startDesktopAuthCallbackServer = async (): Promise<void> => {
+  if (desktopAuthCallbackServer) return;
+
+  desktopAuthCallbackServer = createServer((request, response) => {
+    const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "127.0.0.1"}`);
+
+    if (url.pathname !== "/auth/callback") {
+      response.writeHead(404, { "content-type": "text/plain" });
+      response.end("Not found");
+      return;
+    }
+
+    const sealedSession = url.searchParams.get("session");
+    const state = url.searchParams.get("state");
+    if (!sealedSession || !state) {
+      response.writeHead(400, { "content-type": "text/html", "cache-control": "no-store" });
+      response.end(desktopAuthCallbackHTML("Sign-in failed"));
+      return;
+    }
+
+    void resolveDesktopAuth(state, sealedSession);
+    response.writeHead(200, { "content-type": "text/html", "cache-control": "no-store" });
+    response.end(desktopAuthCallbackHTML("Signed in"));
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    desktopAuthCallbackServer?.once("error", reject);
+    desktopAuthCallbackServer?.listen(DESKTOP_AUTH_CALLBACK_PORT, "127.0.0.1", () => {
+      desktopAuthCallbackServer?.off("error", reject);
+      resolve();
+    });
+  });
+};
+
+const stopDesktopAuthCallbackServer = (): void => {
+  if (!desktopAuthCallbackServer) return;
+  desktopAuthCallbackServer.close();
+  desktopAuthCallbackServer = null;
+};
+
+const openCloudSignIn = async (): Promise<CloudAuthState> => {
+  const existing = await fetchCloudAuthState();
+  if (existing.status === "authenticated") return existing;
+
+  await startDesktopAuthCallbackServer();
+
+  const state = randomUUID();
+  const loginUrl = new URL(cloudUrl("/api/auth/login"));
+  loginUrl.searchParams.set("desktop", "1");
+  loginUrl.searchParams.set("desktop_state", state);
+
+  return await new Promise<CloudAuthState>((resolve, reject) => {
+    const timeout = setTimeout(
+      () => {
+        pendingDesktopAuth.delete(state);
+        resolve({ status: "unauthenticated" });
+      },
+      5 * 60 * 1000,
+    );
+
+    pendingDesktopAuth.set(state, { resolve, reject, timeout });
+    shell.openExternal(loginUrl.toString()).catch((error) => {
+      pendingDesktopAuth.delete(state);
+      clearTimeout(timeout);
+      reject(error);
+    });
+  });
+};
+
+const signOutCloud = async (): Promise<CloudAuthState> => {
+  await session.defaultSession.cookies.remove(CLOUD_APP_URL, "wos-session").catch(() => undefined);
+  return { status: "unauthenticated" };
+};
+
+const registerDeepLinkProtocol = (): void => {
+  if (isDev) {
+    app.setAsDefaultProtocolClient(DEEP_LINK_PROTOCOL, process.execPath, [
+      resolve(__dirname, ".."),
+    ]);
+    return;
+  }
+  app.setAsDefaultProtocolClient(DEEP_LINK_PROTOCOL);
+};
+
+// ---------------------------------------------------------------------------
 // IPC handlers
 // ---------------------------------------------------------------------------
 
 const setupIPC = (): void => {
   ipcMain.handle("get-current-scope", () => currentScope);
+  ipcMain.handle("cloud-auth:me", () => fetchCloudAuthState());
+  ipcMain.handle("cloud-auth:sign-in", () => openCloudSignIn());
+  ipcMain.handle("cloud-auth:sign-out", () => signOutCloud());
+  ipcMain.handle("cloud-auth:get-cloud-url", () => CLOUD_APP_URL);
 
   ipcMain.handle("workspace-files:list", async () => {
     mkdirSync(DEFAULT_WORKSPACE_DIR, { recursive: true });
@@ -1012,11 +1269,7 @@ const setupIPC = (): void => {
 
   ipcMain.handle(
     "workspace-files:open",
-    async (
-      _event,
-      workspaceRelativePath: string,
-      target: WorkspaceOpenTarget,
-    ) => {
+    async (_event, workspaceRelativePath: string, target: WorkspaceOpenTarget) => {
       await openWorkspacePath(workspaceRelativePath, target);
       return true;
     },
@@ -1261,7 +1514,28 @@ const errorHTML = (message: string): string => `<!DOCTYPE html>
 // App lifecycle
 // ---------------------------------------------------------------------------
 
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+}
+
+app.on("second-instance", (_event, argv) => {
+  const deepLink = argv.find((arg) => arg.startsWith(`${DEEP_LINK_PROTOCOL}://`));
+  if (deepLink) handleDeepLink(deepLink);
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  }
+});
+
+app.on("open-url", (event, url) => {
+  event.preventDefault();
+  handleDeepLink(url);
+});
+
 app.whenReady().then(async () => {
+  registerDeepLinkProtocol();
+
   // Clear cached web content so we always load the latest UI
   await session.defaultSession.clearCache();
 
@@ -1284,6 +1558,7 @@ app.whenReady().then(async () => {
 app.on("window-all-closed", () => {
   stopBrowserHost();
   stopComputerUseHost();
+  stopDesktopAuthCallbackServer();
   // Synchronously kill the server process before quitting
   if (serverProcess) {
     serverProcess.kill("SIGTERM");
@@ -1295,6 +1570,7 @@ app.on("window-all-closed", () => {
 app.on("before-quit", () => {
   stopBrowserHost();
   stopComputerUseHost();
+  stopDesktopAuthCallbackServer();
   if (serverProcess) {
     serverProcess.kill("SIGTERM");
     serverProcess = null;
@@ -1304,6 +1580,7 @@ app.on("before-quit", () => {
 // Last resort: kill server on exit
 process.on("exit", () => {
   stopComputerUseHost();
+  stopDesktopAuthCallbackServer();
   if (serverProcess) {
     serverProcess.kill("SIGKILL");
     serverProcess = null;

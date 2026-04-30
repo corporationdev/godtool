@@ -40,6 +40,16 @@ const setResponseCookie = (
   options: typeof RESPONSE_COOKIE_OPTIONS,
 ) => HttpServerResponse.unsafeSetCookie(response, name, value, options);
 
+const DESKTOP_STATE_PREFIX = "desktop:";
+
+const encodeDesktopState = (state: string): string => `${DESKTOP_STATE_PREFIX}${state}`;
+
+const decodeDesktopState = (state: string | undefined): string | null => {
+  if (!state?.startsWith(DESKTOP_STATE_PREFIX)) return null;
+  const value = state.slice(DESKTOP_STATE_PREFIX.length);
+  return value.length > 0 ? value : null;
+};
+
 // ---------------------------------------------------------------------------
 // Single non-protected API surface — public (login/callback) + session
 // (me/logout/organizations/switch-organization). The session group has SessionAuth on it.
@@ -56,11 +66,15 @@ export const CloudAuthPublicHandlers = HttpApiBuilder.group(
   "cloudAuthPublic",
   (handlers) =>
     handlers
-      .handleRaw("login", () =>
+      .handleRaw("login", ({ urlParams }) =>
         Effect.gen(function* () {
           const workos = yield* WorkOSAuth;
           const origin = getRuntimeAppOrigin();
-          const url = workos.getAuthorizationUrl(`${origin}${AUTH_PATHS.callback}`);
+          const state =
+            urlParams.desktop === "1" && urlParams.desktop_state
+              ? encodeDesktopState(urlParams.desktop_state)
+              : undefined;
+          const url = workos.getAuthorizationUrl(`${origin}${AUTH_PATHS.callback}`, state);
           return HttpServerResponse.redirect(url, { status: 302 });
         }),
       )
@@ -95,6 +109,19 @@ export const CloudAuthPublicHandlers = HttpApiBuilder.group(
 
           if (!sealedSession) {
             return HttpServerResponse.text("Failed to create session", { status: 500 });
+          }
+
+          const desktopState = decodeDesktopState(urlParams.state);
+          if (desktopState) {
+            const callback = new URL("http://127.0.0.1:14791/auth/callback");
+            callback.searchParams.set("session", sealedSession);
+            callback.searchParams.set("state", desktopState);
+            return setResponseCookie(
+              HttpServerResponse.redirect(callback.toString(), { status: 302 }),
+              "wos-session",
+              sealedSession,
+              RESPONSE_COOKIE_OPTIONS,
+            );
           }
 
           return setResponseCookie(
@@ -155,7 +182,9 @@ export const CloudSessionAuthHandlers = HttpApiBuilder.group(
           );
 
           return {
-            organizations: organizations.filter((org): org is NonNullable<typeof org> => org !== null),
+            organizations: organizations.filter(
+              (org): org is NonNullable<typeof org> => org !== null,
+            ),
             activeOrganizationId: session.organizationId,
           };
         }),
@@ -193,9 +222,7 @@ export const CloudSessionAuthHandlers = HttpApiBuilder.group(
           // cookie and fail loudly; the frontend will bounce to login and
           // the callback's rehydrate path will pick up the new membership.
           const refreshed = yield* workos.refreshSession(session.sealedSession, org.id);
-          const verified = refreshed
-            ? yield* workos.authenticateSealedSession(refreshed)
-            : null;
+          const verified = refreshed ? yield* workos.authenticateSealedSession(refreshed) : null;
 
           if (!refreshed || !verified || verified.organizationId !== org.id) {
             yield* Effect.logWarning(

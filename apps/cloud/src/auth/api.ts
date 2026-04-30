@@ -43,8 +43,14 @@ const CreateOrganizationResponse = Schema.Struct({
   name: Schema.String,
 });
 
+const AuthLoginSearch = Schema.Struct({
+  desktop: Schema.optional(Schema.String),
+  desktop_state: Schema.optional(Schema.String),
+});
+
 const AuthCallbackSearch = Schema.Struct({
   code: Schema.String,
+  state: Schema.optional(Schema.String),
 });
 
 export const AUTH_PATHS = {
@@ -56,7 +62,7 @@ export const AUTH_PATHS = {
 
 /** Public auth endpoints — no authentication required */
 export class CloudAuthPublicApi extends HttpApiGroup.make("cloudAuthPublic")
-  .add(HttpApiEndpoint.get("login")`/auth/login`)
+  .add(HttpApiEndpoint.get("login")`/auth/login`.setUrlParams(AuthLoginSearch))
   .add(
     HttpApiEndpoint.get("callback")`/auth/callback`
       .setUrlParams(AuthCallbackSearch)

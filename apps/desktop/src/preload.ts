@@ -2,6 +2,12 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 
 contextBridge.exposeInMainWorld("electronAPI", {
   getCurrentScope: () => ipcRenderer.invoke("get-current-scope"),
+  cloudAuth: {
+    me: () => ipcRenderer.invoke("cloud-auth:me"),
+    signIn: () => ipcRenderer.invoke("cloud-auth:sign-in"),
+    signOut: () => ipcRenderer.invoke("cloud-auth:sign-out"),
+    getCloudUrl: () => ipcRenderer.invoke("cloud-auth:get-cloud-url"),
+  },
   files: {
     list: () => ipcRenderer.invoke("workspace-files:list"),
     read: (path: string) => ipcRenderer.invoke("workspace-files:read", path),
@@ -27,8 +33,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
         | "vscode"
         | "vscode-insiders"
         | "vscodium",
-    ) =>
-      ipcRenderer.invoke("workspace-files:open", path, target),
+    ) => ipcRenderer.invoke("workspace-files:open", path, target),
   },
   browsers: {
     list: () => ipcRenderer.invoke("browser-sessions:list"),

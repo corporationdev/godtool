@@ -62,6 +62,11 @@ const ReadFileArgs = Schema.Struct({
   encoding: Encoding,
 });
 
+const ReadManyArgs = Schema.Struct({
+  paths: Schema.Array(Schema.String),
+  encoding: Encoding,
+});
+
 const WriteFileArgs = Schema.Struct({
   path: Schema.String,
   data: Schema.String,
@@ -78,6 +83,24 @@ const AppendFileArgs = Schema.Struct({
 const ReaddirArgs = Schema.Struct({
   path: Schema.optional(Schema.String),
   withFileTypes: Schema.optional(Schema.Boolean),
+});
+
+const ListTreeArgs = Schema.Struct({
+  path: Schema.optional(Schema.String),
+  maxDepth: Schema.optional(Schema.Number),
+  maxEntries: Schema.optional(Schema.Number),
+});
+
+const SearchArgs = Schema.Struct({
+  query: Schema.String,
+  path: Schema.optional(Schema.String),
+  caseSensitive: Schema.optional(Schema.Boolean),
+  maxResults: Schema.optional(Schema.Number),
+});
+
+const ApplyPatchArgs = Schema.Struct({
+  patch: Schema.String,
+  dryRun: Schema.optional(Schema.Boolean),
 });
 
 const MkdirArgs = Schema.Struct({
@@ -107,9 +130,13 @@ const ResolveFileRefArgs = Schema.Struct({
 
 const decodePathArgs = Schema.decodeUnknownSync(PathArgs);
 const decodeReadFileArgs = Schema.decodeUnknownSync(ReadFileArgs);
+const decodeReadManyArgs = Schema.decodeUnknownSync(ReadManyArgs);
 const decodeWriteFileArgs = Schema.decodeUnknownSync(WriteFileArgs);
 const decodeAppendFileArgs = Schema.decodeUnknownSync(AppendFileArgs);
 const decodeReaddirArgs = Schema.decodeUnknownSync(ReaddirArgs);
+const decodeListTreeArgs = Schema.decodeUnknownSync(ListTreeArgs);
+const decodeSearchArgs = Schema.decodeUnknownSync(SearchArgs);
+const decodeApplyPatchArgs = Schema.decodeUnknownSync(ApplyPatchArgs);
 const decodeMkdirArgs = Schema.decodeUnknownSync(MkdirArgs);
 const decodeRmArgs = Schema.decodeUnknownSync(RmArgs);
 const decodeRenameArgs = Schema.decodeUnknownSync(RenameArgs);
@@ -137,6 +164,20 @@ const readFileSchema = {
   required: ["path"],
   properties: {
     path: { type: "string" },
+    encoding: encodingProperty,
+  },
+} as const;
+
+const readManySchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["paths"],
+  properties: {
+    paths: {
+      type: "array",
+      items: { type: "string" },
+      description: "Workspace-relative file paths to read.",
+    },
     encoding: encodingProperty,
   },
 } as const;
@@ -174,6 +215,56 @@ const readdirSchema = {
   properties: {
     path: { type: "string" },
     withFileTypes: { type: "boolean" },
+  },
+} as const;
+
+const listTreeSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    path: { type: "string" },
+    maxDepth: {
+      type: "number",
+      description: "Maximum recursive depth. Defaults to 4.",
+    },
+    maxEntries: {
+      type: "number",
+      description: "Maximum number of entries to return. Defaults to 200.",
+    },
+  },
+} as const;
+
+const searchSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["query"],
+  properties: {
+    query: {
+      type: "string",
+      description: "Literal text to search for.",
+    },
+    path: { type: "string" },
+    caseSensitive: { type: "boolean" },
+    maxResults: {
+      type: "number",
+      description: "Maximum number of matches to return. Defaults to 100.",
+    },
+  },
+} as const;
+
+const applyPatchSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["patch"],
+  properties: {
+    patch: {
+      type: "string",
+      description: "Patch text using Begin Patch / Add File / Update File / Delete File blocks.",
+    },
+    dryRun: {
+      type: "boolean",
+      description: "Validate and summarize the patch without writing files.",
+    },
   },
 } as const;
 
@@ -403,6 +494,173 @@ export const resolveWorkspaceFileRef = async (
 const dataToBuffer = (data: string, encoding: "utf8" | "base64"): Buffer =>
   Buffer.from(data, encoding === "base64" ? "base64" : "utf8");
 
+const clampLimit = (value: number | undefined, fallback: number, maximum: number): number => {
+  if (value === undefined || !Number.isFinite(value)) return fallback;
+  return Math.max(0, Math.min(maximum, Math.floor(value)));
+};
+
+const isProbablyText = (bytes: Buffer): boolean => !bytes.includes(0);
+
+interface TreeEntry {
+  readonly path: string;
+  readonly type: "directory" | "file" | "other";
+  readonly size: number;
+}
+
+const listTreeEntries = async (
+  root: string,
+  startPath: string,
+  maxDepth: number,
+  maxEntries: number,
+): Promise<readonly TreeEntry[]> => {
+  const entries: TreeEntry[] = [];
+
+  const visit = async (absolutePath: string, depth: number): Promise<void> => {
+    if (entries.length >= maxEntries) return;
+    const entry = await lstat(absolutePath);
+    const type = entry.isDirectory() ? "directory" : entry.isFile() ? "file" : "other";
+    entries.push({
+      path: toWorkspaceRelativePath(root, absolutePath),
+      type,
+      size: entry.size,
+    });
+    if (type !== "directory" || depth >= maxDepth || entries.length >= maxEntries) return;
+
+    const names = (await readdir(absolutePath)).sort((left, right) => left.localeCompare(right));
+    for (const name of names) {
+      await visit(join(absolutePath, name), depth + 1);
+      if (entries.length >= maxEntries) return;
+    }
+  };
+
+  await visit(startPath, 0);
+  return entries;
+};
+
+interface PatchFileOperation {
+  readonly kind: "add" | "update" | "delete";
+  readonly path: string;
+  readonly moveTo?: string;
+  readonly hunks: readonly (readonly string[])[];
+}
+
+const parsePatch = (patch: string): readonly PatchFileOperation[] => {
+  const lines = patch.replace(/\r\n/g, "\n").split("\n");
+  if (lines.at(-1) === "") lines.pop();
+  if (lines[0] !== "*** Begin Patch") throw new Error("Patch must start with *** Begin Patch");
+  if (lines.at(-1) !== "*** End Patch") throw new Error("Patch must end with *** End Patch");
+
+  const operations: PatchFileOperation[] = [];
+  let index = 1;
+
+  while (index < lines.length - 1) {
+    const header = lines[index++];
+    if (!header) continue;
+
+    const addPath = header.startsWith("*** Add File: ") ? header.slice("*** Add File: ".length) : undefined;
+    const updatePath = header.startsWith("*** Update File: ")
+      ? header.slice("*** Update File: ".length)
+      : undefined;
+    const deletePath = header.startsWith("*** Delete File: ")
+      ? header.slice("*** Delete File: ".length)
+      : undefined;
+
+    if (!addPath && !updatePath && !deletePath) {
+      throw new Error(`Invalid patch operation header: ${header}`);
+    }
+
+    let moveTo: string | undefined;
+    if (lines[index]?.startsWith("*** Move to: ")) {
+      moveTo = lines[index].slice("*** Move to: ".length);
+      index += 1;
+    }
+
+    const hunks: string[][] = [];
+    if (deletePath) {
+      operations.push({ kind: "delete", path: deletePath, hunks });
+      continue;
+    }
+
+    if (addPath) {
+      const hunk: string[] = [];
+      while (index < lines.length - 1 && !lines[index].startsWith("*** ")) {
+        const line = lines[index++];
+        if (!line.startsWith("+")) throw new Error("Add File lines must start with +");
+        hunk.push(line);
+      }
+      operations.push({ kind: "add", path: addPath, hunks: [hunk] });
+      continue;
+    }
+
+    while (index < lines.length - 1 && !lines[index].startsWith("*** ")) {
+      const marker = lines[index++];
+      if (!marker.startsWith("@@")) throw new Error("Update File hunks must start with @@");
+      const hunk: string[] = [];
+      while (index < lines.length - 1 && !lines[index].startsWith("@@") && !lines[index].startsWith("*** ")) {
+        const line = lines[index++];
+        if (!line.startsWith(" ") && !line.startsWith("-") && !line.startsWith("+")) {
+          throw new Error("Update File hunk lines must start with space, -, or +");
+        }
+        hunk.push(line);
+      }
+      hunks.push(hunk);
+    }
+
+    operations.push({ kind: "update", path: updatePath!, moveTo, hunks });
+  }
+
+  return operations;
+};
+
+const splitContentLines = (text: string): { readonly lines: readonly string[]; readonly trailingNewline: boolean } => {
+  const trailingNewline = text.endsWith("\n");
+  const lines = text.replace(/\n$/, "").split("\n");
+  return { lines: text.length === 0 ? [] : lines, trailingNewline };
+};
+
+const joinContentLines = (lines: readonly string[], trailingNewline: boolean): string =>
+  `${lines.join("\n")}${trailingNewline && lines.length > 0 ? "\n" : ""}`;
+
+const findSubsequence = (
+  haystack: readonly string[],
+  needle: readonly string[],
+  startIndex: number,
+): number => {
+  if (needle.length === 0) return startIndex;
+  for (let index = startIndex; index <= haystack.length - needle.length; index += 1) {
+    let matches = true;
+    for (let offset = 0; offset < needle.length; offset += 1) {
+      if (haystack[index + offset] !== needle[offset]) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches) return index;
+  }
+  return -1;
+};
+
+const applyPatchHunks = (text: string, hunks: readonly (readonly string[])[]): string => {
+  const parsed = splitContentLines(text);
+  let lines = [...parsed.lines];
+  let cursor = 0;
+
+  for (const hunk of hunks) {
+    const before = hunk
+      .filter((line) => line.startsWith(" ") || line.startsWith("-"))
+      .map((line) => line.slice(1));
+    const after = hunk
+      .filter((line) => line.startsWith(" ") || line.startsWith("+"))
+      .map((line) => line.slice(1));
+    const matchIndex = findSubsequence(lines, before, cursor);
+    if (matchIndex < 0) throw new Error("Patch hunk did not match file contents");
+    lines = [...lines.slice(0, matchIndex), ...after, ...lines.slice(matchIndex + before.length)];
+    cursor = matchIndex + after.length;
+  }
+
+  return joinContentLines(lines, parsed.trailingNewline);
+};
+
 const readFileTool = (config: WorkspacePluginConfig | undefined, args: unknown) =>
   Effect.tryPromise(async () => {
     const input = decodeReadFileArgs(args);
@@ -416,6 +674,25 @@ const readFileTool = (config: WorkspacePluginConfig | undefined, args: unknown) 
       encoding,
       data: encoding === "base64" ? bytes.toString("base64") : bytes.toString("utf8"),
     };
+  });
+
+const readManyTool = (config: WorkspacePluginConfig | undefined, args: unknown) =>
+  Effect.tryPromise(async () => {
+    const input = decodeReadManyArgs(args);
+    const encoding = input.encoding ?? "utf8";
+    return await Promise.all(
+      input.paths.map(async (path) => {
+        const resolved = await resolveExistingPath(config, path);
+        const entry = await lstat(resolved.path);
+        if (!entry.isFile()) throw new Error("Workspace path is not a file");
+        const bytes = await readFile(resolved.path);
+        return {
+          ...(await metadataForPath(resolved.root, resolved.path)),
+          encoding,
+          data: encoding === "base64" ? bytes.toString("base64") : bytes.toString("utf8"),
+        };
+      }),
+    );
   });
 
 const writeFileTool = (config: WorkspacePluginConfig | undefined, args: unknown) =>
@@ -456,6 +733,113 @@ const readdirTool = (config: WorkspacePluginConfig | undefined, args: unknown) =
       name: dirent.name,
       type: dirent.isDirectory() ? "directory" : dirent.isFile() ? "file" : "other",
     }));
+  });
+
+const listTreeTool = (config: WorkspacePluginConfig | undefined, args: unknown) =>
+  Effect.tryPromise(async () => {
+    const input = decodeListTreeArgs(args);
+    const maxDepth = clampLimit(input.maxDepth, 4, 25);
+    const maxEntries = clampLimit(input.maxEntries, 200, 5000);
+    const resolved = await resolveExistingPath(config, input.path);
+    return {
+      root: resolved.relativePath,
+      maxDepth,
+      maxEntries,
+      entries: await listTreeEntries(resolved.root, resolved.path, maxDepth, maxEntries),
+    };
+  });
+
+const searchTool = (config: WorkspacePluginConfig | undefined, args: unknown) =>
+  Effect.tryPromise(async () => {
+    const input = decodeSearchArgs(args);
+    if (input.query.length === 0) throw new Error("Search query cannot be empty");
+    const maxResults = clampLimit(input.maxResults, 100, 1000);
+    const resolved = await resolveExistingPath(config, input.path);
+    const tree = await listTreeEntries(resolved.root, resolved.path, 25, 10000);
+    const needle = input.caseSensitive ? input.query : input.query.toLowerCase();
+    const matches: Array<{ path: string; line: number; column: number; text: string }> = [];
+
+    for (const entry of tree) {
+      if (matches.length >= maxResults || entry.type !== "file") continue;
+      const file = await resolveExistingPath(config, entry.path);
+      const bytes = await readFile(file.path);
+      if (!isProbablyText(bytes)) continue;
+      const text = bytes.toString("utf8");
+      const lines = text.split("\n");
+      for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+        const haystack = input.caseSensitive ? lines[lineIndex] : lines[lineIndex].toLowerCase();
+        const columnIndex = haystack.indexOf(needle);
+        if (columnIndex < 0) continue;
+        matches.push({
+          path: entry.path,
+          line: lineIndex + 1,
+          column: columnIndex + 1,
+          text: lines[lineIndex],
+        });
+        if (matches.length >= maxResults) break;
+      }
+    }
+
+    return { query: input.query, matches };
+  });
+
+const applyPatchTool = (config: WorkspacePluginConfig | undefined, args: unknown) =>
+  Effect.tryPromise(async () => {
+    const input = decodeApplyPatchArgs(args);
+    const operations = parsePatch(input.patch);
+    const changedFiles: string[] = [];
+    const addedFiles: string[] = [];
+    const deletedFiles: string[] = [];
+    const movedFiles: Array<{ from: string; to: string }> = [];
+
+    for (const operation of operations) {
+      if (operation.kind === "add") {
+        const resolved = await resolveWritablePath(config, operation.path);
+        const content = joinContentLines(
+          operation.hunks[0]?.map((line) => line.slice(1)) ?? [],
+          true,
+        );
+        if (!input.dryRun) {
+          await writeFile(resolved.path, content, { flag: "wx" });
+        }
+        addedFiles.push(resolved.relativePath);
+        continue;
+      }
+
+      if (operation.kind === "delete") {
+        const resolved = await resolveExistingPath(config, operation.path);
+        const entry = await lstat(resolved.path);
+        if (!entry.isFile()) throw new Error("Delete File only supports files");
+        if (!input.dryRun) {
+          await rm(resolved.path);
+        }
+        deletedFiles.push(resolved.relativePath);
+        continue;
+      }
+
+      const source = await resolveExistingPath(config, operation.path);
+      const sourceEntry = await lstat(source.path);
+      if (!sourceEntry.isFile()) throw new Error("Update File only supports files");
+      const current = await readFile(source.path, "utf8");
+      const next = applyPatchHunks(current, operation.hunks);
+
+      if (operation.moveTo) {
+        const destination = await resolveWritablePath(config, operation.moveTo);
+        if (!input.dryRun) {
+          await writeFile(destination.path, next, { flag: "wx" });
+          await rm(source.path);
+        }
+        movedFiles.push({ from: source.relativePath, to: destination.relativePath });
+        changedFiles.push(destination.relativePath);
+      } else {
+        if (!input.dryRun) {
+          await writeFile(source.path, next);
+        }
+        changedFiles.push(source.relativePath);
+      }
+    }
+
+    return { changedFiles, addedFiles, deletedFiles, movedFiles, dryRun: Boolean(input.dryRun) };
   });
 
 const statTool = (config: WorkspacePluginConfig | undefined, args: unknown) =>
@@ -560,6 +944,12 @@ const toolDeclarations = (
     handler: ({ args }) => readFileTool(config, args),
   },
   {
+    name: "readMany",
+    description: "Read multiple files from the Godtool workspace as utf8 or base64.",
+    inputSchema: readManySchema,
+    handler: ({ args }) => readManyTool(config, args),
+  },
+  {
     name: "writeFile",
     description: "Write utf8 or base64 data to a file in the Godtool workspace.",
     inputSchema: writeFileSchema,
@@ -576,6 +966,24 @@ const toolDeclarations = (
     description: "List files in a Godtool workspace directory.",
     inputSchema: readdirSchema,
     handler: ({ args }) => readdirTool(config, args),
+  },
+  {
+    name: "listTree",
+    description: "List a bounded recursive tree of files in the Godtool workspace.",
+    inputSchema: listTreeSchema,
+    handler: ({ args }) => listTreeTool(config, args),
+  },
+  {
+    name: "search",
+    description: "Search for literal text in workspace files.",
+    inputSchema: searchSchema,
+    handler: ({ args }) => searchTool(config, args),
+  },
+  {
+    name: "applyPatch",
+    description: "Apply a patch to add, update, delete, or move files in the Godtool workspace.",
+    inputSchema: applyPatchSchema,
+    handler: ({ args }) => applyPatchTool(config, args),
   },
   {
     name: "stat",

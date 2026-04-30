@@ -14,19 +14,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@executor/react/components/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-  DropdownMenuTrigger,
-} from "@executor/react/components/dropdown-menu";
 import { SourceFavicon } from "@executor/react/components/source-favicon";
 import { CommandPalette } from "@executor/react/components/command-palette";
+import { AccountMenu } from "@executor/react/components/account-menu";
 import { openApiSourcePlugin } from "@executor/plugin-openapi/react";
 import { mcpSourcePlugin } from "@executor/plugin-mcp/react";
 import { graphqlSourcePlugin } from "@executor/plugin-graphql/react";
@@ -117,91 +107,10 @@ function SourceList(props: { pathname: string; onNavigate?: () => void }) {
 
 // ── UserFooter ──────────────────────────────────────────────────────────
 
-function initialsFor(name: string | null, email: string) {
-  if (name) {
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .slice(0, 2)
-      .toUpperCase();
-  }
-  return email[0]!.toUpperCase();
-}
-
-function Avatar(props: {
-  url: string | null;
-  name: string | null;
-  email: string;
-  size?: "sm" | "md";
-}) {
-  const size = props.size === "md" ? "size-8" : "size-7";
-  const text = props.size === "md" ? "text-sm" : "text-xs";
-  if (props.url) {
-    return <img src={props.url} alt="" className={`${size} shrink-0 rounded-full`} />;
-  }
-  return (
-    <div
-      className={`flex ${size} shrink-0 items-center justify-center rounded-full bg-primary/10 ${text} font-semibold text-primary`}
-    >
-      {initialsFor(props.name, props.email)}
-    </div>
-  );
-}
-
-function OrganizationSwitcherItems(props: { activeOrganizationId: string | null }) {
-  const organizations = useAtomValue(organizationsAtom);
-  const doSwitchOrganization = useAtomSet(switchOrganization, { mode: "promiseExit" });
-
-  const handleSwitch = async (organizationId: string) => {
-    if (organizationId === props.activeOrganizationId) return;
-    const exit = await doSwitchOrganization({ payload: { organizationId } });
-    if (exit._tag === "Success") window.location.reload();
-  };
-
-  return Result.match(organizations, {
-    onInitial: () => <DropdownMenuItem disabled>Loading…</DropdownMenuItem>,
-    onFailure: () => <DropdownMenuItem disabled>Failed to load organizations</DropdownMenuItem>,
-    onSuccess: ({ value }) =>
-      value.organizations.length === 0 ? (
-        <DropdownMenuItem disabled>No organizations</DropdownMenuItem>
-      ) : (
-        <>
-          {value.organizations.map((organization) => {
-            const isActive = organization.id === props.activeOrganizationId;
-            return (
-              <DropdownMenuItem
-                key={organization.id}
-                disabled={isActive}
-                onClick={() => handleSwitch(organization.id)}
-                className="text-xs"
-              >
-                <span className="min-w-0 flex-1 truncate">{organization.name}</span>
-                {isActive && <CheckIcon />}
-              </DropdownMenuItem>
-            );
-          })}
-        </>
-      ),
-  });
-}
-
-function CheckIcon() {
-  return (
-    <svg viewBox="0 0 16 16" fill="none" className="ml-auto size-3 text-muted-foreground">
-      <path
-        d="M3.5 8.5L6.5 11.5L12.5 5"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 function UserFooter() {
   const auth = useAuth();
+  const organizations = useAtomValue(organizationsAtom);
+  const doSwitchOrganization = useAtomSet(switchOrganization, { mode: "promiseExit" });
   const [createOrganizationOpen, setCreateOrganizationOpen] = useState(false);
 
   const suggestedOrganizationName =
@@ -221,6 +130,22 @@ function UserFooter() {
     setCreateOrganizationOpen(true);
   };
 
+  const handleSwitchOrganization = async (organizationId: string) => {
+    if (organizationId === auth.organization?.id) return;
+    const exit = await doSwitchOrganization({ payload: { organizationId } });
+    if (exit._tag === "Success") window.location.reload();
+  };
+
+  const organizationState = Result.match(organizations, {
+    onInitial: () => ({ loading: true, error: false, organizations: [] }),
+    onFailure: () => ({ loading: false, error: true, organizations: [] }),
+    onSuccess: ({ value }) => ({
+      loading: false,
+      error: false,
+      organizations: value.organizations,
+    }),
+  });
+
   return (
     <div className="shrink-0 border-t border-sidebar-border px-3 py-2.5">
       <Dialog
@@ -230,87 +155,19 @@ function UserFooter() {
           if (!open) form.reset(suggestedOrganizationName);
         }}
       >
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              className="flex h-auto w-full items-center justify-start gap-2.5 rounded-md px-1 py-1 text-left hover:bg-sidebar-active/60"
-            >
-              <Avatar url={auth.user.avatarUrl} name={auth.user.name} email={auth.user.email} />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-medium text-foreground">
-                  {auth.user.name ?? auth.user.email}
-                </p>
-                {auth.organization && (
-                  <p className="truncate text-xs text-muted-foreground">{auth.organization.name}</p>
-                )}
-              </div>
-              <svg
-                viewBox="0 0 16 16"
-                fill="none"
-                className="size-3.5 shrink-0 text-muted-foreground"
-              >
-                <path
-                  d="M4 6l4 4 4-4"
-                  stroke="currentColor"
-                  strokeWidth="1.3"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" side="top" className="w-64">
-            <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-              Organization
-            </DropdownMenuLabel>
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger className="text-xs">
-                <span className="min-w-0 flex-1 truncate">
-                  {auth.organization?.name ?? "No organization"}
-                </span>
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent className="w-56">
-                <OrganizationSwitcherItems activeOrganizationId={auth.organization?.id ?? null} />
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  className="text-xs"
-                  onSelect={(event) => {
-                    event.preventDefault();
-                    openCreateOrganization();
-                  }}
-                >
-                  Create organization
-                </DropdownMenuItem>
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-              Signed in as
-            </DropdownMenuLabel>
-            <DropdownMenuItem disabled className="gap-2 text-xs opacity-100">
-              <Avatar url={auth.user.avatarUrl} name={auth.user.name} email={auth.user.email} />
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-medium text-foreground">
-                  {auth.user.name ?? auth.user.email}
-                </p>
-                {auth.user.name && (
-                  <p className="truncate text-muted-foreground">{auth.user.email}</p>
-                )}
-              </div>
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="text-xs text-destructive focus:text-destructive"
-              onClick={async () => {
-                await fetch(AUTH_PATHS.logout, { method: "POST" });
-                window.location.href = "/";
-              }}
-            >
-              Sign out
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <AccountMenu
+          auth={auth}
+          organizations={organizationState.organizations}
+          organizationsLoading={organizationState.loading}
+          organizationsError={organizationState.error}
+          activeOrganizationId={auth.organization?.id ?? null}
+          onSwitchOrganization={handleSwitchOrganization}
+          onCreateOrganization={openCreateOrganization}
+          onSignOut={async () => {
+            await fetch(AUTH_PATHS.logout, { method: "POST" });
+            window.location.href = "/";
+          }}
+        />
 
         <DialogContent className="sm:max-w-[420px]">
           <DialogHeader>

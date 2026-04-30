@@ -1,9 +1,4 @@
-import {
-  HttpApiBuilder,
-  HttpApp,
-  HttpServer,
-  HttpApi,
-} from "@effect/platform";
+import { HttpApiBuilder, HttpApp, HttpServer, HttpApi } from "@effect/platform";
 import { describe, expect, it } from "@effect/vitest";
 import { env } from "cloudflare:workers";
 import { Effect, Layer } from "effect";
@@ -72,6 +67,30 @@ describe("Auth callback handlers", () => {
     }),
   );
 
+  it.effect("routes desktop login with a clean redirect URI and WorkOS state", () =>
+    Effect.gen(function* () {
+      let observedRedirectUri: string | undefined;
+      let observedState: string | undefined;
+      const fetch = makeAuthFetch({
+        getAuthorizationUrl: (redirectUri, state) => {
+          observedRedirectUri = redirectUri;
+          observedState = state;
+          return "https://auth.example.test";
+        },
+      });
+
+      const response = yield* Effect.promise(() =>
+        fetch(
+          new Request("http://test.local/auth/login?desktop=1&desktop_state=desktop-state-123"),
+        ),
+      );
+
+      expect(response.status).toBe(302);
+      expect(observedRedirectUri).toBe("/api/auth/callback");
+      expect(observedState).toBe("desktop:desktop-state-123");
+    }),
+  );
+
   it.effect("accepts callback code without state", () =>
     Effect.gen(function* () {
       let authenticateCalls = 0;
@@ -120,6 +139,31 @@ describe("Auth callback handlers", () => {
       const setCookie = response.headers.get("set-cookie") ?? "";
       expect(setCookie).toContain("wos-session=sealed_session");
       expect(setCookie).toContain("Max-Age=604800");
+    }),
+  );
+
+  it.effect("redirects desktop callback to the app protocol", () =>
+    Effect.gen(function* () {
+      const fetch = makeAuthFetch({
+        authenticateWithCode: () =>
+          Effect.succeed({
+            user: { id: "user_1" },
+            accessToken: "access_token",
+            refreshToken: "refresh_token",
+            organizationId: "org_1",
+            sealedSession: "sealed_session",
+          } as never),
+      });
+
+      const response = yield* Effect.promise(() =>
+        fetch(new Request("http://test.local/auth/callback?code=code&state=desktop:state-123")),
+      );
+
+      expect(response.status).toBe(302);
+      expect(response.headers.get("location")).toBe(
+        "http://127.0.0.1:14791/auth/callback?session=sealed_session&state=state-123",
+      );
+      expect(response.headers.get("set-cookie") ?? "").toContain("wos-session=sealed_session");
     }),
   );
 });

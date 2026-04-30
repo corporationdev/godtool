@@ -5,8 +5,10 @@ import { sourcesAtom, toolsAtom } from "@executor/react/api/atoms";
 import { useScope } from "@executor/react/api/scope-context";
 import { Button } from "@executor/react/components/button";
 import { CommandPalette } from "@executor/react/components/command-palette";
+import { AccountMenu } from "@executor/react/components/account-menu";
 import { openApiSourcePlugin } from "@executor/plugin-openapi/react";
 import { createMcpSourcePlugin } from "@executor/plugin-mcp/react";
+import { useLocalAuth } from "./auth";
 
 const mcpSourcePlugin = createMcpSourcePlugin({ allowStdio: true });
 import { googleDiscoverySourcePlugin } from "@executor/plugin-google-discovery/react";
@@ -232,6 +234,7 @@ function SidebarContent(props: {
   updateAvailable: boolean;
   latestVersion: string | null;
   channel: UpdateChannel;
+  auth: ReturnType<typeof useLocalAuth>;
 }) {
   const isHome = props.pathname === "/";
   const isSecrets = props.pathname === "/secrets";
@@ -265,28 +268,12 @@ function SidebarContent(props: {
       )}
 
       {/* Footer */}
-      <div className="shrink-0 border-t border-sidebar-border px-4 py-2.5">
-        <div className="flex flex-col gap-1.5 text-xs leading-none">
-          <a
-            href={`${VITE_GITHUB_URL}/issues`}
-            target="_blank"
-            rel="noreferrer"
-            className="text-muted-foreground transition-colors hover:text-foreground"
-          >
-            Feedback / bug?
-          </a>
-          <a
-            href={VITE_GITHUB_URL}
-            target="_blank"
-            rel="noreferrer"
-            className="text-muted-foreground transition-colors hover:text-foreground"
-          >
-            Star on GitHub
-          </a>
-          <span className="mt-0.5 text-xs text-muted-foreground tabular-nums">
-            v{VITE_APP_VERSION}
-          </span>
-        </div>
+      <div className="shrink-0 border-t border-sidebar-border px-3 py-2.5">
+        <AccountMenu
+          auth={props.auth.auth}
+          onSignIn={props.auth.available ? () => void props.auth.signIn() : undefined}
+          onSignOut={props.auth.available ? () => void props.auth.signOut() : undefined}
+        />
       </div>
     </>
   );
@@ -300,6 +287,7 @@ export function Shell() {
   const scopeId = useScope();
   const refreshSources = useAtomRefresh(sourcesAtom(scopeId));
   const refreshTools = useAtomRefresh(toolsAtom(scopeId));
+  const auth = useLocalAuth();
   const { latestVersion, updateAvailable, channel } = useLatestVersion(VITE_APP_VERSION);
   const lastPathname = useRef(pathname);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -345,6 +333,7 @@ export function Shell() {
           updateAvailable={updateAvailable}
           latestVersion={latestVersion}
           channel={channel}
+          auth={auth}
         />
       </aside>
 
@@ -389,6 +378,7 @@ export function Shell() {
               updateAvailable={updateAvailable}
               latestVersion={latestVersion}
               channel={channel}
+              auth={auth}
             />
           </div>
         </div>
