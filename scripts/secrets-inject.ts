@@ -57,13 +57,16 @@ const stageKind = getStageKind(stage);
 const template = readFileSync(templatePath, "utf8")
   .replace(stageVariableRegex, stage)
   .replace(envTierVariableRegex, envTier);
-const secrets = normalizeEnvValues(parseDotEnv(injectSecretsTemplate(template)));
 const envExamples = findEnvExamples(repoRoot);
 
 if (envExamples.length === 0) {
   throw new Error("No .env.example files found.");
 }
 
+const templateKeys = collectEnvExampleKeys(envExamples);
+const secrets = normalizeEnvValues(
+  parseDotEnv(injectSecretsTemplate(filterSecretsTemplate(template, templateKeys))),
+);
 const outputPaths: string[] = [];
 for (const examplePath of envExamples) {
   const outputPath = resolve(dirname(examplePath), ".env");
@@ -145,6 +148,31 @@ function findEnvExamples(directoryPath: string): string[] {
   }
 
   return envExamples.sort();
+}
+
+function collectEnvExampleKeys(examplePaths: readonly string[]): ReadonlySet<string> {
+  const keys = new Set<string>();
+  for (const examplePath of examplePaths) {
+    for (const line of readFileSync(examplePath, "utf8").split(newlineRegex)) {
+      const match = line.match(envAssignmentRegex);
+      const key = match?.[2];
+      if (key) {
+        keys.add(key);
+      }
+    }
+  }
+  return keys;
+}
+
+function filterSecretsTemplate(template: string, keys: ReadonlySet<string>): string {
+  return template
+    .split(newlineRegex)
+    .filter((line) => {
+      const match = line.match(envAssignmentRegex);
+      const key = match?.[2];
+      return !key || keys.has(key);
+    })
+    .join("\n");
 }
 
 function injectSecretsTemplate(template: string): string {
