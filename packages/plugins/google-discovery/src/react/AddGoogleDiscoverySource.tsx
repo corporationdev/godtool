@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAtomSet, useAtomValue, Result } from "@effect-atom/atom-react";
 
 import { openOAuthPopup, type OAuthPopupResult } from "@executor/plugin-oauth2/react";
@@ -380,7 +380,6 @@ export default function AddGoogleDiscoverySource(props: {
   readonly onComplete: (sourceId?: string) => void;
   readonly onCancel: () => void;
   readonly initialUrl?: string;
-  readonly placement?: ReactNode;
 }) {
   const defaultTemplate =
     GOOGLE_DISCOVERY_TEMPLATES.find((template) => template.id === "google-sheets") ??
@@ -603,7 +602,6 @@ export default function AddGoogleDiscoverySource(props: {
           Connect a Google API from its Discovery document and register its methods as tools.
         </p>
       </div>
-      {props.placement}
 
       <FieldGroup>
         <FieldSet>

@@ -233,7 +233,7 @@ function DeviceConnectionFooter() {
   const connected = onlineDevices.length > 0;
   const label = connected
     ? onlineDevices.length === 1
-      ? (activeDevice?.name ?? "Local Mac")
+      ? (activeDevice?.name ?? "Local device")
       : `${onlineDevices.length} devices online`
     : failed
       ? "Connection unavailable"

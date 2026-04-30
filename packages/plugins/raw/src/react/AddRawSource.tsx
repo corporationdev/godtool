@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { useAtomSet } from "@effect-atom/atom-react";
 
 import { useScope } from "@executor/react/api/scope-context";
@@ -34,7 +34,6 @@ export default function AddRawSource(props: {
   initialUrl?: string;
   initialPreset?: string;
   initialNamespace?: string;
-  placement?: ReactNode;
 }) {
   const resolvedPreset = props.initialPreset
     ? (rawPresets.find((preset) => preset.id === props.initialPreset) ?? null)
@@ -107,7 +106,6 @@ export default function AddRawSource(props: {
       <h1 className="text-xl font-semibold text-foreground">
         {resolvedPreset ? `Connect ${resolvedPreset.name}` : "Connect Raw HTTP"}
       </h1>
-      {props.placement}
 
       <CardStack>
         <CardStackContent className="border-t-0">

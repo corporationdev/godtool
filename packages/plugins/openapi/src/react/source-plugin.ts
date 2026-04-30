@@ -5,7 +5,6 @@ import { openApiPresets } from "../sdk/presets";
 export const openApiSourcePlugin: SourcePlugin = {
   key: "openapi",
   label: "OpenAPI",
-  supportsCloud: true,
   add: lazy(() => import("./AddOpenApiSource")),
   edit: lazy(() => import("./EditOpenApiSource")),
   summary: lazy(() => import("./OpenApiSourceSummary")),

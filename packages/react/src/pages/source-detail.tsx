@@ -21,12 +21,6 @@ import { Skeleton } from "../components/skeleton";
 export function SourceDetailPage(props: {
   namespace: string;
   sourcePlugins?: readonly SourcePlugin[];
-  availability?: "local" | "cloud" | "both";
-  localDeviceAvailable?: boolean;
-  onSyncToCloud?: (sourceId: string) => Promise<void>;
-  onSyncToLocal?: (sourceId: string) => Promise<void>;
-  onDeleteSource?: (sourceId: string) => Promise<void>;
-  deleteDisabledReason?: string | null;
 }) {
   const { namespace, sourcePlugins } = props;
   const scopeId = useScope();
@@ -55,7 +49,6 @@ export function SourceDetailPage(props: {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [syncingPlacement, setSyncingPlacement] = useState<"cloud" | "local" | null>(null);
   const [editing, setEditing] = useState(false);
 
   const sourceData = Result.isSuccess(source) ? source.value : null;
@@ -68,8 +61,6 @@ export function SourceDetailPage(props: {
     if (!sourceData || !sourcePlugins) return null;
     return sourcePlugins.find((p) => p.key === sourceData.kind) ?? null;
   }, [sourceData, sourcePlugins]);
-  const supportsCloud = editPlugin?.supportsCloud === true;
-  const availability = props.availability;
 
   const sourceTools: ToolSummary[] = useMemo(() => {
     if (!Result.isSuccess(tools)) return [];
@@ -89,14 +80,10 @@ export function SourceDetailPage(props: {
   const handleDelete = async () => {
     setDeleting(true);
     try {
-      if (props.onDeleteSource) {
-        await props.onDeleteSource(namespace);
-      } else {
-        await doRemove({
-          path: { scopeId, sourceId: namespace },
-          reactivityKeys: sourceWriteKeys,
-        });
-      }
+      await doRemove({
+        path: { scopeId, sourceId: namespace },
+        reactivityKeys: sourceWriteKeys,
+      });
       void navigate({ to: "/" });
     } catch {
       setDeleting(false);
@@ -113,20 +100,6 @@ export function SourceDetailPage(props: {
       });
     } finally {
       setRefreshing(false);
-    }
-  };
-
-  const handleSyncPlacement = async (placement: "cloud" | "local") => {
-    setSyncingPlacement(placement);
-    try {
-      if (placement === "cloud") {
-        await props.onSyncToCloud?.(namespace);
-      } else {
-        await props.onSyncToLocal?.(namespace);
-      }
-      refreshSources();
-    } finally {
-      setSyncingPlacement(null);
     }
   };
 
@@ -158,33 +131,6 @@ export function SourceDetailPage(props: {
             <Suspense fallback={null}>
               <editPlugin.signIn sourceId={namespace} />
             </Suspense>
-          )}
-
-          {supportsCloud && availability === "local" && props.onSyncToCloud && !editing && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void handleSyncPlacement("cloud")}
-              disabled={syncingPlacement !== null}
-            >
-              {syncingPlacement === "cloud" ? "Syncing..." : "Bring to cloud"}
-            </Button>
-          )}
-
-          {supportsCloud && availability === "cloud" && props.onSyncToLocal && !editing && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void handleSyncPlacement("local")}
-              disabled={syncingPlacement !== null || props.localDeviceAvailable === false}
-              title={
-                props.localDeviceAvailable === false
-                  ? "Connect the desktop app to save locally."
-                  : undefined
-              }
-            >
-              {syncingPlacement === "local" ? "Syncing..." : "Make local"}
-            </Button>
           )}
 
           {canEdit && editPlugin && !editing && (
@@ -227,8 +173,7 @@ export function SourceDetailPage(props: {
                   variant="destructive"
                   size="sm"
                   onClick={() => void handleDelete()}
-                  disabled={deleting || Boolean(props.deleteDisabledReason)}
-                  title={props.deleteDisabledReason ?? undefined}
+                  disabled={deleting}
                 >
                   {deleting ? "Deleting..." : "Delete"}
                 </Button>
@@ -238,8 +183,6 @@ export function SourceDetailPage(props: {
                 variant="outline"
                 size="sm"
                 onClick={() => setConfirmDelete(true)}
-                disabled={Boolean(props.deleteDisabledReason)}
-                title={props.deleteDisabledReason ?? undefined}
                 className="border-destructive/30 text-destructive hover:bg-destructive/10"
               >
                 Delete
@@ -272,9 +215,7 @@ export function SourceDetailPage(props: {
           {/* Content -- split pane */}
           {Result.match(tools, {
             onInitial: () => <SourceDetailSkeleton />,
-            onFailure: () => (
-              <div className="p-6 text-sm text-destructive">Failed to load tools</div>
-            ),
+            onFailure: () => <div className="p-6 text-sm text-destructive">Failed to load tools</div>,
             onSuccess: () => (
               <div className="flex min-h-0 flex-1 overflow-hidden">
                 {/* Left: tool tree */}
@@ -317,7 +258,10 @@ function SourceDetailSkeleton() {
         {Array.from({ length: 8 }).map((_, i) => (
           <div key={i} className="flex items-center gap-2 rounded-md px-2 py-1.5">
             <Skeleton className="size-4 shrink-0 rounded" />
-            <Skeleton className="h-3.5" style={{ width: `${55 + ((i * 13) % 35)}%` }} />
+            <Skeleton
+              className="h-3.5"
+              style={{ width: `${55 + ((i * 13) % 35)}%` }}
+            />
           </div>
         ))}
       </div>

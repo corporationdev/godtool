@@ -15,15 +15,5 @@ const sourcePlugins = [
 ];
 
 export const Route = createFileRoute("/")({
-  component: SourcesRoute,
+  component: () => <SourcesPage sourcePlugins={sourcePlugins} />,
 });
-
-function SourcesRoute() {
-  return (
-    <SourcesPage
-      sourcePlugins={sourcePlugins}
-      catalogEndpoint="/api/devices/catalog"
-      baseSourceAvailability="cloud"
-    />
-  );
-}

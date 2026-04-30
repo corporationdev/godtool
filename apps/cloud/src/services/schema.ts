@@ -11,7 +11,7 @@
 // We do NOT mirror invitations or user profile data — those stay in WorkOS
 // and are queried via API when needed.
 
-import { boolean, integer, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
 
 /** Login identity. The `id` is the WorkOS user ID. */
 export const accounts = pgTable("accounts", {
@@ -44,34 +44,5 @@ export const memberships = pgTable(
   },
   (t) => ({
     pk: primaryKey({ columns: [t.accountId, t.organizationId] }),
-  }),
-);
-
-/**
- * Catalog overlay for sources discovered on signed-in desktop devices.
- *
- * These rows are deliberately separate from the executor's `source` table:
- * local-only catalog entries should be visible to cloud MCP descriptions when
- * the device is online, but they must not make cloud workers believe they can
- * invoke those tools directly.
- */
-export const sourceCatalog = pgTable(
-  "source_catalog",
-  {
-    organizationId: text("organization_id")
-      .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
-    deviceId: text("device_id").notNull(),
-    sourceId: text("source_id").notNull(),
-    pluginId: text("plugin_id").notNull(),
-    kind: text("kind").notNull(),
-    name: text("name").notNull(),
-    toolCount: integer("tool_count").notNull().default(0),
-    localAvailable: boolean("local_available").notNull().default(false),
-    remoteAvailable: boolean("remote_available").notNull().default(false),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    pk: primaryKey({ columns: [t.organizationId, t.deviceId, t.sourceId] }),
   }),
 );

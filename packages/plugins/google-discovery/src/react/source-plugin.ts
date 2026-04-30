@@ -5,7 +5,6 @@ import { googleDiscoveryPresets } from "../sdk/presets";
 export const googleDiscoverySourcePlugin: SourcePlugin = {
   key: "googleDiscovery",
   label: "Google Discovery",
-  supportsCloud: true,
   add: lazy(() => import("./AddGoogleDiscoverySource")),
   edit: lazy(() => import("./EditGoogleDiscoverySource")),
   summary: lazy(() => import("./GoogleDiscoverySourceSummary")),

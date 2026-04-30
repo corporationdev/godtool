@@ -54,7 +54,6 @@ const BROWSER_SESSIONS_PATH = join(SETTINGS_DIR, "browser-sessions.json");
 const DEFAULT_WORKSPACE_DIR = join(SETTINGS_DIR, "workspace");
 const DEVICE_CONNECTION_RECONNECT_MS = 5_000;
 const DEVICE_CONNECTION_PING_MS = 25_000;
-const DEVICE_CATALOG_SYNC_MS = 5_000;
 
 const CLI_BIN_DIR = join(SETTINGS_DIR, "bin");
 const CLI_BIN_PATH = join(CLI_BIN_DIR, process.platform === "win32" ? "godtool.exe" : "godtool");
@@ -244,24 +243,6 @@ type CloudAuthState =
       readonly user: CloudAuthUser;
       readonly organization: CloudAuthOrganization | null;
     };
-
-type CloudSource = {
-  readonly id: string;
-  readonly name: string;
-  readonly kind: string;
-  readonly url?: string;
-  readonly runtime?: boolean;
-  readonly canRemove?: boolean;
-  readonly canRefresh?: boolean;
-  readonly canEdit?: boolean;
-};
-
-type CloudSourceImportCandidate = {
-  readonly id: string;
-  readonly kind: string;
-  readonly name: string;
-  readonly pluginId: string;
-};
 
 type WorkspaceFileNode = {
   readonly type: "file" | "directory";
@@ -1048,95 +1029,6 @@ const fetchCloudAuthState = async (): Promise<CloudAuthState> => {
   };
 };
 
-const fetchCloudSources = async (): Promise<readonly CloudSource[]> => {
-  const authState = await fetchCloudAuthState();
-  if (authState.status !== "authenticated" || authState.organization === null) return [];
-
-  const cookie = await getCloudCookieHeader();
-  const headers = {
-    accept: "application/json",
-    cookie,
-  };
-
-  const scopeResponse = await fetch(cloudUrl("/api/scope"), { headers });
-  if (scopeResponse.status === 401 || scopeResponse.status === 403) return [];
-  if (!scopeResponse.ok) {
-    throw new Error(`Cloud scope request failed: ${scopeResponse.status}`);
-  }
-
-  const scope = (await scopeResponse.json()) as { readonly id?: string };
-  if (!scope.id) return [];
-
-  const sourcesResponse = await fetch(
-    cloudUrl(`/api/scopes/${encodeURIComponent(scope.id)}/sources`),
-    { headers },
-  );
-  if (sourcesResponse.status === 401 || sourcesResponse.status === 403) return [];
-  if (!sourcesResponse.ok) {
-    throw new Error(`Cloud sources request failed: ${sourcesResponse.status}`);
-  }
-
-  return (await sourcesResponse.json()) as readonly CloudSource[];
-};
-
-const callCloudSourceSync = async <T>(
-  route: "to-cloud" | "to-local" | "delete" | "import-candidates",
-  payload: unknown,
-): Promise<T> => {
-  const cookie = await getCloudCookieHeader();
-  if (!cookie) throw new Error("Not signed in");
-
-  const response = await fetch(cloudUrl(`/api/source-sync/${route}`), {
-    method: "POST",
-    headers: {
-      accept: "application/json",
-      "content-type": "application/json",
-      cookie,
-    },
-    body: JSON.stringify(payload ?? {}),
-    signal: AbortSignal.timeout(120_000),
-  });
-  return readJsonResponse<T>(response);
-};
-
-const syncSourcesToCloud = async (sourceIds: readonly string[]): Promise<unknown> => {
-  const exported = await callLocalSourceSync("export", { sourceIds });
-  return callCloudSourceSync("to-cloud", exported);
-};
-
-const syncSourcesToLocal = async (sourceIds: readonly string[]): Promise<unknown> => {
-  const result = await callCloudSourceSync("to-local", { sourceIds });
-  const { deviceId } = ensureDeviceIdentity();
-  await publishLocalSourceCatalog(deviceId, { force: true }).catch((error) =>
-    console.warn("[devices] source catalog sync failed", error),
-  );
-  return result;
-};
-
-const deleteSyncedSources = async (
-  sourceIds: readonly string[],
-  placements: readonly ("local" | "cloud")[],
-): Promise<unknown> => {
-  if (placements.includes("local")) {
-    await callLocalSourceSync("delete", { sourceIds });
-    const { deviceId } = ensureDeviceIdentity();
-    await publishLocalSourceCatalog(deviceId, { force: true }).catch((error) =>
-      console.warn("[devices] source catalog sync failed", error),
-    );
-  }
-  if (placements.includes("cloud")) {
-    return callCloudSourceSync("delete", { sourceIds, placements: ["cloud"] });
-  }
-  return { sourceIds };
-};
-
-const fetchSourceImportCandidates = async (): Promise<readonly CloudSourceImportCandidate[]> => {
-  const data = await callCloudSourceSync<{
-    readonly sources?: readonly CloudSourceImportCandidate[];
-  }>("import-candidates", {});
-  return data.sources ?? [];
-};
-
 const pendingDesktopAuth = new Map<
   string,
   {
@@ -1319,11 +1211,8 @@ const registerDeepLinkProtocol = (): void => {
 let deviceSocket: WebSocket | null = null;
 let deviceReconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let devicePingTimer: ReturnType<typeof setInterval> | null = null;
-let deviceCatalogSyncTimer: ReturnType<typeof setInterval> | null = null;
 let deviceAuthState: Extract<CloudAuthState, { status: "authenticated" }> | null = null;
 let deviceConnecting = false;
-let deviceCatalogSyncInFlight = false;
-let lastDeviceCatalogHash: string | null = null;
 
 type LocalDesktopRpcResponse =
   | {
@@ -1335,22 +1224,10 @@ type LocalDesktopRpcResponse =
       readonly error: string;
     };
 
-type LocalSourceCatalog = {
-  readonly sources: readonly {
-    readonly id: string;
-    readonly name: string;
-    readonly kind: string;
-    readonly pluginId: string;
-    readonly toolCount: number;
-  }[];
-};
-
 type DeviceSocketMessage = {
   readonly type?: string;
   readonly requestId?: unknown;
   readonly code?: unknown;
-  readonly sourceIds?: unknown;
-  readonly sources?: unknown;
 };
 
 const encodeBase64Url = (value: string): string =>
@@ -1396,92 +1273,6 @@ const executeLocalDesktopRpc = async (code: string): Promise<LocalDesktopRpcResp
   return readJsonResponse<LocalDesktopRpcResponse>(response);
 };
 
-const callLocalSourceSync = async (path: string, payload: unknown): Promise<unknown> => {
-  const response = await fetch(localAppUrl(`/api/__desktop/sources/${path}`), {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(payload ?? {}),
-    signal: AbortSignal.timeout(60_000),
-  });
-  return readJsonResponse(response);
-};
-
-const fetchLocalSourceCatalog = async (): Promise<LocalSourceCatalog> => {
-  const response = await fetch(localAppUrl("/api/__desktop/catalog"), {
-    headers: { accept: "application/json" },
-    signal: AbortSignal.timeout(10_000),
-  });
-  return readJsonResponse<LocalSourceCatalog>(response);
-};
-
-const catalogHash = (catalog: LocalSourceCatalog): string =>
-  JSON.stringify(
-    [...catalog.sources]
-      .map((source) => ({
-        id: source.id,
-        name: source.name,
-        kind: source.kind,
-        pluginId: source.pluginId,
-        toolCount: source.toolCount,
-      }))
-      .sort((left, right) => left.id.localeCompare(right.id)),
-  );
-
-const publishLocalSourceCatalog = async (
-  deviceId: string,
-  options: { readonly force?: boolean } = {},
-): Promise<void> => {
-  if (deviceCatalogSyncInFlight) return;
-  deviceCatalogSyncInFlight = true;
-  try {
-    const [cookie, catalog] = await Promise.all([
-      getCloudCookieHeader(),
-      fetchLocalSourceCatalog(),
-    ]);
-    if (!cookie) return;
-    const nextHash = catalogHash(catalog);
-    if (!options.force && nextHash === lastDeviceCatalogHash) return;
-
-    const response = await fetch(cloudUrl("/api/devices/catalog"), {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        cookie,
-      },
-      body: JSON.stringify({ deviceId, sources: catalog.sources }),
-      signal: AbortSignal.timeout(10_000),
-    });
-    await readJsonResponse(response);
-    lastDeviceCatalogHash = nextHash;
-    console.log(`[devices] source catalog synced (${catalog.sources.length})`);
-  } finally {
-    deviceCatalogSyncInFlight = false;
-  }
-};
-
-const ensureLocalComputerUseSource = async (): Promise<void> => {
-  try {
-    const scopeResponse = await fetch(localAppUrl("/api/scope"), {
-      signal: AbortSignal.timeout(10_000),
-    });
-    const scope = await readJsonResponse<{ readonly id?: unknown }>(scopeResponse);
-    if (typeof scope.id !== "string" || !scope.id) return;
-
-    const response = await fetch(
-      localAppUrl(`/api/scopes/${encodeURIComponent(scope.id)}/computer-use/sources`),
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        signal: AbortSignal.timeout(10_000),
-      },
-    );
-    await readJsonResponse(response);
-    console.log("[devices] computer_use source ready");
-  } catch (error) {
-    console.warn("[devices] computer_use source not ready", error);
-  }
-};
-
 const clearDeviceReconnectTimer = (): void => {
   if (!deviceReconnectTimer) return;
   clearTimeout(deviceReconnectTimer);
@@ -1492,12 +1283,6 @@ const clearDevicePingTimer = (): void => {
   if (!devicePingTimer) return;
   clearInterval(devicePingTimer);
   devicePingTimer = null;
-};
-
-const clearDeviceCatalogSyncTimer = (): void => {
-  if (!deviceCatalogSyncTimer) return;
-  clearInterval(deviceCatalogSyncTimer);
-  deviceCatalogSyncTimer = null;
 };
 
 const scheduleDeviceReconnect = (delayMs = DEVICE_CONNECTION_RECONNECT_MS): void => {
@@ -1513,8 +1298,6 @@ const stopDeviceConnection = (): void => {
   deviceAuthState = null;
   clearDeviceReconnectTimer();
   clearDevicePingTimer();
-  clearDeviceCatalogSyncTimer();
-  lastDeviceCatalogHash = null;
   const socket = deviceSocket;
   deviceSocket = null;
   if (socket && socket.readyState !== WebSocket.CLOSED) {
@@ -1550,18 +1333,6 @@ const sendDeviceExecutionResponse = (
   );
 };
 
-const sendDeviceRpcResponse = (
-  socket: WebSocket,
-  requestId: string,
-  responseType: string,
-  response:
-    | { readonly status: "completed"; readonly result: unknown }
-    | { readonly status: "error"; readonly error: string },
-): void => {
-  if (socket.readyState !== WebSocket.OPEN) return;
-  socket.send(JSON.stringify({ type: responseType, requestId, ...response }));
-};
-
 const handleDeviceSocketMessage = async (socket: WebSocket, data: unknown): Promise<void> => {
   if (typeof data !== "string") return;
 
@@ -1586,34 +1357,6 @@ const handleDeviceSocketMessage = async (socket: WebSocket, data: unknown): Prom
       });
     }
     return;
-  }
-
-  const sourceSyncRoute =
-    message.type === "source.export.request"
-      ? "export"
-      : message.type === "source.import.request"
-        ? "import"
-        : message.type === "source.delete.request"
-          ? "delete"
-          : message.type === "source.importCandidates.request"
-            ? "import-candidates"
-            : null;
-  if (!sourceSyncRoute) return;
-
-  try {
-    const result = await callLocalSourceSync(sourceSyncRoute, {
-      sourceIds: message.sourceIds,
-      sources: message.sources,
-    });
-    sendDeviceRpcResponse(socket, message.requestId, "source.response", {
-      status: "completed",
-      result,
-    });
-  } catch (error) {
-    sendDeviceRpcResponse(socket, message.requestId, "source.response", {
-      status: "error",
-      error: error instanceof Error ? error.message : String(error),
-    });
   }
 };
 
@@ -1649,17 +1392,6 @@ const connectDeviceWebSocket = async (): Promise<void> => {
 
     socket.addEventListener("open", () => {
       console.log(`[devices] connected ${deviceId}`);
-      void ensureLocalComputerUseSource()
-        .then(() => publishLocalSourceCatalog(deviceId, { force: true }))
-        .catch((error) => console.warn("[devices] source catalog sync failed", error));
-      clearDeviceCatalogSyncTimer();
-      deviceCatalogSyncTimer = setInterval(() => {
-        if (socket.readyState === WebSocket.OPEN) {
-          void publishLocalSourceCatalog(deviceId).catch((error) =>
-            console.warn("[devices] source catalog sync failed", error),
-          );
-        }
-      }, DEVICE_CATALOG_SYNC_MS);
       clearDevicePingTimer();
       devicePingTimer = setInterval(() => {
         if (socket.readyState === WebSocket.OPEN) {
@@ -1675,14 +1407,12 @@ const connectDeviceWebSocket = async (): Promise<void> => {
     socket.addEventListener("close", () => {
       if (deviceSocket === socket) deviceSocket = null;
       clearDevicePingTimer();
-      clearDeviceCatalogSyncTimer();
       scheduleDeviceReconnect();
     });
 
     socket.addEventListener("error", () => {
       if (deviceSocket === socket) deviceSocket = null;
       clearDevicePingTimer();
-      clearDeviceCatalogSyncTimer();
       scheduleDeviceReconnect();
     });
   } catch (error) {
@@ -1721,22 +1451,6 @@ const setupIPC = (): void => {
   ipcMain.handle("cloud-auth:sign-out", () => signOutCloud());
   ipcMain.handle("cloud-auth:get-cloud-url", () => CLOUD_APP_URL);
   ipcMain.handle("cloud-auth:get-device-id", () => ensureDeviceIdentity().deviceId);
-  ipcMain.handle("cloud-auth:list-sources", () => fetchCloudSources());
-  ipcMain.handle("cloud-auth:source-sync-to-cloud", (_event, sourceIds: readonly string[]) =>
-    syncSourcesToCloud(Array.isArray(sourceIds) ? sourceIds : []),
-  );
-  ipcMain.handle("cloud-auth:source-sync-to-local", (_event, sourceIds: readonly string[]) =>
-    syncSourcesToLocal(Array.isArray(sourceIds) ? sourceIds : []),
-  );
-  ipcMain.handle(
-    "cloud-auth:source-sync-delete",
-    (_event, sourceIds: readonly string[], placements: readonly ("local" | "cloud")[]) =>
-      deleteSyncedSources(
-        Array.isArray(sourceIds) ? sourceIds : [],
-        Array.isArray(placements) ? placements : [],
-      ),
-  );
-  ipcMain.handle("cloud-auth:source-sync-import-candidates", () => fetchSourceImportCandidates());
 
   ipcMain.handle("workspace-files:list", async () => {
     mkdirSync(DEFAULT_WORKSPACE_DIR, { recursive: true });

@@ -8,56 +8,25 @@ import type { Executor, Source } from "@executor/sdk";
  *   1. Workflow (top — critical, least likely to be truncated)
  *   2. Available namespaces (bottom)
  */
-export const buildExecuteDescription = (
-  executor: Executor,
-  options?: {
-    readonly additionalSources?: readonly Source[];
-    readonly sourcesOverride?: readonly Source[];
-  },
-): Effect.Effect<string> =>
+export const buildExecuteDescription = (executor: Executor): Effect.Effect<string> =>
   Effect.gen(function* () {
-    const executorSources: readonly Source[] =
-      options?.sourcesOverride === undefined
-        ? yield* executor.sources
-            .list()
-            .pipe(Effect.orDie, Effect.withSpan("executor.sources.list"))
-        : [];
-    const baseSources = options?.sourcesOverride ?? executorSources;
-    const mergedSources = mergeSources(baseSources, options?.additionalSources ?? []);
+    const sources: readonly Source[] = yield* executor.sources
+      .list()
+      .pipe(Effect.orDie, Effect.withSpan("executor.sources.list"));
 
-    const description = yield* Effect.sync(() => formatDescription(mergedSources)).pipe(
+    const description = yield* Effect.sync(() => formatDescription(sources)).pipe(
       Effect.withSpan("schema.compile.description", {
-        attributes: {
-          "executor.source_count": executorSources.length,
-          "executor.source_override_count": options?.sourcesOverride?.length ?? 0,
-          "executor.additional_source_count": options?.additionalSources?.length ?? 0,
-          "executor.merged_source_count": mergedSources.length,
-        },
+        attributes: { "executor.source_count": sources.length },
       }),
     );
 
     yield* Effect.annotateCurrentSpan({
-      "executor.source_count": executorSources.length,
-      "executor.source_override_count": options?.sourcesOverride?.length ?? 0,
-      "executor.additional_source_count": options?.additionalSources?.length ?? 0,
-      "executor.merged_source_count": mergedSources.length,
+      "executor.source_count": sources.length,
       "schema.kind": "execute",
     });
 
     return description;
   }).pipe(Effect.withSpan("schema.describe.execute"));
-
-const mergeSources = (
-  primary: readonly Source[],
-  additional: readonly Source[],
-): readonly Source[] => {
-  const byId = new Map<string, Source>();
-  for (const source of primary) byId.set(source.id, source);
-  for (const source of additional) {
-    if (!byId.has(source.id)) byId.set(source.id, source);
-  }
-  return Array.from(byId.values());
-};
 
 const formatDescription = (sources: readonly Source[]): string => {
   const lines: string[] = [

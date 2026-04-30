@@ -9,7 +9,6 @@ import { googleDiscoverySourcePlugin } from "@executor/plugin-google-discovery/r
 import { graphqlSourcePlugin } from "@executor/plugin-graphql/react";
 import { rawSourcePlugin } from "@executor/plugin-raw/react";
 import { computerUseSourcePlugin } from "@executor/plugin-computer-use/react";
-import { useLocalAuth } from "../web/auth";
 
 const sourcePlugins = [
   computerUseSourcePlugin,
@@ -33,7 +32,6 @@ export const Route = createFileRoute("/sources/add/$pluginKey")({
   component: () => {
     const { pluginKey } = Route.useParams();
     const { url, preset, namespace } = Route.useSearch();
-    const { auth, syncSourcesToCloud, syncSourcesToLocal } = useLocalAuth();
     return (
       <SourcesAddPage
         pluginKey={pluginKey}
@@ -41,11 +39,6 @@ export const Route = createFileRoute("/sources/add/$pluginKey")({
         preset={preset}
         namespace={namespace}
         sourcePlugins={sourcePlugins}
-        nativePlacement="local"
-        signedIn={auth.status === "authenticated"}
-        localDeviceAvailable
-        syncToCloud={(sourceId) => syncSourcesToCloud([sourceId])}
-        syncToLocal={(sourceId) => syncSourcesToLocal([sourceId])}
       />
     );
   },

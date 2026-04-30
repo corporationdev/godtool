@@ -17,7 +17,6 @@ type DeviceSessionEnv = Env;
 
 const DEVICE_KEY_PREFIX = "device:";
 const ACTIVE_DEVICE_KEY = "active-device-id";
-const DEVICE_STALE_MS = 75_000;
 const DEVICE_RPC_TIMEOUT_MS = 5 * 60_000;
 const INTERNAL_USER_ID_HEADER = "x-godtool-device-user-id";
 const INTERNAL_ORGANIZATION_ID_HEADER = "x-godtool-device-organization-id";
@@ -25,11 +24,6 @@ const INTERNAL_ORGANIZATION_NAME_HEADER = "x-godtool-device-organization-name";
 
 type ExecuteRequestBody = {
   readonly code?: unknown;
-};
-
-type SourceRpcRequestBody = {
-  readonly sourceIds?: unknown;
-  readonly sources?: unknown;
 };
 
 type DeviceRpcResponse =
@@ -41,18 +35,6 @@ type DeviceRpcResponse =
     }
   | {
       readonly type: "execute.response";
-      readonly requestId: string;
-      readonly status: "error";
-      readonly error: string;
-    }
-  | {
-      readonly type: "source.response";
-      readonly requestId: string;
-      readonly status: "completed";
-      readonly result: unknown;
-    }
-  | {
-      readonly type: "source.response";
       readonly requestId: string;
       readonly status: "error";
       readonly error: string;
@@ -81,7 +63,6 @@ const sanitizeText = (value: string | null, fallback: string): string => {
 };
 
 export class DeviceSessionDO extends DurableObject<DeviceSessionEnv> {
-  private readonly sockets = new Map<string, WebSocket>();
   private readonly pending = new Map<string, PendingRequest>();
 
   async fetch(request: Request): Promise<Response> {
@@ -91,16 +72,12 @@ export class DeviceSessionDO extends DurableObject<DeviceSessionEnv> {
       return this.handleConnect(request, url);
     }
 
-    if (url.pathname === "/status") {
-      return this.status();
-    }
-
     if (url.pathname === "/execute") {
       return this.handleExecute(request);
     }
 
-    if (url.pathname.startsWith("/source/")) {
-      return this.handleSourceRpc(request, url.pathname.slice("/source/".length));
+    if (url.pathname === "/status") {
+      return this.handleStatus(request);
     }
 
     return json({ error: "not_found" }, { status: 404 });
@@ -126,10 +103,13 @@ export class DeviceSessionDO extends DurableObject<DeviceSessionEnv> {
 
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
-    server.accept();
+    this.ctx.acceptWebSocket(server, [deviceId]);
+    server.serializeAttachment({ deviceId });
 
-    this.sockets.get(deviceId)?.close(1000, "replaced");
-    this.sockets.set(deviceId, server);
+    for (const socket of this.ctx.getWebSockets(deviceId)) {
+      if (socket === server) continue;
+      socket.close(1000, "replaced");
+    }
 
     await this.saveDevice({
       deviceId,
@@ -154,16 +134,6 @@ export class DeviceSessionDO extends DurableObject<DeviceSessionEnv> {
       }),
     );
 
-    server.addEventListener("message", (event) => {
-      void this.handleMessage(deviceId, server, event.data);
-    });
-    server.addEventListener("close", () => {
-      void this.markOffline(deviceId, server);
-    });
-    server.addEventListener("error", () => {
-      void this.markOffline(deviceId, server);
-    });
-
     return new Response(null, {
       status: 101,
       webSocket: client,
@@ -171,22 +141,27 @@ export class DeviceSessionDO extends DurableObject<DeviceSessionEnv> {
     });
   }
 
-  private async status(): Promise<Response> {
-    const now = Date.now();
-    const stored = await this.ctx.storage.list<DeviceRecord>({ prefix: DEVICE_KEY_PREFIX });
-    const devices = Array.from(stored.values())
-      .map((device) => ({
-        ...device,
-        online:
-          this.sockets.has(device.deviceId) ||
-          (device.online && now - device.lastSeenAt < DEVICE_STALE_MS),
-      }))
-      .sort((a, b) => b.lastSeenAt - a.lastSeenAt);
+  async webSocketMessage(socket: WebSocket, data: string | ArrayBuffer): Promise<void> {
+    const deviceId = this.deviceIdForSocket(socket);
+    if (!deviceId) return;
+    await this.handleMessage(deviceId, socket, data);
+  }
 
-    return json({
-      activeDeviceId: (await this.ctx.storage.get<string>(ACTIVE_DEVICE_KEY)) ?? null,
-      devices,
-    });
+  async webSocketClose(
+    socket: WebSocket,
+    _code: number,
+    _reason: string,
+    _wasClean: boolean,
+  ): Promise<void> {
+    const deviceId = this.deviceIdForSocket(socket);
+    if (!deviceId) return;
+    await this.markOffline(deviceId, socket);
+  }
+
+  async webSocketError(socket: WebSocket, _error: unknown): Promise<void> {
+    const deviceId = this.deviceIdForSocket(socket);
+    if (!deviceId) return;
+    await this.markOffline(deviceId, socket);
   }
 
   private async handleExecute(request: Request): Promise<Response> {
@@ -211,7 +186,7 @@ export class DeviceSessionDO extends DurableObject<DeviceSessionEnv> {
       return json({ error: "no_connected_device" }, { status: 409 });
     }
 
-    const socket = this.sockets.get(activeDeviceId);
+    const socket = this.activeSocketForDevice(activeDeviceId);
     if (!socket) {
       return json({ error: "no_connected_device" }, { status: 409 });
     }
@@ -236,8 +211,8 @@ export class DeviceSessionDO extends DurableObject<DeviceSessionEnv> {
     }
   }
 
-  private async handleSourceRpc(request: Request, route: string): Promise<Response> {
-    if (request.method !== "POST") {
+  private async handleStatus(request: Request): Promise<Response> {
+    if (request.method !== "GET") {
       return json({ error: "method_not_allowed" }, { status: 405 });
     }
 
@@ -249,51 +224,44 @@ export class DeviceSessionDO extends DurableObject<DeviceSessionEnv> {
     }
 
     const activeDeviceId = await this.resolveActiveSocketDeviceId();
-    if (!activeDeviceId) return json({ error: "device_offline" }, { status: 409 });
-    const socket = this.sockets.get(activeDeviceId);
-    if (!socket) return json({ error: "device_offline" }, { status: 409 });
+    const liveDeviceIds = new Set(
+      this.ctx
+        .getWebSockets()
+        .map((socket) => this.deviceIdForSocket(socket))
+        .filter((deviceId): deviceId is string => deviceId !== null),
+    );
+    const records = await this.ctx.storage.list<DeviceRecord>({ prefix: DEVICE_KEY_PREFIX });
+    const devices = [...records.values()]
+      .filter((device) => device.organizationId === organizationId)
+      .map((device) => ({
+        ...device,
+        online: liveDeviceIds.has(device.deviceId),
+      }))
+      .sort((left, right) => right.lastSeenAt - left.lastSeenAt);
 
-    const body = (await request.json().catch(() => ({}))) as SourceRpcRequestBody;
-    const requestId = crypto.randomUUID();
-    const requestType =
-      route === "export"
-        ? "source.export.request"
-        : route === "import"
-          ? "source.import.request"
-          : route === "delete"
-            ? "source.delete.request"
-            : route === "import-candidates"
-              ? "source.importCandidates.request"
-              : null;
-    if (!requestType) return json({ error: "not_found" }, { status: 404 });
-
-    try {
-      const response = await this.sendRpc(activeDeviceId, socket, {
-        type: requestType,
-        requestId,
-        sourceIds: body.sourceIds,
-        sources: body.sources,
-      });
-
-      if (response.status === "error") {
-        return json({ status: "error", error: response.error }, { status: 502 });
-      }
-
-      return json(response.result);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const status =
-        message === "no_connected_device" || message === "device_disconnected" ? 409 : 504;
-      return json({ error: status === 409 ? "device_offline" : message }, { status });
-    }
+    return json({ activeDeviceId, devices });
   }
 
   private async resolveActiveSocketDeviceId(): Promise<string | null> {
     const activeDeviceId = await this.ctx.storage.get<string>(ACTIVE_DEVICE_KEY);
-    if (activeDeviceId && this.sockets.has(activeDeviceId)) return activeDeviceId;
+    if (activeDeviceId && this.activeSocketForDevice(activeDeviceId)) return activeDeviceId;
 
-    const first = this.sockets.keys().next();
-    return first.done ? null : first.value;
+    for (const socket of this.ctx.getWebSockets()) {
+      const deviceId = this.deviceIdForSocket(socket);
+      if (deviceId) return deviceId;
+    }
+    return null;
+  }
+
+  private activeSocketForDevice(deviceId: string): WebSocket | null {
+    return (
+      this.ctx.getWebSockets(deviceId).find((socket) => socket.readyState === WebSocket.OPEN) ?? null
+    );
+  }
+
+  private deviceIdForSocket(socket: WebSocket): string | null {
+    const attachment = socket.deserializeAttachment() as { readonly deviceId?: unknown } | undefined;
+    return typeof attachment?.deviceId === "string" ? attachment.deviceId : null;
   }
 
   private sendRpc(
@@ -350,7 +318,7 @@ export class DeviceSessionDO extends DurableObject<DeviceSessionEnv> {
         return;
       }
 
-      if (message.type === "execute.response" || message.type === "source.response") {
+      if (message.type === "execute.response") {
         this.resolvePending(deviceId, message);
       }
     } catch {
@@ -372,7 +340,7 @@ export class DeviceSessionDO extends DurableObject<DeviceSessionEnv> {
 
   private parseRpcResponse(message: { readonly type?: string }): DeviceRpcResponse | null {
     if (
-      (message.type !== "execute.response" && message.type !== "source.response") ||
+      message.type !== "execute.response" ||
       !("requestId" in message) ||
       typeof message.requestId !== "string" ||
       !("status" in message)
@@ -407,8 +375,10 @@ export class DeviceSessionDO extends DurableObject<DeviceSessionEnv> {
   }
 
   private async markOffline(deviceId: string, socket: WebSocket): Promise<void> {
-    if (this.sockets.get(deviceId) !== socket) return;
-    this.sockets.delete(deviceId);
+    const activeSocket = this.activeSocketForDevice(deviceId);
+    if (activeSocket && activeSocket !== socket) return;
+    await this.ctx.storage.delete(ACTIVE_DEVICE_KEY);
+
     this.rejectPendingForDevice(deviceId, new Error("device_disconnected"));
 
     const device = await this.ctx.storage.get<DeviceRecord>(this.deviceKey(deviceId));

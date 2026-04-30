@@ -36,7 +36,6 @@ export const createMcpSourcePlugin = (options?: McpSourcePluginOptions): SourceP
   return {
     key: "mcp",
     label: "MCP",
-    supportsCloud: true,
     add: AddWithFlag,
     edit: LazyEditMcpSource,
     summary: LazySummary,

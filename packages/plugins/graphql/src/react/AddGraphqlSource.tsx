@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { useAtomSet } from "@effect-atom/atom-react";
 
 import { useScope } from "@executor/react/api/scope-context";
@@ -37,7 +37,6 @@ export default function AddGraphqlSource(props: {
   onComplete: (sourceId?: string) => void;
   onCancel: () => void;
   initialUrl?: string;
-  placement?: ReactNode;
 }) {
   const [endpoint, setEndpoint] = useState(props.initialUrl ?? "");
   const identity = useSourceIdentity({
@@ -104,7 +103,6 @@ export default function AddGraphqlSource(props: {
   return (
     <div className="flex flex-1 flex-col gap-6">
       <h1 className="text-xl font-semibold text-foreground">Add GraphQL Source</h1>
-      {props.placement}
 
       <CardStack>
         <CardStackContent className="border-t-0">

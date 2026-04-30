@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { MonitorIcon, RefreshCwIcon, ShieldAlertIcon } from "lucide-react";
 import { Result, useAtomRefresh, useAtomSet, useAtomValue } from "@effect-atom/atom-react";
 
@@ -55,7 +55,6 @@ function PermissionBadge(props: {
 export default function AddComputerUseSource(props: {
   onComplete: (sourceId?: string) => void;
   onCancel: () => void;
-  placement?: ReactNode;
 }) {
   const scopeId = useScope();
   const statusAtom = computerUseStatusAtom(scopeId);
@@ -161,7 +160,6 @@ export default function AddComputerUseSource(props: {
           screenshots from this Mac.
         </p>
       </div>
-      {props.placement}
 
       <Alert>
         <ShieldAlertIcon />

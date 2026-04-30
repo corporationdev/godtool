@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAtomSet } from "@effect-atom/atom-react";
 import { Option } from "effect";
 
@@ -179,7 +179,6 @@ export default function AddOpenApiSource(props: {
   onCancel: () => void;
   initialUrl?: string;
   initialNamespace?: string;
-  placement?: ReactNode;
 }) {
   // Spec input
   const [specUrl, setSpecUrl] = useState(props.initialUrl ?? "");
@@ -687,7 +686,6 @@ export default function AddOpenApiSource(props: {
   return (
     <div className="flex flex-1 flex-col gap-6">
       <h1 className="text-xl font-semibold text-foreground">Add OpenAPI Source</h1>
-      {props.placement}
 
       {/* ── Spec input ── */}
       <CardStack>

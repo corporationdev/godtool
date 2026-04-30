@@ -7,7 +7,6 @@ import { rawPresets } from "../sdk/presets";
 export const rawSourcePlugin: SourcePlugin = {
   key: "raw",
   label: "Raw HTTP",
-  supportsCloud: true,
   add: lazy(() => import("./AddRawSource")),
   edit: lazy(() => import("./EditRawSource")),
   summary: lazy(() => import("./RawSourceSummary")),

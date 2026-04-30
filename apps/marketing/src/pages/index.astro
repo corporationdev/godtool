@@ -5,7 +5,7 @@ import Layout from '../layouts/Layout.astro'
 
 <Layout
   title="GOD TOOL"
-  description="Give every agent the same interface to your integrations, browser sessions, Mac actions, and shared local context."
+  description="Give every agent the same interface to your connected accounts, logged-in browsers, persistent files, and Mac computer-use."
 >
   <nav class="fixed top-0 z-50 w-full border-b border-rule bg-surface/80 backdrop-blur-lg">
     <div class="mx-auto flex h-14 max-w-[1200px] items-center justify-between px-6 sm:px-10">
@@ -25,15 +25,15 @@ import Layout from '../layouts/Layout.astro'
     <div class="pointer-events-none absolute right-[8%] top-[14%] h-[520px] w-[520px] rounded-full bg-teal/[0.04] blur-[150px]"></div>
 
     <div class="mx-auto w-full max-w-[1200px] px-6 sm:px-10">
-      <div class="mx-auto mb-14 max-w-[940px] text-center">
+      <div class="mx-auto mb-14 max-w-[980px] text-center">
         <p class="rise-d1 mb-5 font-mono text-[11px] uppercase tracking-[0.22em] text-teal/70">
           Shared execution layer
         </p>
-        <h1 class="rise-d1 mb-7 font-display text-[clamp(3rem,7vw,6rem)] leading-[0.95] tracking-tight text-ink">
+        <h1 class="rise-d1 mb-7 font-display text-[clamp(2.75rem,5.8vw,5rem)] leading-[0.98] tracking-tight text-ink">
           Give every agent the same <span class="italic text-teal">interface to the world.</span>
         </h1>
-        <p class="rise-d2 mx-auto max-w-3xl text-[17px] leading-[1.7] text-ink-muted">
-          Connect integrations, browsers, Mac actions, and shared context once. GOD TOOL exposes them through MCP so Claude, Codex, Cursor, phone clients, and custom agents can use the same environment.
+        <p class="rise-d2 mx-auto max-w-[720px] text-[17px] leading-[1.7] text-ink-muted">
+          One setup for connected accounts, logged-in browsers, persistent files, and Mac computer-use. Works from Claude, Codex, Cursor, and any MCP client.
         </p>
         <div class="rise-d3 mt-9 flex flex-wrap items-center justify-center gap-4">
           <a href="#try" class="inline-flex items-center gap-2 rounded-md bg-teal px-5 py-2.5 text-[14px] font-medium text-surface transition-colors hover:bg-teal-dim">
@@ -149,7 +149,7 @@ import Layout from '../layouts/Layout.astro'
 
         <div class="hidden flex-col gap-3 rounded-xl border border-rule bg-surface-raised p-4 lg:flex">
           <div class="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">Capabilities</div>
-          {['Integrations', 'Embedded browsers', 'Mac actions', 'Shared memory', 'TypeScript tools'].map((name) => (
+          {['Integrations', 'Embedded browsers', 'Mac computer-use', 'Shared memory', 'TypeScript tools'].map((name) => (
             <div class="rounded-lg border border-rule bg-surface p-3 text-[13px] text-ink-muted">{name}</div>
           ))}
           <div class="mt-auto rounded-lg border border-teal/20 bg-teal/[0.05] p-3">
@@ -271,7 +271,7 @@ import Layout from '../layouts/Layout.astro'
         <div class="mt-7 grid gap-3">
           <div class="rounded-lg border border-rule bg-surface-raised p-4">
             <div class="text-[14px] font-medium text-ink">Some agents browse. Some click. Some do neither.</div>
-            <p class="mt-2 text-[13px] leading-6 text-ink-muted">GOD TOOL makes browser sessions and Mac actions part of the shared interface.</p>
+            <p class="mt-2 text-[13px] leading-6 text-ink-muted">GOD TOOL makes browser sessions and Mac computer-use part of the shared interface.</p>
           </div>
           <div class="rounded-lg border border-rule bg-surface-raised p-4">
             <div class="text-[14px] font-medium text-ink">Keep browser work inside the app.</div>
@@ -311,7 +311,7 @@ import Layout from '../layouts/Layout.astro'
               </div>
             ))}
             <div class="mt-5 rounded-lg border border-rule bg-surface p-3">
-              <div class="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-faint">Mac actions</div>
+              <div class="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-faint">Mac computer-use</div>
               <div class="mt-3 space-y-2 font-mono text-[11px] text-ink-muted">
                 <div>click(button)</div>
                 <div>type(text)</div>
@@ -432,7 +432,7 @@ import Layout from '../layouts/Layout.astro'
           <div class="rounded-xl border border-teal/20 bg-teal/[0.05] p-5">
             <div class="font-mono text-[11px] uppercase tracking-[0.16em] text-teal">GOD TOOL MCP</div>
             <div class="mt-4 grid gap-2">
-              {['Integrations', 'Browsers', 'Mac actions', 'Shared memory'].map((name) => (
+              {['Integrations', 'Browsers', 'Mac computer-use', 'Shared memory'].map((name) => (
                 <div class="rounded-md border border-teal/15 bg-surface/60 px-3 py-2 text-[12px] text-ink-muted">{name}</div>
               ))}
             </div>

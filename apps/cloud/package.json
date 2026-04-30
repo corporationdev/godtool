@@ -48,7 +48,6 @@
     "@executor/runtime-dynamic-worker": "workspace:*",
     "@executor/runtime-quickjs": "workspace:*",
     "@executor/sdk": "workspace:*",
-    "@executor/source-sync": "workspace:*",
     "@executor/storage-core": "workspace:*",
     "@executor/storage-postgres": "workspace:*",
     "@microlabs/otel-cf-workers": "^1.0.0-rc.52",

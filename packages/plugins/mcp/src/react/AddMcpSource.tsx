@@ -307,7 +307,6 @@ export default function AddMcpSource(props: {
   onCancel: () => void;
   initialUrl?: string;
   initialPreset?: string;
-  placement?: ReactNode;
   /** Whether the stdio transport is enabled on the server. */
   allowStdio?: boolean;
 }) {
@@ -642,7 +641,6 @@ export default function AddMcpSource(props: {
           Connect to an MCP server to discover and use its tools.
         </p>
       </div>
-      {props.placement}
 
       {/* Transport toggle — only shown when stdio is enabled server-side */}
       {allowStdio && (

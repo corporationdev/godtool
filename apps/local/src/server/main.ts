@@ -38,14 +38,6 @@ import {
   ComputerUseHandlers,
   ComputerUseExtensionService,
 } from "@executor/plugin-computer-use/api";
-import type { Source, Tool } from "@executor/sdk";
-import {
-  deleteSourcePackages,
-  exportSourcePackages,
-  importSourcePackages,
-  listSourceImportCandidates,
-  type PortableSourcePackage,
-} from "@executor/source-sync";
 import { getExecutor } from "./executor";
 import { createMcpRequestHandler, type McpRequestHandler } from "./mcp";
 import { ErrorCaptureLive } from "./observability";
@@ -130,14 +122,6 @@ const errorMessage = (error: unknown): string => {
   return String(error);
 };
 
-type DesktopCatalogSource = {
-  readonly id: string;
-  readonly name: string;
-  readonly kind: string;
-  readonly pluginId: string;
-  readonly toolCount: number;
-};
-
 const makeDesktopRpcHandler = (engine: ReturnType<typeof createExecutionEngine>) => {
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
@@ -173,87 +157,6 @@ const makeDesktopRpcHandler = (engine: ReturnType<typeof createExecutionEngine>)
   };
 };
 
-const makeDesktopCatalogHandler = (executor: Awaited<ReturnType<typeof getExecutor>>) => {
-  return async (request: Request): Promise<Response> => {
-    const url = new URL(request.url);
-    if (url.pathname !== "/catalog") return json({ error: "not_found" }, { status: 404 });
-    if (request.method !== "GET") {
-      return json({ error: "method_not_allowed" }, { status: 405 });
-    }
-
-    try {
-      const [sources, tools] = await Promise.all([
-        Effect.runPromise(executor.sources.list()),
-        Effect.runPromise(executor.tools.list({ includeAnnotations: false })),
-      ]);
-      const toolCountBySource = new Map<string, number>();
-      for (const tool of tools as readonly Tool[]) {
-        toolCountBySource.set(tool.sourceId, (toolCountBySource.get(tool.sourceId) ?? 0) + 1);
-      }
-
-      const catalog = (sources as readonly Source[]).map(
-        (source): DesktopCatalogSource => ({
-          id: source.id,
-          name: source.name,
-          kind: source.kind,
-          pluginId: source.pluginId,
-          toolCount: toolCountBySource.get(source.id) ?? 0,
-        }),
-      );
-
-      return json({ sources: catalog });
-    } catch (error) {
-      return json({ status: "error", error: errorMessage(error) }, { status: 500 });
-    }
-  };
-};
-
-const makeDesktopSourceSyncHandler = (executor: Awaited<ReturnType<typeof getExecutor>>) => {
-  return async (request: Request): Promise<Response> => {
-    const url = new URL(request.url);
-    if (!url.pathname.startsWith("/sources/")) return json({ error: "not_found" }, { status: 404 });
-    if (request.method !== "POST") {
-      return json({ error: "method_not_allowed" }, { status: 405 });
-    }
-
-    try {
-      const scopeId = executor.scopes[0]?.id as string | undefined;
-      if (!scopeId) return json({ error: "scope_unavailable" }, { status: 500 });
-      const payload = (await request.json().catch(() => ({}))) as {
-        readonly sourceIds?: unknown;
-        readonly sources?: unknown;
-      };
-
-      if (url.pathname === "/sources/import-candidates") {
-        return json({ sources: await listSourceImportCandidates(executor, scopeId) });
-      }
-
-      const sourceIds = Array.isArray(payload.sourceIds)
-        ? payload.sourceIds.filter((id): id is string => typeof id === "string")
-        : [];
-
-      if (url.pathname === "/sources/export") {
-        return json({ sources: await exportSourcePackages(executor, sourceIds, scopeId) });
-      }
-
-      if (url.pathname === "/sources/import") {
-        const sources = Array.isArray(payload.sources)
-          ? (payload.sources as readonly PortableSourcePackage[])
-          : [];
-        return json({ sourceIds: await importSourcePackages(executor, sources, scopeId) });
-      }
-
-      if (url.pathname === "/sources/delete") {
-        return json({ sourceIds: await deleteSourcePackages(executor, sourceIds) });
-      }
-
-      return json({ error: "not_found" }, { status: 404 });
-    } catch (error) {
-      return json({ error: errorMessage(error) }, { status: 500 });
-    }
-  };
-};
-
 export const createServerHandlers = async (): Promise<ServerHandlers> => {
   const executor = await getExecutor();
   const engine = createExecutionEngine({ executor, codeExecutor: makeQuickJsExecutor() });
@@ -285,15 +188,8 @@ export const createServerHandlers = async (): Promise<ServerHandlers> => {
 
   const mcp = createMcpRequestHandler({ engine });
   const executeHandler = makeDesktopRpcHandler(engine);
-  const catalogHandler = makeDesktopCatalogHandler(executor);
-  const sourceSyncHandler = makeDesktopSourceSyncHandler(executor);
   const desktopRpc = {
-    handler: async (request: Request) => {
-      const url = new URL(request.url);
-      if (url.pathname === "/catalog") return catalogHandler(request);
-      if (url.pathname.startsWith("/sources/")) return sourceSyncHandler(request);
-      return executeHandler(request);
-    },
+    handler: executeHandler,
   };
 
   return { api, desktopRpc, mcp };
