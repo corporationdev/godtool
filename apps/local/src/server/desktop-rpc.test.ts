@@ -48,6 +48,8 @@ describe("desktop RPC handler", () => {
       status: "completed",
       result: { code: "return 1" },
     });
-    expect(engine.executeWithPause).toHaveBeenCalledWith("return 1");
+    expect(engine.executeWithPause).toHaveBeenCalledWith("return 1", {
+      callerId: "desktop-rpc",
+    });
   });
 });
