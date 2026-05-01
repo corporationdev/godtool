@@ -1,6 +1,7 @@
 import {
   app,
   BrowserWindow,
+  dialog,
   ipcMain,
   Menu,
   nativeTheme,
@@ -1012,11 +1013,40 @@ const loadScope = async (scopePath: string): Promise<void> => {
 // ---------------------------------------------------------------------------
 
 const buildMenu = (): void => {
+  const updateMenuLabel = (): string => {
+    switch (desktopUpdateStatus.state) {
+      case "checking":
+        return "Checking for Updates...";
+      case "downloading":
+        return `Downloading Update ${Math.round(desktopUpdateStatus.percent ?? 0)}%`;
+      case "ready":
+        return "Restart and Install Update";
+      default:
+        return "Check for Updates...";
+    }
+  };
+
+  const canClickUpdateMenu =
+    app.isPackaged &&
+    desktopUpdateStatus.state !== "checking" &&
+    desktopUpdateStatus.state !== "downloading";
+
   const template: MenuItemConstructorOptions[] = [
     {
       role: "appMenu",
       submenu: [
         { role: "about" },
+        {
+          label: updateMenuLabel(),
+          enabled: canClickUpdateMenu,
+          click: () => {
+            if (desktopUpdateStatus.state === "ready") {
+              restartAndInstallDesktopUpdate();
+              return;
+            }
+            void checkDesktopUpdates({ notifyWhenCurrent: true });
+          },
+        },
         { type: "separator" },
         { role: "services" },
         { type: "separator" },
@@ -1686,10 +1716,19 @@ const getAutoUpdater = (): AppUpdater => {
 const setDesktopUpdateStatus = (status: DesktopUpdateStatus): DesktopUpdateStatus => {
   desktopUpdateStatus = status;
   mainWindow?.webContents.send("desktop-update:status", status);
+  buildMenu();
   return status;
 };
 
 const updateInfoVersion = (info: UpdateInfo): string => info.version || app.getVersion();
+
+const showDesktopUpdateMessage = (options: Electron.MessageBoxOptions): void => {
+  if (mainWindow) {
+    void dialog.showMessageBox(mainWindow, options);
+    return;
+  }
+  void dialog.showMessageBox(options);
+};
 
 const setupDesktopUpdates = (): void => {
   if (desktopUpdatesStarted || !app.isPackaged) return;
@@ -1760,7 +1799,9 @@ const setupDesktopUpdates = (): void => {
   });
 };
 
-const checkDesktopUpdates = async (): Promise<DesktopUpdateStatus> => {
+const checkDesktopUpdates = async (
+  options: { readonly notifyWhenCurrent?: boolean } = {},
+): Promise<DesktopUpdateStatus> => {
   if (!app.isPackaged) return desktopUpdateStatus;
   if (
     desktopUpdateStatus.state === "checking" ||
@@ -1786,7 +1827,24 @@ const checkDesktopUpdates = async (): Promise<DesktopUpdateStatus> => {
     .finally(() => {
       desktopUpdateCheck = null;
     });
-  return desktopUpdateCheck;
+  const status = await desktopUpdateCheck;
+  if (options.notifyWhenCurrent && status.state === "not-available") {
+    showDesktopUpdateMessage({
+      type: "info",
+      message: "GODTOOL is up to date",
+      detail: `Version ${status.currentVersion} is the latest available on ${status.channel}.`,
+      buttons: ["OK"],
+    });
+  }
+  if (options.notifyWhenCurrent && status.state === "error") {
+    showDesktopUpdateMessage({
+      type: "error",
+      message: "Could not check for updates",
+      detail: status.message,
+      buttons: ["OK"],
+    });
+  }
+  return status;
 };
 
 const restartAndInstallDesktopUpdate = (): boolean => {
