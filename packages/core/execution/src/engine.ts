@@ -210,6 +210,8 @@ const makeExecutionCallerId = (): string => {
     : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 };
 
+const makeDefaultExecutionCallerId = (): string => `execution-${makeExecutionCallerId()}`;
+
 const extractContentImages = (
   value: unknown,
 ): {
@@ -507,7 +509,7 @@ export type ExecutionEngine<E extends Cause.YieldableError = CodeExecutionError>
    */
   readonly execute: (
     code: string,
-    options: { readonly onElicitation: ElicitationHandler },
+    options: { readonly onElicitation: ElicitationHandler; readonly callerId?: string },
   ) => Effect.Effect<ExecuteResult, E>;
 
   /**
@@ -515,7 +517,10 @@ export type ExecutionEngine<E extends Cause.YieldableError = CodeExecutionError>
    * Use this when the host doesn't support inline elicitation.
    * Returns either a completed result or a paused execution that can be resumed.
    */
-  readonly executeWithPause: (code: string) => Effect.Effect<ExecutionResult, E>;
+  readonly executeWithPause: (
+    code: string,
+    options?: { readonly callerId?: string },
+  ) => Effect.Effect<ExecutionResult, E>;
 
   /**
    * Resume a paused execution. Returns a completed result, a new pause, or
@@ -563,8 +568,11 @@ export const createExecutionEngine = <E extends Cause.YieldableError = CodeExecu
    * The sandbox is forked as a daemon because paused executions can outlive the
    * caller scope that returned the first pause, such as an HTTP request handler.
    */
-  const startPausableExecution = Effect.fn("mcp.execute")(function* (code: string) {
-    const callerId = `execution-${makeExecutionCallerId()}`;
+  const startPausableExecution = Effect.fn("mcp.execute")(function* (
+    code: string,
+    options?: { readonly callerId?: string },
+  ) {
+    const callerId = options?.callerId ?? makeDefaultExecutionCallerId();
     yield* Effect.annotateCurrentSpan({
       "mcp.execute.mode": "pausable",
       "mcp.execute.caller_id": callerId,
@@ -645,9 +653,9 @@ export const createExecutionEngine = <E extends Cause.YieldableError = CodeExecu
    */
   const runInlineExecution = Effect.fn("mcp.execute")(function* (
     code: string,
-    options: { readonly onElicitation: ElicitationHandler },
+    options: { readonly onElicitation: ElicitationHandler; readonly callerId?: string },
   ) {
-    const callerId = `execution-${makeExecutionCallerId()}`;
+    const callerId = options.callerId ?? makeDefaultExecutionCallerId();
     yield* Effect.annotateCurrentSpan({
       "mcp.execute.mode": "inline",
       "mcp.execute.caller_id": callerId,

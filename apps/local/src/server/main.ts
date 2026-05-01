@@ -142,7 +142,9 @@ export const makeDesktopRpcHandler = (
     }
 
     try {
-      const outcome = await Effect.runPromise(engine.executeWithPause(payload.code));
+      const outcome = await Effect.runPromise(
+        engine.executeWithPause(payload.code, { callerId: "desktop-rpc" }),
+      );
       if (outcome.status === "completed") {
         return json({
           status: "completed",

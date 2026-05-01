@@ -43,7 +43,7 @@ function PermissionBadge(props: {
       type="button"
       variant="secondary"
       size="xs"
-      className="h-5 rounded-full px-2 py-0.5 text-xs"
+      className="h-5 self-start rounded-full px-2 py-0.5 text-xs"
       onClick={props.onRequest}
       disabled={props.disabled}
     >

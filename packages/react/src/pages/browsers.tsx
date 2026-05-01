@@ -429,26 +429,35 @@ export function BrowsersPage() {
                       onClick={() => void showSession(session.id)}
                       aria-current={selectedId === session.id ? "page" : undefined}
                       className={[
-                        "relative h-auto w-full cursor-pointer justify-start rounded-none px-4 py-3 pr-12 text-left font-normal transition-colors hover:bg-accent/40",
+                        "relative min-h-24 w-full cursor-pointer flex-col items-stretch justify-start whitespace-normal rounded-none px-4 py-3 pr-12 text-left font-normal transition-colors hover:bg-accent/40",
                         selectedId === session.id
                           ? "bg-accent/60 before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-primary"
                           : "bg-background",
                       ].join(" ")}
                     >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="truncate text-sm font-medium">{session.sessionName}</span>
+                      <div className="flex min-w-0 items-start justify-between gap-2">
+                        <span className="min-w-0 truncate text-sm font-medium leading-5">
+                          {session.sessionName}
+                        </span>
                         {active ? (
                           <Badge variant="secondary" className="shrink-0">
                             Active
                           </Badge>
                         ) : null}
                       </div>
-                      <p className="mt-1 truncate text-xs text-muted-foreground">
+                      <p className="mt-1 min-w-0 truncate text-xs leading-5 text-muted-foreground">
                         {session.title || session.url || session.id}
                       </p>
-                      <div className="mt-2 text-xs text-muted-foreground">
-                        <span>Used {formatAge(session.lastUsedAt)}</span>
-                      </div>
+                      <dl className="mt-2 grid min-w-0 gap-1 text-xs leading-5 text-muted-foreground">
+                        <div className="min-w-0">
+                          <dt className="font-medium text-foreground/70">Current URL</dt>
+                          <dd className="truncate font-mono">{session.url || "about:blank"}</dd>
+                        </div>
+                        <div className="min-w-0">
+                          <dt className="font-medium text-foreground/70">Last used</dt>
+                          <dd>{formatAge(session.lastUsedAt)}</dd>
+                        </div>
+                      </dl>
                     </Button>
                     <Button
                       type="button"

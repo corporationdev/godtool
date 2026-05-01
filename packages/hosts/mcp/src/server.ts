@@ -117,6 +117,11 @@ const readDebugLogFile = (): string => {
 const supportsManagedElicitation = (server: McpServer): boolean =>
   getElicitationSupport(server).form;
 
+const makeHostCallerId = (): string =>
+  typeof globalThis.crypto?.randomUUID === "function"
+    ? globalThis.crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
 const capabilitySnapshot = (server: McpServer) => ({
   clientCapabilities: server.server.getClientCapabilities() ?? null,
   elicitationSupport: getElicitationSupport(server),
@@ -319,6 +324,7 @@ export const createExecutorMcpServer = <E extends Cause.YieldableError>(
 ): Effect.Effect<McpServer> =>
   Effect.gen(function* () {
     const engine = "engine" in config ? config.engine : createExecutionEngine(config);
+    const mcpCallerId = `mcp-${makeHostCallerId()}`;
     const description =
       config.description ??
       (yield* engine.getDescription.pipe(Effect.withSpan("mcp.host.get_description")));
@@ -384,6 +390,7 @@ export const createExecutorMcpServer = <E extends Cause.YieldableError>(
         });
         if (supportsManagedElicitation(server)) {
           const result = yield* engine.execute(code, {
+            callerId: mcpCallerId,
             onElicitation: makeMcpElicitationHandler(server, debugLog),
           });
           const formatted = formatExecuteResult(result);
@@ -397,7 +404,7 @@ export const createExecutorMcpServer = <E extends Cause.YieldableError>(
           });
           return mcpResult;
         }
-        const outcome = yield* engine.executeWithPause(code);
+        const outcome = yield* engine.executeWithPause(code, { callerId: mcpCallerId });
         debugLog("execute.paused_flow_result", {
           status: outcome.status,
           executionId: outcome.status === "paused" ? outcome.execution.id : undefined,
