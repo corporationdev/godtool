@@ -80,6 +80,14 @@ jobs:
         run: bunx tsc -p tsconfig.json
         working-directory: apps/desktop
 
+      - name: Build Computer Use sidecar
+        if: matrix.platform == 'mac'
+        run: |
+          node scripts/build-computer-use-sidecar.js --arch "${{ matrix.arch }}"
+          test -x "resources/computer-use/computer-use-darwin-${{ matrix.arch }}"
+          file "resources/computer-use/computer-use-darwin-${{ matrix.arch }}"
+        working-directory: apps/desktop
+
       - name: Build desktop distributables
         timeout-minutes: 30
         env:
@@ -113,6 +121,19 @@ jobs:
           trap cleanup EXIT
 
           npx electron-builder --${{ matrix.platform }} --${{ matrix.arch }} 2>&1 | tee "$log_path"
+        working-directory: apps/desktop
+
+      - name: Verify Computer Use sidecar bundle
+        if: matrix.platform == 'mac'
+        run: |
+          sidecar_path="$(find release -path "*GODTOOL.app/Contents/Resources/computer-use/computer-use-darwin-${{ matrix.arch }}" -type f -print -quit)"
+          if [ -z "$sidecar_path" ]; then
+            echo "Computer Use sidecar was not bundled into GODTOOL.app" >&2
+            find release -maxdepth 6 -print
+            exit 1
+          fi
+          test -x "$sidecar_path"
+          file "$sidecar_path"
         working-directory: apps/desktop
 
       - name: Prepare update metadata
