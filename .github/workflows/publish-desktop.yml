@@ -172,6 +172,19 @@ jobs:
           fi
         working-directory: apps/desktop
 
+      - name: Prepare stable download assets
+        if: matrix.platform == 'mac'
+        run: |
+          shopt -s nullglob
+          dmgs=(release/*.dmg)
+          if [ "${#dmgs[@]}" -eq 0 ]; then
+            echo "No DMG was generated for ${{ matrix.arch }}." >&2
+            exit 1
+          fi
+          cp "${dmgs[0]}" "release/GODTOOL-mac-${{ matrix.arch }}.dmg"
+          echo "Prepared release/GODTOOL-mac-${{ matrix.arch }}.dmg for latest download links."
+        working-directory: apps/desktop
+
       - name: Inspect desktop release output
         if: always()
         run: |
@@ -196,7 +209,7 @@ jobs:
           name: desktop-${{ matrix.platform }}-${{ matrix.arch }}
           path: |
             apps/desktop/release/*.dmg
-            apps/desktop/release/*-mac.zip
+            apps/desktop/release/*.zip
             apps/desktop/release/latest-${{ matrix.arch }}-mac.yml
             apps/desktop/release/*.blockmap
           if-no-files-found: warn
@@ -216,7 +229,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          find artifacts -type f \( -name "*.dmg" -o -name "*-mac.zip" \) | while read file; do
+          find artifacts -type f \( -name "*.dmg" -o -name "*.zip" \) | while read file; do
             echo "Uploading: $file"
             gh release upload "${{ inputs.tag }}" "$file" --repo "${{ github.repository }}" --clobber || true
           done

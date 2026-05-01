@@ -1,0 +1,115 @@
+---
+export const prerender = true
+import Layout from '../layouts/Layout.astro'
+
+const repo = 'corporationdev/godtool'
+const releaseUrl = `https://github.com/${repo}/releases/latest`
+const arm64Url = `https://github.com/${repo}/releases/latest/download/GODTOOL-mac-arm64.dmg`
+const x64Url = `https://github.com/${repo}/releases/latest/download/GODTOOL-mac-x64.dmg`
+---
+
+<Layout
+  title="Download GOD TOOL for macOS"
+  description="Download the latest signed GOD TOOL desktop app for Apple Silicon or Intel Macs."
+>
+  <nav class="fixed top-0 z-50 w-full border-b border-rule bg-surface/80 backdrop-blur-lg">
+    <div class="mx-auto flex h-14 max-w-[1200px] items-center justify-between px-6 sm:px-10">
+      <a href="/" class="font-display text-xl italic tracking-tight text-ink transition-colors hover:text-teal">GOD TOOL</a>
+      <div class="flex items-center gap-8">
+        <a href="/" class="hidden text-[13px] text-ink-muted transition-colors hover:text-ink sm:block">Overview</a>
+        <a href="/setup" class="hidden text-[13px] text-ink-muted transition-colors hover:text-ink sm:block">Setup</a>
+        <a href="https://github.com/corporationdev/godtool" class="hidden text-[13px] text-ink-muted transition-colors hover:text-ink sm:block">GitHub</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="pt-14">
+    <section class="relative overflow-hidden py-24 sm:py-32">
+      <div class="pointer-events-none absolute left-1/2 top-20 h-[420px] w-[640px] -translate-x-1/2 rounded-full bg-teal/[0.04] blur-[150px]"></div>
+
+      <div class="relative mx-auto max-w-[1040px] px-6 sm:px-10">
+        <div class="mx-auto max-w-3xl text-center">
+          <p class="rise-d1 mb-5 font-mono text-[11px] uppercase tracking-[0.22em] text-teal/70">
+            macOS desktop app
+          </p>
+          <h1 class="rise-d1 font-display text-[clamp(2.5rem,5.5vw,4.75rem)] leading-[1.02] tracking-tight text-ink">
+            Download <span class="italic text-teal">GOD TOOL</span>
+          </h1>
+          <p class="rise-d2 mx-auto mt-6 max-w-2xl text-[16px] leading-[1.7] text-ink-muted">
+            Choose the build for your Mac. Both downloads are signed and notarized from the latest GitHub release.
+          </p>
+        </div>
+
+        <div class="rise-d3 mt-14 grid gap-4 md:grid-cols-2">
+          <a
+            href={arm64Url}
+            class="group flex min-h-[260px] flex-col justify-between rounded-xl border border-teal/25 bg-surface-raised p-6 transition-colors hover:border-teal/45 hover:bg-surface-overlay sm:p-7"
+          >
+            <div>
+              <div class="mb-5 flex items-center justify-between gap-4">
+                <span class="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-teal/20 bg-teal/[0.08] text-teal">
+                  <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3M5 11h14M7 21h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2Z" /></svg>
+                </span>
+                <span class="rounded-md border border-teal/25 bg-teal/[0.08] px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-teal">Recommended</span>
+              </div>
+              <h2 class="text-2xl font-semibold tracking-tight text-ink">Apple Silicon</h2>
+              <p class="mt-3 text-[14px] leading-6 text-ink-muted">For M1, M2, M3, and M4 Macs.</p>
+            </div>
+            <div class="mt-8 flex items-center justify-between gap-4">
+              <span class="font-mono text-[11px] text-ink-faint">Latest release .dmg</span>
+              <span class="inline-flex h-10 items-center gap-2 rounded-md bg-teal px-4 text-[13px] font-medium text-surface transition-colors group-hover:bg-teal-dim">
+                Download
+                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" /></svg>
+              </span>
+            </div>
+          </a>
+
+          <a
+            href={x64Url}
+            class="group flex min-h-[260px] flex-col justify-between rounded-xl border border-rule bg-surface-raised p-6 transition-colors hover:border-ink-faint hover:bg-surface-overlay sm:p-7"
+          >
+            <div>
+              <div class="mb-5 flex items-center justify-between gap-4">
+                <span class="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-rule bg-surface text-ink-muted">
+                  <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M6 7v10a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7M9 11h6" /></svg>
+                </span>
+                <span class="rounded-md border border-rule px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-faint">Intel</span>
+              </div>
+              <h2 class="text-2xl font-semibold tracking-tight text-ink">Intel Mac</h2>
+              <p class="mt-3 text-[14px] leading-6 text-ink-muted">For older Macs with Intel processors.</p>
+            </div>
+            <div class="mt-8 flex items-center justify-between gap-4">
+              <span class="font-mono text-[11px] text-ink-faint">Latest release .dmg</span>
+              <span class="inline-flex h-10 items-center gap-2 rounded-md border border-rule px-4 text-[13px] font-medium text-ink transition-colors group-hover:border-ink-faint">
+                Download
+                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" /></svg>
+              </span>
+            </div>
+          </a>
+        </div>
+
+        <div class="rise-d4 mx-auto mt-8 max-w-2xl rounded-xl border border-rule bg-surface-raised p-5 text-center">
+          <p class="text-[13px] leading-6 text-ink-muted">
+            Not sure which one you need? Open Apple menu, About This Mac. If it says Apple M-series, choose Apple Silicon. If it says Intel, choose Intel Mac.
+          </p>
+          <p class="mt-3 text-[12px] text-ink-faint">
+            These links always resolve to the newest published desktop release.
+            <span aria-hidden="true"> · </span>
+            <a href={releaseUrl} class="transition-colors hover:text-ink">View all release files</a>
+          </p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="border-t border-rule py-10">
+    <div class="mx-auto flex max-w-[1200px] items-center justify-between px-6 sm:px-10">
+      <span class="font-display text-sm italic text-ink-faint">GOD TOOL</span>
+      <div class="flex items-center gap-5 text-[13px]">
+        <a href="/privacy" class="text-ink-faint transition-colors hover:text-ink">Privacy</a>
+        <a href="/terms" class="text-ink-faint transition-colors hover:text-ink">Terms</a>
+        <a href={`https://github.com/${repo}`} class="text-ink-faint transition-colors hover:text-ink">GitHub</a>
+      </div>
+    </div>
+  </footer>
+</Layout>
