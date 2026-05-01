@@ -257,6 +257,7 @@ type PresetEntry = {
 };
 
 const TOP_PRESET_ORDER = [
+  "computer_use:computer_use",
   "openapi:github-rest",
   "googleDiscovery:google-gmail",
   "raw:slack",

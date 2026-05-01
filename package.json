@@ -64,6 +64,7 @@
     "release:beta:stop": "changeset pre exit",
     "release:publish:dry-run": "bun run --cwd apps/cli release:publish:dry-run",
     "release:publish": "bun run --cwd apps/cli release:publish",
+    "test-apple": "bun run scripts/test-apple-notary.ts",
     "clean": "bun run scripts/clean.ts",
     "prepare": "effect-language-service patch"
   },

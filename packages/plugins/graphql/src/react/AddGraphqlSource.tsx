@@ -153,22 +153,6 @@ export default function AddGraphqlSource(props: {
     <div className="flex flex-1 flex-col gap-6">
       <h1 className="text-xl font-semibold text-foreground">Add GraphQL Source</h1>
 
-      <CardStack>
-        <CardStackContent className="border-t-0">
-          <CardStackEntryField
-            label="Endpoint"
-            hint="The endpoint will be introspected to discover available queries and mutations."
-          >
-            <Input
-              value={endpoint}
-              onChange={(e) => setEndpoint((e.target as HTMLInputElement).value)}
-              placeholder="https://api.example.com/graphql"
-              className="font-mono text-sm"
-            />
-          </CardStackEntryField>
-        </CardStackContent>
-      </CardStack>
-
       {managedAuthApp && (
         <section className="space-y-2.5">
           <FieldLabel>Managed OAuth</FieldLabel>
@@ -177,12 +161,7 @@ export default function AddGraphqlSource(props: {
               <div className="flex items-center justify-between gap-4 p-4">
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-foreground">
-                    {managedAuth ? "Connected with managed auth" : "Let GOD TOOL manage OAuth"}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {isDesktopManagedAuth()
-                      ? "This local source uses your cloud sign-in without storing OAuth secrets on this Mac."
-                      : "Credentials are stored in Composio for this cloud source."}
+                    {managedAuth ? "Connected with managed OAuth" : "Use GOD TOOL managed OAuth"}
                   </p>
                 </div>
                 <Button
@@ -217,7 +196,18 @@ export default function AddGraphqlSource(props: {
         />
       </section>
 
-      <SourceAdvancedSettings>
+      <SourceAdvancedSettings defaultOpen={!endpoint.trim()}>
+        <CardStackEntryField
+          label="Endpoint"
+          hint="The endpoint will be introspected to discover available queries and mutations."
+        >
+          <Input
+            value={endpoint}
+            onChange={(e) => setEndpoint((e.target as HTMLInputElement).value)}
+            placeholder="https://api.example.com/graphql"
+            className="font-mono text-sm"
+          />
+        </CardStackEntryField>
         <SourceIdentityFields identity={identity} namePlaceholder="e.g. Shopify API" asEntries />
       </SourceAdvancedSettings>
 

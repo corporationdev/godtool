@@ -173,12 +173,7 @@ export default function AddRawSource(props: {
               <CardStackEntry className="items-center justify-between gap-4">
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-foreground">
-                    {managedAuth ? "Connected with managed auth" : "Let GOD TOOL manage OAuth"}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {isDesktopManagedAuth()
-                      ? "This source stays local. Requests use your cloud sign-in without storing OAuth secrets on this Mac."
-                      : "Credentials are stored in Composio for this cloud source."}
+                    {managedAuth ? "Connected with managed OAuth" : "Use GOD TOOL managed OAuth"}
                   </p>
                 </div>
                 <Button

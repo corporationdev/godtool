@@ -359,10 +359,8 @@ function AppSidebar(props: {
     : null;
 
   return (
-    <Sidebar collapsible="icon">
-      <SidebarHeader className="desktop-sidebar-header">
-        <SidebarTrigger className="desktop-sidebar-trigger shrink-0" />
-      </SidebarHeader>
+    <Sidebar collapsible="offcanvas">
+      <SidebarHeader className="desktop-sidebar-header" />
 
       <ShadSidebarContent>
         <SidebarGroup>
@@ -488,6 +486,7 @@ export function Shell() {
   return (
     <SidebarProvider>
       <CommandPalette sourcePlugins={sourcePlugins} />
+      {shellSidebar === "app" ? <SidebarTrigger className="desktop-sidebar-trigger shrink-0" /> : null}
       {shellSidebar === "settings" ? (
         <SettingsSidebar pathname={pathname} auth={auth} />
       ) : (

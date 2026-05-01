@@ -433,16 +433,24 @@ export default function AddOpenApiSource(props: {
     specUrl,
     baseUrl: resolvedBaseUrl,
   });
-  const managedProviderLabel = managedAuthApp
-    ? managedAuthApp.charAt(0).toUpperCase() + managedAuthApp.slice(1)
-    : "this API";
-
   const canAdd =
     preview !== null &&
     resolvedBaseUrl.length > 0 &&
     (strategy.kind !== "managed" || managedAuth !== null);
 
   // ---- Handlers ----
+
+  const resetAnalyzedSpecState = () => {
+    setPreview(null);
+    setSelectedServerIndex(-1);
+    setCustomBaseUrl("");
+    setVariableSelections({});
+    setCustomHeaders([]);
+    setStrategy({ kind: "none" });
+    setOauth2AuthState(null);
+    setOauth2Error(null);
+    setManagedAuth(null);
+  };
 
   const handleAnalyze = async () => {
     setAnalyzing(true);
@@ -848,45 +856,6 @@ export default function AddOpenApiSource(props: {
     <div className="flex flex-1 flex-col gap-6">
       <h1 className="text-xl font-semibold text-foreground">Add OpenAPI Source</h1>
 
-      {/* ── Spec input ── */}
-      <CardStack>
-        <CardStackContent className="border-t-0">
-          <CardStackEntryField
-            label="OpenAPI Spec"
-            hint={!preview ? "Paste a URL or raw JSON/YAML content." : undefined}
-          >
-            <div className="relative">
-              <Textarea
-                value={specUrl}
-                onChange={(e) => {
-                  setSpecUrl((e.target as HTMLTextAreaElement).value);
-                  if (preview) {
-                    setPreview(null);
-                    setSelectedServerIndex(-1);
-                    setCustomBaseUrl("");
-                    setVariableSelections({});
-                    setCustomHeaders([]);
-                    setStrategy({ kind: "none" });
-                    setOauth2AuthState(null);
-                    setOauth2Error(null);
-                    setManagedAuth(null);
-                  }
-                }}
-                placeholder="https://api.example.com/openapi.json"
-                rows={3}
-                maxRows={10}
-                className="font-mono text-sm"
-              />
-              {analyzing && (
-                <div className="pointer-events-none absolute right-2 top-2">
-                  <IOSSpinner className="size-4" />
-                </div>
-              )}
-            </div>
-          </CardStackEntryField>
-        </CardStackContent>
-      </CardStack>
-
       {/* ── Title card (shown below spec input after analysis) ── */}
       {preview ? (
         <CardStack>
@@ -930,7 +899,7 @@ export default function AddOpenApiSource(props: {
       )}
 
       {/* ── Everything below appears after analysis ── */}
-      {preview && (
+      {preview ? (
         <>
           <section className="space-y-2.5">
             <FieldLabel>Authentication</FieldLabel>
@@ -951,9 +920,6 @@ export default function AddOpenApiSource(props: {
                     <RadioGroupItem value="managed" className="mt-0.5" />
                     <div className="min-w-0 flex-1">
                       <div className="text-xs font-medium text-foreground">Managed OAuth</div>
-                      <div className="mt-0.5 text-[10px] text-muted-foreground">
-                        GOD TOOL manages {managedProviderLabel} OAuth through Composio
-                      </div>
                     </div>
                   </Label>
                 )}
@@ -1031,12 +997,9 @@ export default function AddOpenApiSource(props: {
                   <CardStackEntry className="items-center justify-between gap-4">
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-foreground">
-                        {managedAuth ? "Connected with managed auth" : "Let GOD TOOL manage OAuth"}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {isDesktopManagedAuth()
-                          ? "This local source uses your cloud sign-in without storing OAuth secrets on this Mac."
-                          : "Credentials are stored in Composio for this cloud source."}
+                        {managedAuth
+                          ? "Connected with managed OAuth"
+                          : "Use GOD TOOL managed OAuth"}
                       </p>
                     </div>
                     <Button
@@ -1199,6 +1162,30 @@ export default function AddOpenApiSource(props: {
           </section>
 
           <SourceAdvancedSettings>
+            <CardStackEntryField
+              label="OpenAPI Spec"
+              hint={!preview ? "Paste a URL or raw JSON/YAML content." : undefined}
+            >
+              <div className="relative">
+                <Textarea
+                  value={specUrl}
+                  onChange={(e) => {
+                    setSpecUrl((e.target as HTMLTextAreaElement).value);
+                    if (preview) resetAnalyzedSpecState();
+                  }}
+                  placeholder="https://api.example.com/openapi.json"
+                  rows={3}
+                  maxRows={10}
+                  className="font-mono text-sm"
+                />
+                {analyzing && (
+                  <div className="pointer-events-none absolute right-2 top-2">
+                    <IOSSpinner className="size-4" />
+                  </div>
+                )}
+              </div>
+            </CardStackEntryField>
+
             <SourceIdentityFields identity={identity} asEntries />
 
             <CardStackEntryField label="Base URL">
@@ -1332,6 +1319,29 @@ export default function AddOpenApiSource(props: {
             </div>
           )}
         </>
+      ) : (
+        <SourceAdvancedSettings defaultOpen>
+          <CardStackEntryField label="OpenAPI Spec" hint="Paste a URL or raw JSON/YAML content.">
+            <div className="relative">
+              <Textarea
+                value={specUrl}
+                onChange={(e) => {
+                  setSpecUrl((e.target as HTMLTextAreaElement).value);
+                  resetAnalyzedSpecState();
+                }}
+                placeholder="https://api.example.com/openapi.json"
+                rows={3}
+                maxRows={10}
+                className="font-mono text-sm"
+              />
+              {analyzing && (
+                <div className="pointer-events-none absolute right-2 top-2">
+                  <IOSSpinner className="size-4" />
+                </div>
+              )}
+            </div>
+          </CardStackEntryField>
+        </SourceAdvancedSettings>
       )}
 
       <FloatActions>

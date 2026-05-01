@@ -793,9 +793,6 @@ export default function AddGoogleDiscoverySource(props: {
                   <RadioGroupItem value="managed" className="mt-0.5" />
                   <div className="min-w-0 flex-1">
                     <div className="text-xs font-medium text-foreground">Managed OAuth</div>
-                    <div className="mt-0.5 text-[10px] text-muted-foreground">
-                      GOD TOOL manages Google OAuth through Composio
-                    </div>
                   </div>
                 </Label>
               )}
@@ -934,13 +931,8 @@ export default function AddGoogleDiscoverySource(props: {
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-foreground">
                         {managedAuth
-                          ? "Connected with managed auth"
-                          : "Let GOD TOOL manage Google OAuth"}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {isDesktopManagedAuth()
-                          ? "This local source uses your cloud sign-in without storing OAuth secrets on this Mac."
-                          : "Credentials are stored in Composio for this cloud source."}
+                          ? "Connected with managed OAuth"
+                          : "Use GOD TOOL managed OAuth"}
                       </p>
                     </div>
                     <Button

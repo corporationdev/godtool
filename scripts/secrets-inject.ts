@@ -25,6 +25,13 @@ const templatePath = resolve(repoRoot, ".env.op");
 const envAssignmentRegex = /^(\s*(?:export\s+)?)([A-Za-z_][A-Za-z0-9_]*)(\s*=\s*)(.*)$/;
 const onePasswordReferenceMarker = "op://";
 const envTierVariableRegex = /\$\{ENV_TIER\}/g;
+const localOnlySecretKeys = new Set([
+  "APPLE_API_KEY_BASE64",
+  "APPLE_API_KEY_ID",
+  "APPLE_API_ISSUER",
+  "CSC_LINK",
+  "CSC_KEY_PASSWORD",
+]);
 const newlineRegex = /\r?\n/;
 const stageVariableRegex = /\$\{STAGE\}/g;
 const argv = process.argv.slice(2);
@@ -65,7 +72,7 @@ if (envExamples.length === 0) {
 
 const templateKeys = collectEnvExampleKeys(envExamples);
 const secrets = normalizeEnvValues(
-  parseDotEnv(injectSecretsTemplate(filterSecretsTemplate(template, templateKeys))),
+  parseDotEnv(injectSecretsTemplate(filterSecretsTemplate(template, templateKeys, stageKind))),
 );
 const outputPaths: string[] = [];
 for (const examplePath of envExamples) {
@@ -164,15 +171,23 @@ function collectEnvExampleKeys(examplePaths: readonly string[]): ReadonlySet<str
   return keys;
 }
 
-function filterSecretsTemplate(template: string, keys: ReadonlySet<string>): string {
+function filterSecretsTemplate(
+  template: string,
+  keys: ReadonlySet<string>,
+  stageKind: StageKind,
+): string {
   return template
     .split(newlineRegex)
     .filter((line) => {
       const match = line.match(envAssignmentRegex);
       const key = match?.[2];
-      return !key || keys.has(key);
+      return !key || (keys.has(key) && shouldResolveSecretTemplateKey(key, stageKind));
     })
     .join("\n");
+}
+
+function shouldResolveSecretTemplateKey(key: string, stageKind: StageKind): boolean {
+  return stageKind === "dev" || !localOnlySecretKeys.has(key);
 }
 
 function injectSecretsTemplate(template: string): string {
