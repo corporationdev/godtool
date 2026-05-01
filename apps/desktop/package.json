@@ -1,6 +1,6 @@
 {
   "name": "@executor/desktop",
-  "version": "1.4.15",
+  "version": "1.4.16",
   "private": true,
   "description": "GODTOOL desktop app",
   "homepage": "https://github.com/corporationdev/godtool",
@@ -32,13 +32,7 @@
   "build": {
     "appId": "com.godtool.desktop",
     "productName": "GODTOOL",
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "corporationdev",
-        "repo": "godtool"
-      }
-    ],
+    "publish": null,
     "directories": {
       "output": "release"
     },
