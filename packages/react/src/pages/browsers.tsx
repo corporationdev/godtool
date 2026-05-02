@@ -429,7 +429,7 @@ export function BrowsersPage() {
                       onClick={() => void showSession(session.id)}
                       aria-current={selectedId === session.id ? "page" : undefined}
                       className={[
-                        "relative min-h-24 w-full cursor-pointer flex-col items-stretch justify-start whitespace-normal rounded-none px-4 py-3 pr-12 text-left font-normal transition-colors hover:bg-accent/40",
+                        "relative h-auto min-h-24 w-full cursor-pointer flex-col items-stretch justify-start whitespace-normal rounded-none px-4 py-3 pr-12 text-left font-normal transition-colors hover:bg-accent/40",
                         selectedId === session.id
                           ? "bg-accent/60 before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-primary"
                           : "bg-background",
@@ -448,7 +448,7 @@ export function BrowsersPage() {
                       <p className="mt-1 min-w-0 truncate text-xs leading-5 text-muted-foreground">
                         {session.title || session.url || session.id}
                       </p>
-                      <dl className="mt-2 grid min-w-0 gap-1 text-xs leading-5 text-muted-foreground">
+                      <dl className="mt-2 grid min-w-0 gap-2 text-xs leading-5 text-muted-foreground">
                         <div className="min-w-0">
                           <dt className="font-medium text-foreground/70">Current URL</dt>
                           <dd className="truncate font-mono">{session.url || "about:blank"}</dd>
