@@ -12,7 +12,6 @@ import {
 import { authorizeOrganization } from "./auth/authorize-organization";
 import { WorkOSAuth } from "./auth/workos";
 import { SharedServices } from "./api/protected-layers";
-import { AutumnService } from "./services/autumn";
 
 type Placement = "local" | "cloud";
 
@@ -132,13 +131,6 @@ const desktopCallbackHtml = (callbackUrl: string, payload: unknown): string => `
 </body>
 </html>`;
 
-const requireManagedAuth = (organizationId: string) =>
-  Effect.gen(function* () {
-    const autumn = yield* AutumnService;
-    const allowed = yield* autumn.isFeatureAllowed(organizationId, "managed-auth");
-    return allowed ? null : json({ error: "upgrade_required" }, { status: 402 });
-  });
-
 const composioEntityId = (organizationId: string, userId: string) => `${organizationId}:${userId}`;
 
 const startConnect = (request: Request) =>
@@ -148,8 +140,6 @@ const startConnect = (request: Request) =>
     if (!session?.organizationId) return json({ error: "unauthorized" }, { status: 401 });
     const org = yield* authorizeOrganization(session.userId, session.organizationId);
     if (!org) return json({ error: "forbidden" }, { status: 403 });
-    const upgradeRequired = yield* requireManagedAuth(org.id);
-    if (upgradeRequired) return upgradeRequired;
 
     const apiKey = env.COMPOSIO_API_KEY;
     if (!apiKey) return json({ error: "managed_auth_not_configured" }, { status: 503 });
@@ -271,8 +261,6 @@ const proxy = (request: Request) =>
     if (!session?.organizationId) return json({ error: "unauthorized" }, { status: 401 });
     const org = yield* authorizeOrganization(session.userId, session.organizationId);
     if (!org) return json({ error: "forbidden" }, { status: 403 });
-    const upgradeRequired = yield* requireManagedAuth(org.id);
-    if (upgradeRequired) return upgradeRequired;
 
     const apiKey = env.COMPOSIO_API_KEY;
     if (!apiKey) return json({ error: "managed_auth_not_configured" }, { status: 503 });

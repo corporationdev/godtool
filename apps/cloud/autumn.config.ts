@@ -1,17 +1,5 @@
 import { feature, item, plan } from "atmn";
 
-export const managedAuth = feature({
-  id: "managed-auth",
-  name: "Managed Auth",
-  type: "boolean",
-});
-
-export const remoteMcp = feature({
-  id: "remote-mcp",
-  name: "Remote MCP",
-  type: "boolean",
-});
-
 export const hostedWorkerFallback = feature({
   id: "hosted-worker-fallback",
   name: "Hosted Worker Fallback",
@@ -33,8 +21,6 @@ export const pro = plan({
     interval: "month",
   },
   items: [
-    item({ featureId: managedAuth.id }),
-    item({ featureId: remoteMcp.id }),
     item({ featureId: hostedWorkerFallback.id }),
   ],
 });

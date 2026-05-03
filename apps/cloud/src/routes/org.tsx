@@ -1,8 +1,7 @@
 import { useReducer, useState } from "react";
 import { Exit } from "effect";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useAtomValue, useAtomSet, Result } from "@effect-atom/atom-react";
-import { useCustomer } from "autumn-js/react";
 import { toast } from "sonner";
 import {
   orgMemberWriteKeys,
@@ -119,10 +118,6 @@ function OrgPage() {
   const doDeleteDomain = useAtomSet(deleteDomain, { mode: "promiseExit" });
   const doGetVerificationLink = useAtomSet(getDomainVerificationLink, { mode: "promiseExit" });
   const doUpdateOrgName = useAtomSet(updateOrgName, { mode: "promiseExit" });
-  const { check, isLoading: customerLoading } = useCustomer();
-  const canUseDomains = customerLoading
-    ? false
-    : check({ featureId: "domain-verification" }).allowed;
   const [inviteOpen, setInviteOpen] = useState(false);
   const [editName, setEditName] = useState(orgName);
   const [savingName, setSavingName] = useState(false);
@@ -242,25 +237,11 @@ function OrgPage() {
             <Button
               size="sm"
               className="min-w-32"
-              disabled={!canUseDomains}
               onClick={handleAddDomain}
             >
               Add domain
             </Button>
           </div>
-
-          {!canUseDomains && (
-            <div className="mb-3 flex items-center justify-between rounded-lg border border-border px-4 py-3">
-              <p className="text-sm text-muted-foreground">
-                Domain verification is available on the Professional plan.
-              </p>
-              <Link to="/settings/billing/plans">
-                <Button size="sm" variant="outline">
-                  Upgrade
-                </Button>
-              </Link>
-            </div>
-          )}
 
           {Result.match(domainsResult, {
             onInitial: () => (

@@ -5,7 +5,6 @@ import { UserStoreService } from "../auth/context";
 import { AuthContext } from "../auth/middleware";
 import { env } from "cloudflare:workers";
 import { WorkOSAuth } from "../auth/workos";
-import { AutumnService } from "../services/autumn";
 import { OrgHttpApi } from "./compose";
 import { Forbidden } from "./api";
 
@@ -161,20 +160,6 @@ export const OrgHandlers = HttpApiBuilder.group(OrgHttpApi, "org", (handlers) =>
       Effect.gen(function* () {
         yield* requireAdmin;
         const auth = yield* AuthContext;
-
-        const autumn = yield* AutumnService;
-        const check = yield* autumn
-          .use((client) =>
-            client.check({
-              customerId: auth.organizationId,
-              featureId: "domain-verification",
-            }),
-          )
-          .pipe(Effect.orElseSucceed(() => ({ allowed: true })));
-
-        if (!check.allowed) {
-          return yield* new Forbidden();
-        }
 
         const workos = yield* WorkOSAuth;
         const { link } = yield* workos.generateDomainVerificationPortalLink(

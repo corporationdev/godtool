@@ -34,7 +34,7 @@ export type AttachPlanInput = {
 
 const PLAN_TAGLINES: Record<string, string> = {
   free: "Local app usage stays free",
-  pro: "Managed auth, remote MCP, and worker fallback",
+  pro: "Use your integrations while your Mac is closed",
 };
 
 const PLAN_META: Record<string, { tagline: string; features: string[] }> = {
@@ -48,13 +48,8 @@ const PLAN_META: Record<string, { tagline: string; features: string[] }> = {
     ],
   },
   pro: {
-    tagline: "Managed auth and cloud access",
-    features: [
-      "Everything in Free, plus",
-      "Managed OAuth",
-      "Remote MCP from anywhere",
-      "Cloud integrations when your Mac is offline",
-    ],
+    tagline: "Use your integrations while your Mac is closed",
+    features: ["Use your integrations while your Mac is closed"],
   },
 };
 

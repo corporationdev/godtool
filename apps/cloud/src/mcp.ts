@@ -29,7 +29,6 @@ import { authorizeOrganization } from "./auth/authorize-organization";
 import { UserStoreService } from "./auth/context";
 import { WorkOSAuth, type WorkOSAuthService } from "./auth/workos";
 import { CoreSharedServices } from "./api/core-shared-services";
-import { AutumnService } from "./services/autumn";
 import { DbService } from "./services/db";
 
 // ---------------------------------------------------------------------------
@@ -731,12 +730,7 @@ const authorizeMcpOrganization = (
         attributes: { "mcp.auth.organization_id": organizationId },
       }),
     );
-    if (allowed) {
-      const autumn = yield* AutumnService;
-      const hasRemoteMcp = yield* autumn.isFeatureAllowed(organizationId, "remote-mcp");
-      if (hasRemoteMcp) return null;
-      return jsonRpcError(402, -32003, "Remote MCP requires the Pro plan");
-    }
+    if (allowed) return null;
 
     if (sessionId) {
       yield* clearExistingSession(request, sessionId);
@@ -836,7 +830,7 @@ export const classifyMcpPath = (pathname: string): McpRoute => {
 export const mcpApp: Effect.Effect<
   HttpServerResponse.HttpServerResponse,
   never,
-  HttpServerRequest.HttpServerRequest | McpAuth | McpOrganizationAuth | AutumnService
+  HttpServerRequest.HttpServerRequest | McpAuth | McpOrganizationAuth
 > = Effect.gen(function* () {
   const httpRequest = yield* HttpServerRequest.HttpServerRequest;
   const request = httpRequest.source as Request;
