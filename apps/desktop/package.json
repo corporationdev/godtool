@@ -5,9 +5,9 @@
   "description": "GODTOOL desktop app",
   "homepage": "https://github.com/corporationdev/godtool",
   "author": {
-    "name": "Rhys Sullivan",
-    "email": "39114868+RhysSullivan@users.noreply.github.com"
+    "name": "Isaac Dyor"
   },
+  "copyright": "Copyright © 2026 Isaac Dyor",
   "main": "dist/main.js",
   "scripts": {
     "dev": "node scripts/dev.js",
@@ -51,6 +51,8 @@
         "filter": [
           "executor*",
           "emscripten-module.wasm",
+          "keyring.node",
+          "secure-exec-v8",
           "agent-browser/**",
           "computer-use/**"
         ]

@@ -540,6 +540,16 @@ const resolveTargetsFromEnv = (env: string | undefined): Target[] => {
   return resolved;
 };
 
+const resolveTargetsFromNames = (names: readonly string[]): Target[] => {
+  const resolved = names.map((name) => {
+    const target = ALL_TARGETS.find((t) => targetPackageName(t) === name);
+    if (!target) throw new Error(`Unknown target: ${name}`);
+    return target;
+  });
+  if (resolved.length === 0) throw new Error("No targets were provided");
+  return resolved;
+};
+
 const buildPreviewWrapperPackage = async (targets: Target[]) => {
   const meta = await readMetadata();
   const cdnUrl = process.env.EXECUTOR_PREVIEW_CDN_URL?.replace(/\/+$/, "");
@@ -957,6 +967,7 @@ const { values, positionals } = parseArgs({
   options: {
     single: { type: "boolean", default: false },
     mode: { type: "string", default: "production" },
+    target: { type: "string", multiple: true },
   },
   allowPositionals: true,
   strict: true,
@@ -969,7 +980,11 @@ if (mode !== "production" && mode !== "development") {
 }
 
 if (command === "binary") {
-  const targets = values.single ? ALL_TARGETS.filter(isCurrentPlatform) : ALL_TARGETS;
+  const targets = values.target?.length
+    ? resolveTargetsFromNames(values.target)
+    : values.single
+      ? ALL_TARGETS.filter(isCurrentPlatform)
+      : ALL_TARGETS;
   const binaries = await buildBinaries(targets, mode);
   await buildWrapperPackage(binaries);
 } else if (command === "preview") {
@@ -997,7 +1012,7 @@ if (command === "binary") {
   await publish(channel);
 } else {
   console.log(`Usage:
-  bun run build.ts binary [--single] [--mode production|development]
+  bun run build.ts binary [--single] [--target executor-darwin-arm64] [--mode production|development]
   bun run build.ts preview [--mode production|development]
   bun run build.ts preview-tarball [--mode production|development]
   bun run build.ts preview-wrapper

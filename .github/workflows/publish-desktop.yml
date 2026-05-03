@@ -27,11 +27,9 @@ jobs:
           - os: macos-latest
             arch: arm64
             platform: mac
-            cli-asset: executor-darwin-arm64.zip
           - os: macos-latest
             arch: x64
             platform: mac
-            cli-asset: executor-darwin-x64.zip
 
     runs-on: ${{ matrix.os }}
 
@@ -66,26 +64,21 @@ jobs:
           APPLE_API_KEY_ID: op://godtool-prod/Apple/apple-api-key-id
           APPLE_API_ISSUER: op://godtool-prod/Apple/apple-api-issuer
 
-      - name: Build web app
-        run: bun run build
-        working-directory: apps/local
-
-      - name: Download and extract CLI sidecar
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build CLI sidecar from source
         run: |
           mkdir -p apps/desktop/resources
-          gh release download "${{ inputs.tag }}" --repo "${{ github.repository }}" --pattern "${{ matrix.cli-asset }}" --dir /tmp/cli-download
-          cd /tmp/cli-download
-          if [[ "${{ matrix.cli-asset }}" == *.tar.gz ]]; then
-            tar -xzf "${{ matrix.cli-asset }}"
-          else
-            unzip -o "${{ matrix.cli-asset }}"
-          fi
-          cp executor "${{ github.workspace }}/apps/desktop/resources/executor"
+          bun run apps/cli/src/build.ts binary --target "executor-darwin-${{ matrix.arch }}"
+          sidecar_dir="apps/cli/dist/executor-darwin-${{ matrix.arch }}/bin"
+          cp "${sidecar_dir}/executor" "apps/desktop/resources/executor"
           chmod +x "${{ github.workspace }}/apps/desktop/resources/executor"
-          if [ -f emscripten-module.wasm ]; then
-            cp emscripten-module.wasm "${{ github.workspace }}/apps/desktop/resources/"
+          if [ -f "${sidecar_dir}/emscripten-module.wasm" ]; then
+            cp "${sidecar_dir}/emscripten-module.wasm" "apps/desktop/resources/"
+          fi
+          if [ -f "${sidecar_dir}/keyring.node" ]; then
+            cp "${sidecar_dir}/keyring.node" "apps/desktop/resources/"
+          fi
+          if [ -f "${sidecar_dir}/secure-exec-v8" ]; then
+            cp "${sidecar_dir}/secure-exec-v8" "apps/desktop/resources/"
           fi
 
       - name: Build desktop app (TypeScript)
