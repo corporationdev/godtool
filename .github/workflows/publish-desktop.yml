@@ -143,7 +143,7 @@ jobs:
           }
           trap cleanup EXIT
 
-          npx electron-builder --${{ matrix.platform }} --${{ matrix.arch }} 2>&1 | tee "$log_path"
+          npx electron-builder --${{ matrix.platform }} --${{ matrix.arch }} --publish never 2>&1 | tee "$log_path"
         working-directory: apps/desktop
 
       - name: Verify Computer Use sidecar bundle
