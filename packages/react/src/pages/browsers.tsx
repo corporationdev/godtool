@@ -394,7 +394,7 @@ export function BrowsersPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background">
-      <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[320px_minmax(0,1fr)]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[clamp(220px,32%,320px)_minmax(0,1fr)]">
         <div className="min-h-0 overflow-y-auto border-b border-border md:border-r md:border-b-0">
           <div className="sticky top-0 z-10 flex h-12 items-center justify-between gap-3 border-b border-border bg-background px-4">
             <div className="flex min-w-0 items-baseline gap-2">
@@ -421,6 +421,8 @@ export function BrowsersPage() {
             <div className="flex flex-col">
               {sessions.map((session) => {
                 const active = isRecentlyUsedByAgent(session, now);
+                const title = session.title.trim();
+                const url = session.url || "about:blank";
                 return (
                   <div key={session.id} className="group relative border-b border-border">
                     <Button
@@ -429,35 +431,33 @@ export function BrowsersPage() {
                       onClick={() => void showSession(session.id)}
                       aria-current={selectedId === session.id ? "page" : undefined}
                       className={[
-                        "relative h-auto min-h-24 w-full cursor-pointer flex-col items-stretch justify-start whitespace-normal rounded-none px-4 py-3 pr-12 text-left font-normal transition-colors hover:bg-accent/40",
+                        "relative h-auto min-h-0 w-full cursor-pointer flex-col items-stretch justify-start gap-0 whitespace-normal rounded-none px-4 py-3 pr-12 text-left font-normal transition-colors hover:bg-accent/40",
                         selectedId === session.id
                           ? "bg-accent/60 before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-primary"
                           : "bg-background",
                       ].join(" ")}
                     >
-                      <div className="flex min-w-0 items-start justify-between gap-2">
+                      <div className="flex min-w-0 items-center justify-between gap-2">
                         <span className="min-w-0 truncate text-sm font-medium leading-5">
                           {session.sessionName}
                         </span>
                         {active ? (
-                          <Badge variant="secondary" className="shrink-0">
+                          <Badge variant="secondary" className="h-5 shrink-0 px-2 py-0 text-[11px]">
                             Active
                           </Badge>
                         ) : null}
                       </div>
-                      <p className="mt-1 min-w-0 truncate text-xs leading-5 text-muted-foreground">
-                        {session.title || session.url || session.id}
+                      {title ? (
+                        <p className="mt-1 min-w-0 truncate text-xs leading-4 text-muted-foreground">
+                          {title}
+                        </p>
+                      ) : null}
+                      <p className="mt-2 min-w-0 truncate font-mono text-xs leading-4 text-muted-foreground">
+                        {url}
                       </p>
-                      <dl className="mt-2 grid min-w-0 gap-2 text-xs leading-5 text-muted-foreground">
-                        <div className="min-w-0">
-                          <dt className="font-medium text-foreground/70">Current URL</dt>
-                          <dd className="truncate font-mono">{session.url || "about:blank"}</dd>
-                        </div>
-                        <div className="min-w-0">
-                          <dt className="font-medium text-foreground/70">Last used</dt>
-                          <dd>{formatAge(session.lastUsedAt)}</dd>
-                        </div>
-                      </dl>
+                      <p className="mt-1 text-xs leading-4 text-muted-foreground">
+                        Last used {formatAge(session.lastUsedAt)}
+                      </p>
                     </Button>
                     <Button
                       type="button"
