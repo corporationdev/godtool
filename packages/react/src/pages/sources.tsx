@@ -5,6 +5,7 @@ import { detectSource } from "../api/atoms";
 import { useSourcesWithPending } from "../api/optimistic";
 import { useScope } from "../hooks/use-scope";
 import type { SourcePlugin, SourcePreset } from "../plugins/source-plugin";
+import type { AccountAuthState } from "../components/account-menu";
 import { McpInstallCard } from "../components/mcp-install-card";
 import { Button } from "../components/button";
 import { Badge } from "../components/badge";
@@ -80,7 +81,11 @@ function findPresetIcon(source: { name: string; url?: string }, plugin?: SourceP
 // Page
 // ---------------------------------------------------------------------------
 
-export function SourcesPage(props: { sourcePlugins: readonly SourcePlugin[] }) {
+export function SourcesPage(props: {
+  sourcePlugins: readonly SourcePlugin[];
+  auth?: AccountAuthState;
+  onSignIn?: () => void;
+}) {
   const { sourcePlugins } = props;
   const urlSourcePlugins = useMemo(
     () => sourcePlugins.filter(supportsUrlSourceDetection),
@@ -191,7 +196,7 @@ export function SourcesPage(props: { sourcePlugins: readonly SourcePlugin[] }) {
         </div>
 
         <div className="mb-8">
-          <McpInstallCard />
+          <McpInstallCard auth={props.auth} onSignIn={props.onSignIn} />
         </div>
 
         {Result.match(sources, {
